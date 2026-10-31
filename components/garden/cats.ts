@@ -7,7 +7,13 @@ export function createCat(breed: "british" | "siamese") {
   root.name = british ? "British Shorthair blue-white bicolor" : "Seal-point Siamese";
   const body = new THREE.Group();
   root.add(body);
-  const material = (color: string) => new THREE.MeshStandardMaterial({ color, roughness: 0.88 });
+  const material = (color: string) => {
+    const pigment = new THREE.Color(color);
+    // Sylva's r149 runtime uses legacy color input; newer Three handles this itself.
+    const management = THREE.ColorManagement as typeof THREE.ColorManagement & { legacyMode?: boolean };
+    if (management.enabled === false || management.legacyMode === true) pigment.convertSRGBToLinear();
+    return new THREE.MeshStandardMaterial({ color: pigment, roughness: 0.88 });
+  };
   const fur = material(british ? "#929aa5" : "#efe1c5");
   const dark = material(british ? "#929aa5" : "#4c3932");
   const cream = material(british ? "#fffdf7" : "#6a4c3f");

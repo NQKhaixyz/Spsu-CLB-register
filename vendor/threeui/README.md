@@ -23,13 +23,20 @@ the registered upstream copy remains untouched. Other variants and their
 unrelated dependencies are intentionally outside this site's entry. The Vite
 and TypeScript aliases preserve the requested `@designcodeio/threeui` imports.
 
-CLB integration is additive, via the authored `applyScene` callback. It loads
-`components/sylva/extension.ts` into the local document, adds two articulated cats
-to the existing root group using its exact Three runtime, samples their walking
-height from the actual root mesh, localizes copy and connects controls to the
-existing club login. It also retains Vietnam-time lighting and motion controls.
-No documentation page is embedded and no replacement forest is drawn.
+The build emits `public/landing-pages/nhip-living-green.html` from the verified
+canonical document. Its two additions are background presentation CSS and a
+script tag immediately after the local Three.js runtime. Loading the integration
+before scene initialization is necessary: r149 defines `render` on each renderer
+instance, so patching the prototype after startup does not work.
+
+`components/sylva/extension.ts` adds two articulated cats to the existing root
+group using the authored Three runtime and samples their walking height from
+the actual root mesh. The original world, shaders, pollen, flowers and butterfly
+remain. The user's revised design removes the authored marketing UI, time
+selectors and separate garden mode. The scene runs continuously behind a single
+CLB interface, respecting the device's reduced-motion preference. No documentation
+page is embedded and no replacement forest is drawn.
 
 The iframe is the component's original `LandingPageFrame`, served from this
-site. Parent messages are checked against both origin and the known frame.
-Login remains a native modal in the app; no credentials enter the scene frame.
+site. It is decorative, excluded from keyboard navigation, and receives no
+credentials. The native login form is immediately available in the app.

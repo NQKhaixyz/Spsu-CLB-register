@@ -1,51 +1,81 @@
 @import url('/fonts/lexend-vietnamese.css');
-@font-face { font-family: 'Lexend'; src: url('/landing-pages/inner-green-assets/lexend-latin.woff2') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
-:root { --ink: #293226; --muted: #596451; --green: #4d6640; --green-dark: #354b2b; --paper: #454b3e; --line: #dce0d3; }
-html { background: #4a4d44; }
-body, button, input, select, textarea { font-family: 'Lexend', system-ui, sans-serif; }
-body { font-size: 16px; font-weight: 500; }
-.garden-hero h2, .garden-hero h2 em, .garden-view-caption h1, .stat-card strong, .login-form-card h2 { font-family: 'Lexend', system-ui, sans-serif; font-style: normal; }
-.garden-backdrop { pointer-events: auto; background: #4a4d44; }
-.shader-frame, .shader-frame > .landing-page-frame { width: 100%; height: 100%; }
-.garden-backdrop .garden-scene { isolation: isolate; }
-.club-interface:has(.sylva-login) { pointer-events: none; }
-.native-login.sylva-login { display: block; min-height: 100svh; padding: 0; margin: 0; background: transparent; pointer-events: none; }
-.sylva-login-entry { position: fixed; top: 30px; right: 30px; display: inline-flex; align-items: center; gap: 12px; padding: 12px 20px; background: #f2f3ef; border: 1px solid #ffffff50; border-radius: 14px; color: #263020; font-weight: 600; font-size: 15px; box-shadow: 0 8px 24px #10160d26; pointer-events: auto; cursor: pointer; }
-.sylva-login-entry:hover { background: #fff; }
-.sylva-auth-dialog { position: fixed; inset: 0; width: min(520px, calc(100vw - 28px)); max-height: calc(100dvh - 40px); margin: auto; padding: 0; overflow-y: auto; color: #293226; border: 1px solid #fff9; border-radius: 24px; background: #f2f3ef; box-shadow: 0 40px 110px #111a0d80; pointer-events: auto; }
-.sylva-auth-dialog::backdrop { background: #121b10a0; backdrop-filter: blur(8px); }
-.sylva-auth-dialog .login-form-side { display: block; width: 100%; margin: 0; padding: 42px 36px 28px; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
-.sylva-auth-dialog .login-form-card { width: 100%; }
-.sylva-auth-dialog .login-form-card h2 { font-size: 28px; font-weight: 700; }
-.sylva-auth-dialog .login-native-note { font-size: 12px; }
-.sylva-dialog-close { position: absolute; z-index: 2; right: 12px; top: 12px; display: grid; place-items: center; width: 40px; height: 40px; border: 0; background: transparent; color: #536348; border-radius: 50%; cursor: pointer; }
-.sylva-dialog-close:hover { background: #e0e6d9; }
-.sylva-load-note { position: absolute; bottom: 100px; left: 24px; padding: 12px; border-radius: 12px; background: #f2f3ef; color: #293226; }
-.sidebar { background: #eef0e8f2; border-right-color: #fff4; backdrop-filter: blur(14px); }
-.topbar { background: #f2f3efed; border-bottom-color: #d8dece; }
-.page-heading, .panel, .stat-card { background: #f2f3eff5; border-color: #ffffff70; box-shadow: 0 14px 32px -18px #131e0e75; }
-.page-heading h1, .panel-head h2 { font-weight: 700; }
-.garden-hero-copy { background: linear-gradient(125deg, #242d23d9, #343e2bbd); border-color: #ffffff20; color: #f2f3ef; box-shadow: 0 16px 40px -25px #0008; }
-.garden-hero-copy .garden-kicker, .garden-hero-copy > p, .garden-hero-copy .garden-cats-caption { color: #e1e7d9; }
-.garden-hero h2, .garden-hero h2 em { color: #fff; font-weight: 600; }
-.garden-hero .garden-action { background: #f2f3ef; color: #34432b; }
-.garden-dock { background: #242d23ed; border: 1px solid #ffffff22; color: #f2f3ef; box-shadow: 0 16px 40px #11180c40, inset 0 1px #ffffff12; backdrop-filter: none; }
-.garden-dock .garden-time-picker, .garden-dock .garden-controls > button { background: #ffffff09; border-color: #ffffff25; color: #f2f3ef; backdrop-filter: none; }
-.garden-focus-button { background: #edf1e7; color: #2c3925; }
-.garden-focus-button:hover { background: #fff; }
-.garden-view-caption { color: #fff; text-shadow: 0 3px 25px #182211; pointer-events: none; }
-.garden-view-caption > span, .garden-view-caption p { color: #e3e9db; }
-.garden-view-caption h1 { font-weight: 500; }
-.meeting-card { background: #edf2e7f2; }
-.note-card { background: #e8eddef2; }
-.btn.primary { background: #4d6640; }
-@media(max-width:900px) {
-  .sylva-login-entry { top: auto; bottom: 85px; right: 16px; font-size: 14px; padding: 10px 16px; }
+@font-face { font-family:'Lexend'; src:url('/landing-pages/inner-green-assets/lexend-latin.woff2') format('woff2'); font-style:normal; font-weight:100 900; font-display:swap; unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+:root { --ink:#27372d; --muted:#5e6b61; --green:#315b46; --green-dark:#234b37; --paper:#454b3e; --line:#dde3db; }
+html,body { background:#4a4d44; }
+body,button,input,select,textarea { font-family:'Lexend',system-ui,sans-serif; }
+body { font-size:16px; font-weight:500; }
+.garden-backdrop { pointer-events:none; background:#4a4d44; }
+.shader-frame,.shader-frame>.landing-page-frame { width:100%; height:100%; }
+.shader-frame iframe { pointer-events:none; }
+.club-interface { min-height:100svh; }
+
+/* A single continuous world, with a clear editorial foreground. */
+.sylva-login { min-height:100svh; padding:36px clamp(24px,5vw,84px) 24px; display:flex; flex-direction:column; color:#fff; position:relative; }
+.sylva-login::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg,#1d281b5c,transparent 50%,#17211836); pointer-events:none; }
+.sylva-masthead { display:flex; align-items:center; justify-content:space-between; gap:24px; }
+.sylva-masthead .brand { color:#fff; font-size:32px; }
+.sylva-masthead .brand small { color:#e1e6db; font-size:10px; letter-spacing:2px; }
+.sylva-masthead .brand-mark { background:#e5ecdf; color:#354b36; border-radius:14px; box-shadow:none; }
+.sylva-masthead>span { color:#e5e9e1; font-size:12px; font-weight:600; letter-spacing:1.5px; }
+.sylva-login-layout { width:100%; max-width:1480px; margin:auto; padding:56px 0; display:grid; grid-template-columns:minmax(0,1fr) minmax(360px,430px); align-items:start; gap:clamp(40px,6vw,100px); }
+.sylva-intro { padding-top:22px; text-shadow:0 2px 24px #1b261c60; }
+.sylva-intro>.eyebrow { font-size:12px; letter-spacing:2px; font-weight:600; color:#e0e7d9; }
+.sylva-intro h1 { color:#fff; font-family:'Lexend',sans-serif; font-size:clamp(42px,4.5vw,70px); font-weight:600; line-height:1.14; letter-spacing:-2.5px; margin:24px 0 22px; }
+.sylva-intro p { font-size:17px; line-height:1.85; color:#eef0e8; font-weight:400; max-width:480px; margin:0; }
+.sylva-login .login-form-side { width:100%; align-self:start; margin:0; padding:38px 34px 32px; border-radius:22px; background:#f7f8f2f5; border:1px solid #fff9; box-shadow:0 24px 80px #17221326,inset 0 1px #fff; backdrop-filter:blur(18px); color:var(--ink); }
+.sylva-login .login-form-card { max-width:none; }
+.sylva-login .login-form-card>.eyebrow { font-size:11px; letter-spacing:1.5px; color:#60715f; }
+.sylva-login .login-form-card h2 { font-family:'Lexend',sans-serif; font-size:30px; font-weight:700; letter-spacing:-1px; line-height:1.4; margin:12px 0 0; color:#263c2e; }
+.sylva-login .login-form-card>p { margin:10px 0 28px; font-size:14px; font-weight:400; line-height:1.7; color:#5e6d60; }
+.sylva-login .field>span { font-size:14px; font-weight:600; color:#354d3c; }
+.sylva-login .field input { height:52px; font-size:16px; background:#fff; border-color:#d6ded3; border-radius:10px; box-shadow:none; font-weight:400; }
+.sylva-login .field input:focus { outline:3px solid #66866930; border-color:#668669; }
+.sylva-login .forgot-password { color:#46664c; font-size:13px; }
+.sylva-login .login-submit { min-height:50px; border-radius:10px; margin-top:6px; }
+.sylva-login .login-toggle { border-top:1px solid #dce2d6; padding-top:22px; margin-top:24px; color:#6b7569; font-size:13px; font-weight:400; flex-wrap:wrap; }
+.sylva-login .login-toggle button { color:#315b46; font-size:13px; font-weight:600; }
+.sylva-login-footer { display:flex; align-items:center; justify-content:space-between; gap:18px; border-top:1px solid #ffffff24; padding-top:18px; font-size:12px; font-weight:400; color:#d5ddce; }
+
+/* Solid hierarchy and readable work surfaces across admin and member screens. */
+.sidebar { background:#f4f6efef; border-right:1px solid #ffffff40; backdrop-filter:blur(18px); box-shadow:none; }
+.sidebar nav button.active { background:#e1eadf; box-shadow:inset 3px 0 #315b46; color:#294e36; }
+.sidebar nav button:hover { transform:none; }
+.topbar { background:#f5f7eff0; border-bottom-color:#dce3d8; }
+.main-content { padding-bottom:32px; }
+.page-heading,.panel,.stat-card { background:#f7f8f2f5; border:1px solid #ffffff70; box-shadow:0 8px 24px #17241414; backdrop-filter:blur(14px); }
+.page-heading h1,.panel-head h2 { font-weight:700; }
+.stat-card strong { font-family:'Lexend',sans-serif; font-weight:700; }
+.stat-card:not(:disabled):hover { transform:translateY(-2px); box-shadow:0 12px 28px #17241424; }
+.club-welcome { display:flex; align-items:center; justify-content:space-between; gap:24px; margin:0 0 28px; padding:30px 32px; border:1px solid #ffffff24; border-radius:18px; color:#fff; background:linear-gradient(120deg,#263b2be0,#2a402c9c); backdrop-filter:blur(10px); }
+.club-welcome .eyebrow { font-size:11px; color:#d2dfca; letter-spacing:2px; }
+.club-welcome h2 { font-size:clamp(27px,2.5vw,36px); line-height:1.3; letter-spacing:-1px; margin:10px 0 7px; }
+.club-welcome p { font-size:15px; font-weight:400; color:#dce6d6; margin:0; }
+.club-welcome .btn.primary { background:#edf3e7; border-color:#edf3e7; color:#2b4b35; white-space:nowrap; }
+.meeting-card { background:#edf2e7f5; }
+.note-card { background:#e8eddef5; }
+.btn.primary { background:#315b46; border:1px solid #315b46; box-shadow:none; }
+.btn.primary:hover:not(:disabled) { background:#254a38; box-shadow:0 4px 12px #243e2520; }
+.club-welcome .btn.primary:hover { background:#fff; color:#2b4b35; }
+.btn.secondary { box-shadow:none; }
+.page-footer { font-size:12px; }
+@media(max-width:1050px) {
+  .sylva-login { padding:28px 32px 22px; }
+  .sylva-login-layout { grid-template-columns:minmax(0,1fr) 370px; gap:32px; padding:54px 0; }
+  .sylva-intro h1 { font-size:48px; }
+  .sylva-login .login-form-side { padding:30px 27px; }
 }
-@media(max-width:520px) {
-  .sylva-auth-dialog .login-form-side { padding: 44px 23px 24px; }
-  .sylva-auth-dialog .login-form-card h2 { font-size: 25px; }
-  .sylva-auth-dialog .login-bottom-note { font-size: 12px; }
-  .garden-view-caption h1 { font-size: 28px; max-width: 320px; }
-  .garden-dock { bottom: max(10px, env(safe-area-inset-bottom)); }
+@media(max-width:760px) {
+  .sylva-login { padding:24px 20px 20px; }
+  .sylva-masthead>span { display:none; }
+  .sylva-login-layout { grid-template-columns:1fr; padding:36px 0; gap:32px; }
+  .sylva-intro { padding-top:0; padding-bottom:116px; }
+  .sylva-intro>.eyebrow { font-size:10px; letter-spacing:1.4px; }
+  .sylva-intro h1 { font-size:42px; letter-spacing:-1.8px; margin:17px 0 16px; }
+  .sylva-intro p { font-size:15px; line-height:1.75; }
+  .sylva-login .login-form-side { max-width:480px; margin:0 auto; padding:28px 24px; }
+  .sylva-login .login-form-card h2 { font-size:28px; }
+  .sylva-login-footer { font-size:10px; }
+  .club-welcome { flex-direction:column; align-items:flex-start; padding:24px; gap:20px; }
+  .main-content { padding-bottom:24px; }
 }
+@media(prefers-reduced-motion:reduce) { .stat-card:not(:disabled):hover { transform:none; } }

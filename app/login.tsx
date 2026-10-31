@@ -1,32 +1,16 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import {
   ArrowRight,
-  KeyRound,
-  X,
   LoaderCircle,
-  ShieldCheck,
 } from "lucide-react";
-import { Field } from "./ui";
-import { useAtmosphere } from "../components/garden/atmosphere";
+import { Brand, Field } from "./ui";
 
 export default function Login({
   onSuccess,
 }: {
   onSuccess: () => Promise<void>;
 }) {
-  const { setVisitor } = useAtmosphere();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    setVisitor(true);
-    const show = () => setOpen(true);
-    window.addEventListener("nhip-open-login", show);
-    return () => { setVisitor(false); window.removeEventListener("nhip-open-login", show); };
-  }, [setVisitor]);
-  useEffect(() => {
-    if (open) dialog.current?.showModal(); else dialog.current?.close();
-  }, [open]);
   const [register, setRegister] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -58,21 +42,22 @@ export default function Login({
     }
   }
   return (
-    <main className="native-login sylva-login">
-      <button className="sylva-login-entry" type="button" onClick={() => setOpen(true)}>Đăng nhập <ArrowRight size={17} /></button>
-      <dialog className="sylva-auth-dialog" ref={dialog} onCancel={() => setOpen(false)} onClose={() => setOpen(false)} aria-labelledby="login-heading">
-      <button className="sylva-dialog-close" type="button" aria-label="Đóng đăng nhập" onClick={() => setOpen(false)}><X size={22} /></button>
-      <section className="login-form-side">
+    <main className="sylva-login">
+      <header className="sylva-masthead"><Brand /><span>HỌP TUẦN & LỊCH TRỰC C1</span></header>
+      <div className="sylva-login-layout">
+      <section className="sylva-intro" aria-labelledby="club-heading">
+        <span className="eyebrow">KẾT NỐI · THAM GIA · ĐÓNG GÓP</span>
+        <h1 id="club-heading">Cùng một nhịp.</h1>
+        <p>Lịch họp, ca trực và hoạt động thành viên.<br />Tất cả trong một không gian chung.</p>
+      </section>
+      <section className="login-form-side" aria-labelledby="login-heading">
         <div className="login-form-card">
-          <div className="login-key">
-            <KeyRound size={25} />
-          </div>
-          <span className="eyebrow">KHÔNG GIAN CLB CỦA BẠN</span>
-          <h2 id="login-heading">{register ? "Bắt đầu một nhịp mới." : "Chào mừng trở lại."}</h2>
+          <span className="eyebrow">TÀI KHOẢN THÀNH VIÊN</span>
+          <h2 id="login-heading">{register ? "Đăng ký thành viên" : "Đăng nhập"}</h2>
           <p>
             {register
               ? "Tạo tài khoản thành viên bằng MSSV và họ tên."
-              : "Đăng nhập bằng tài khoản CLB để tiếp tục."}
+              : "Sử dụng tài khoản được BCS cung cấp."}
           </p>
           <form key={String(register)} onSubmit={submit}>
             {register ? (
@@ -173,16 +158,10 @@ export default function Login({
               {register ? "Đăng nhập" : "Đăng ký bằng MSSV"}
             </button>
           </div>
-          <div className="login-native-note">
-            <ShieldCheck size={15} />
-            <span>Tài khoản riêng của CLB · Không cần đăng nhập OpenAI</span>
-          </div>
         </div>
-        <span className="login-bottom-note">
-          Họp tuần · Lịch trực C1 · Ghi nhận đóng góp
-        </span>
       </section>
-      </dialog>
+      </div>
+      <footer className="sylva-login-footer"><span>Nhịp CLB</span><span>Không gian hoạt động thành viên</span></footer>
     </main>
   );
 }

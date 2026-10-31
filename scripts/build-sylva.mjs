@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
 const manifest = JSON.parse(await readFile("vendor/threeui/manifest.json", "utf8"));
@@ -17,4 +17,15 @@ await build({
     build.onLoad({ filter: /.*/, namespace: "authored" }, () => ({ contents: "module.exports = window.THREE;", loader: "js" }));
   } }],
 });
-console.log("Sylva: registered source/assets verified; cat extension built with the authored local Three.js.");
+// Load the additive integration before the authored scene constructs its renderer.
+// Keep the registered canonical document byte-exact and emit a derived app entry.
+const source = await readFile("public/landing-pages/inner-green-3d.html", "utf8");
+const anchor = '<script src="inner-green-assets/three.min.js"></script>';
+if (source.split(anchor).length !== 2) throw new Error("Sylva runtime anchor must be unique");
+const presentation = `<style id="nhip-background-presentation">
+  html,body,.hero{height:100vh!important;min-height:100vh!important;overflow:hidden!important}
+  .stage,.dock-wrap{visibility:hidden!important;pointer-events:none!important}
+  @media(max-width:900px){.stage{position:absolute!important;top:50%!important;margin-top:calc(-680 * var(--u))!important;transform:translate(25vw,-90px)!important}}
+</style>`;
+await writeFile("public/landing-pages/nhip-living-green.html", source.replace("</head>", presentation + "</head>").replace(anchor, anchor + '\n<script id="nhip-sylva-extension" src="inner-green-assets/nhip-sylva.js"></script>'));
+console.log("Sylva: exact registered files verified; continuous scene and cat integration built.");

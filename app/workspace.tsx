@@ -1,7 +1,6 @@
 "use client";
 import Login from "./login";
 import { GardenHero } from "../components/garden/scene";
-import { GardenClock } from "../components/garden/atmosphere";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
 import { activeAvailabilityDatasetFor, availabilityForDuty } from "../lib/availability";
@@ -2963,7 +2962,6 @@ export default function Workspace() {
             <strong>{titles[activeTab]}</strong>
           </div>
           <div className="topbar-right">
-            <GardenClock />
             <span className="today-label">{dateLabel(today(), true)}</span>
             <button
               className="icon-button"

@@ -10,5 +10,5 @@ export function SylvaHero({ variant = "living-green", ...props }: SylvaHeroProps
   const [type, frame] = splitTypographyProps(props);
   const customization = usePageTypography(SYLVA_TYPOGRAPHY, type);
   return <LandingPageFrame {...frame} key={variant} customization={customization}
-    title="Sylva — Into the living world" sourceUrl="/landing-pages/inner-green-3d.html" />;
+    title="Sylva — Into the living world" sourceUrl="/landing-pages/nhip-living-green.html" />;
 }
