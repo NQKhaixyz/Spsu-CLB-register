@@ -1,4 +1,5 @@
 "use client";
+import Login from "./login";
 import {
   useCallback,
   useEffect,
@@ -169,6 +170,107 @@ export default function Workspace() {
     const t = setTimeout(() => setToast(null), toast.error ? 7500 : 4000);
     return () => clearTimeout(t);
   }, [toast]);
+  async function logoutAccount() {
+    try {
+      await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "logout" }),
+      });
+    } finally {
+      setView(null);
+      setAuth(true);
+      closeModal();
+    }
+  }
+  async function savePassword(
+    action: "account" | "password",
+    data: Record<string, unknown>,
+  ) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, data }),
+      });
+      const result = (await r.json()) as { error?: string; login?: string };
+      if (!r.ok) throw new Error(result.error || "Không lưu được mật khẩu.");
+      closeModal();
+      notify(
+        result.login
+          ? `Đã cấp mật khẩu. Tên đăng nhập: ${result.login}`
+          : "Đã đổi mật khẩu",
+      );
+      await load();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Không lưu được mật khẩu.", true);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+  function passwordDialog(member?: Member) {
+    setModal({
+      title: member ? `Cấp mật khẩu · ${member.name}` : "Đổi mật khẩu",
+      description: member
+        ? "Thành viên đăng nhập bằng MSSV/tên đăng nhập được cấp, không cần tài khoản OpenAI."
+        : "Mật khẩu mới cần ít nhất 8 ký tự.",
+      content: (
+        <form
+          onSubmit={(e) => {
+            const f = getForm(e);
+            if (f.password !== f.confirm) {
+              notify("Hai mật khẩu chưa trùng nhau.", true);
+              return;
+            }
+            savePassword(member ? "account" : "password", {
+              ...f,
+              memberId: member?.id,
+            });
+          }}
+        >
+          {!member ? (
+            <Field label="Mật khẩu hiện tại">
+              <input
+                name="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
+            </Field>
+          ) : null}
+          <Field label="Mật khẩu mới">
+            <input
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              maxLength={128}
+            />
+          </Field>
+          <Field label="Nhập lại mật khẩu mới">
+            <input
+              name="confirm"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              maxLength={128}
+            />
+          </Field>
+          <FormFooter
+            label={member ? "Cấp mật khẩu" : "Đổi mật khẩu"}
+            onCancel={closeModal}
+            busy={busy}
+          />
+        </form>
+      ),
+    });
+  }
   async function act(
     action: string,
     data: Record<string, unknown>,
@@ -206,36 +308,7 @@ export default function Workspace() {
     setMobileNav(false);
   };
   if (loading) return <Loading />;
-  if (auth)
-    return (
-      <div className="welcome">
-        <Brand />
-        <div className="welcome-art">
-          <HeartHandshake size={56} />
-          <span className="orbit o1" />
-          <span className="orbit o2" />
-        </div>
-        <span className="eyebrow">MỖI THÀNH VIÊN, MỘT NHỊP CHUNG</span>
-        <h1>
-          Chào mừng đến với
-          <br />
-          không gian CLB của bạn.
-        </h1>
-        <p>
-          Đăng ký họp, theo dõi lịch trực và cùng nhau
-          <br />
-          giữ nhịp hoạt động mỗi tuần.
-        </p>
-        <a
-          className="btn primary"
-          href="/signin-with-chatgpt?return_to=%2F"
-          target="_top"
-        >
-          Đăng nhập để tiếp tục <ArrowRight size={18} />
-        </a>
-        <small>Xác thực bằng ChatGPT · Gắn hồ sơ MSSV sau đăng nhập</small>
-      </div>
-    );
+  if (auth) return <Login onSuccess={load} />;
   if (!view)
     return (
       <div className="welcome">
@@ -306,13 +379,9 @@ export default function Workspace() {
         <Empty title="Tài khoản đã ngừng hoạt động">
           Liên hệ BCS để mở lại tài khoản của bạn.
         </Empty>
-        <a
-          className="btn secondary"
-          href="/signout-with-chatgpt?return_to=%2F"
-          target="_top"
-        >
+        <Button variant="secondary" onClick={logoutAccount}>
           Đăng xuất
-        </a>
+        </Button>
       </div>
     );
   const activeTab =
@@ -557,7 +626,7 @@ export default function Workspace() {
     setModal({
       title: member ? "Hồ sơ thành viên" : "Thêm thành viên",
       description:
-        "Email dùng để gắn đúng hồ sơ khi thành viên đăng nhập lần đầu.",
+        "Email là thông tin liên hệ. Thành viên dùng MSSV và mật khẩu để đăng nhập.",
       wide: true,
       content: (
         <form
@@ -608,7 +677,7 @@ export default function Workspace() {
               name="email"
               type="email"
               defaultValue={member?.email}
-              placeholder="Email tài khoản ChatGPT của thành viên"
+              placeholder="Email liên hệ của thành viên"
             />
           </Field>
           {member ? (
@@ -1766,7 +1835,7 @@ export default function Workspace() {
                         <Avatar name={m.name} index={i} />
                         <span>
                           <strong>{m.name}</strong>
-                          <small>{m.email || "Chưa gắn email"}</small>
+                          <small>{m.email || "Chưa có email liên hệ"}</small>
                         </span>
                       </div>
                     </td>
@@ -1799,6 +1868,12 @@ export default function Workspace() {
                         onClick={() => editMember(m)}
                       >
                         Chỉnh sửa <ChevronRight size={14} />
+                      </button>
+                      <button
+                        className="text-button member-password-action"
+                        onClick={() => passwordDialog(m)}
+                      >
+                        Mật khẩu
                       </button>
                     </td>
                   </tr>
@@ -2466,6 +2541,10 @@ export default function Workspace() {
           </div>
         </div>
         <div className="sidebar-bottom">
+          <button onClick={() => passwordDialog()}>
+            <ShieldCheck size={18} />
+            <span>Đổi mật khẩu</span>
+          </button>
           {isAdmin ? (
             <button
               className={activeTab === "settings" ? "active" : ""}
@@ -2514,14 +2593,13 @@ export default function Workspace() {
               <strong>{me.name}</strong>
               <span>{isAdmin ? "Ban cán sự" : "Thành viên"}</span>
             </div>
-            <a
+            <button
               title="Đăng xuất"
               aria-label="Đăng xuất"
-              href="/signout-with-chatgpt?return_to=%2F"
-              target="_top"
+              onClick={logoutAccount}
             >
               <LogOut size={16} />
-            </a>
+            </button>
           </div>
         </div>
       </aside>

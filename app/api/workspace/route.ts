@@ -1,6 +1,4 @@
-import { getChatGPTUser } from "../../chatgpt-auth";
-import { env } from "cloudflare:workers";
-import { canInitializeClub } from "../../../lib/access";
+import { getNativeUser } from "../../../lib/native-auth";
 import { applyAction } from "../../../lib/actions";
 import { mutate, ClubNotReadyError } from "../../../lib/store";
 import type { Club } from "../../../lib/club";
@@ -60,13 +58,11 @@ function view(
     revision,
   };
 }
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const user = await getChatGPTUser();
+    const user = await getNativeUser(request);
     if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
-    const allowed =
-      canInitializeClub(env.CLUB_OWNER_EMAIL, user.email) ||
-      (import.meta.env.DEV && user.userId === "local_seedy");
+    const allowed = false;
     const { club, revision } = await mutate(user.userId, () => null, allowed);
     return json(view(club, user, revision));
   } catch (e) {
@@ -77,7 +73,7 @@ export async function GET() {
 }
 export async function POST(request: Request) {
   try {
-    const user = await getChatGPTUser();
+    const user = await getNativeUser(request);
     if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
     const origin = request.headers.get("origin");
     if (origin && origin !== new URL(request.url).origin)
@@ -88,9 +84,7 @@ export async function POST(request: Request) {
       action: string;
       data?: Record<string, unknown>;
     };
-    const allowed =
-      canInitializeClub(env.CLUB_OWNER_EMAIL, user.email) ||
-      (import.meta.env.DEV && user.userId === "local_seedy");
+    const allowed = false;
     const { club, revision } = await mutate(
       user.userId,
       (c) => applyAction(c, user, action, data),

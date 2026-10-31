@@ -4,9 +4,9 @@ Website quản lý họp tuần, quy chế, lịch trực C1 và báo cáo Excel
 
 ## Bắt đầu sử dụng
 
-1. Chủ quản trị đăng nhập qua ChatGPT bằng email đã được cấu hình cho chủ Site, nhập họ tên và MSSV. Người truy cập khác không thể tự nhận quyền BCS dù vào website trước. Sau khi chủ quản trị khởi tạo CLB, các thành viên có thể tạo hồ sơ.
+1. Mở website và đăng nhập bằng MSSV/tên đăng nhập cùng mật khẩu CLB. Không cần tài khoản OpenAI. Hai tài khoản khởi tạo là `admin` (BCS) và `member` (thành viên thử); mật khẩu được cấu hình riêng trong bí mật runtime, không nằm trong mã nguồn. Quyền BCS của tài khoản chủ được giữ nguyên khi chuyển từ cách đăng nhập cũ.
 2. Có thể chọn **Xem dữ liệu mẫu** để trải nghiệm. Dữ liệu mẫu được đánh dấu rõ. Khi sẵn sàng, vào **Cài đặt CLB → Xóa dữ liệu mẫu** để bắt đầu danh sách thật, giữ tài khoản BCS.
-3. Vào **Thành viên → Nhập Excel**, tải file mẫu rồi nhập danh sách. Email cần khớp tài khoản ChatGPT để gắn đúng MSSV có sẵn. Người chưa có trong danh sách có thể tự tạo hồ sơ khi được cấp quyền truy cập website.
+3. Vào **Thành viên → Nhập Excel**, tải file mẫu rồi nhập danh sách. BCS bấm **Mật khẩu** ở dòng thành viên để cấp tài khoản. Thành viên chưa có trong danh sách có thể tự đăng ký bằng họ tên, MSSV và mật khẩu; tài khoản tự đăng ký luôn có quyền thành viên.
 4. Vào **Lịch trực C1 → Nhập lịch rảnh**, dùng file mẫu. Cột ca rảnh nhận 1/x/có/rảnh; ca bận để trống hoặc 0. Cột cuối ghi nguyện vọng trực thêm.
 5. Đặt A/B/C và ngày trực trong **Cài đặt CLB**. D để dự phòng, luôn 0. Mặc định hệ số thật bằng 0 cho đến khi BCS cấu hình.
 6. Chọn tháng, **Xếp lịch nháp**, kiểm tra các ca thiếu người, chỉnh hoặc bỏ ca nghỉ, rồi **Công bố lịch**.
@@ -33,7 +33,7 @@ Website quản lý họp tuần, quy chế, lịch trực C1 và báo cáo Excel
 
 `POST /api/maintenance` không nhận đầu vào. Nó chỉ đồng bộ lịch theo giờ Việt Nam, đóng các tuần đã hết hạn và mở tuần hiện tại. JSON trả về `ok`, `changed`, `currentWeek`, `timezone`. Có thể gọi lại an toàn.
 
-Quyền truy cập website có thể mở công khai; đăng ký và xem dữ liệu cá nhân vẫn yêu cầu đăng nhập. Biến môi trường bí mật `CLUB_OWNER_EMAIL` cố định tài khoản được khởi tạo chủ quản trị, không nằm trong mã nguồn. Tác vụ đám mây liên kết gọi endpoint lúc 00:00 thứ Hai, lấy quyền truy cập dịch vụ từ công cụ Sites tại mỗi lần chạy; không ghi token vào mã nguồn hoặc lịch. Mỗi lần đọc/ghi của người dùng cũng đồng bộ lịch để khôi phục khi tác vụ chưa chạy. Nếu không truy cập nhiều tuần, hệ thống bù các tuần bị bỏ qua; BCS phải bổ sung ngày họp hoặc đánh dấu nghỉ trước khi báo cáo.
+Website mở công khai; người dùng đăng nhập bằng tài khoản CLB để xem và sửa dữ liệu cá nhân. Mật khẩu được lưu dưới dạng PBKDF2-SHA256 với salt riêng; phiên đăng nhập dùng cookie HttpOnly, Secure trên HTTPS, và chỉ lưu hash token trong cơ sở dữ liệu. Có giới hạn số lần thử đăng nhập. Các biến bí mật `INITIAL_ADMIN_PASSWORD`, `INITIAL_MEMBER_PASSWORD` chỉ dùng để khởi tạo tài khoản ban đầu; không đặt lại mật khẩu đã được đổi. Mọi người có thể tự đổi mật khẩu trong menu; BCS có thể cấp lại mật khẩu cho thành viên. Để thử hai vai trò song song, mở admin ở cửa sổ thường và member ở cửa sổ ẩn danh. Tác vụ đám mây liên kết gọi endpoint lúc 00:00 thứ Hai, lấy quyền truy cập dịch vụ từ công cụ Sites tại mỗi lần chạy; không ghi token vào mã nguồn hoặc lịch. Mỗi lần đọc/ghi của người dùng cũng đồng bộ lịch để khôi phục khi tác vụ chưa chạy. Nếu không truy cập nhiều tuần, hệ thống bù các tuần bị bỏ qua; BCS phải bổ sung ngày họp hoặc đánh dấu nghỉ trước khi báo cáo.
 
 ## Phát triển
 
@@ -47,11 +47,14 @@ node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1
 npm run dev
 ```
 
-Chỉ áp dụng migration một lần cho mỗi cơ sở dữ liệu. Mở URL do máy chủ in ra; đăng nhập local dùng danh tính thử của starter, không dùng danh tính đó trên production.
+Chỉ áp dụng migration một lần cho mỗi cơ sở dữ liệu. Mở URL do máy chủ in ra. Khi chạy local, thêm `INITIAL_ADMIN_PASSWORD` và `INITIAL_MEMBER_PASSWORD` vào `.dev.vars` (tệp đã được bỏ qua bởi Git); dùng giá trị thử riêng, không dùng mật khẩu production. Migration `0001_loose_moon_knight.sql` cần được áp dụng sau `0000_true_mongu.sql` cho cơ sở dữ liệu local.
 
 ```text
 node scripts/test-club.mjs
 node node_modules/typescript/bin/tsc --noEmit
+node tests/native-flow.mjs
 ```
 
 Migration chỉ khai báo cấu trúc. Dữ liệu mẫu chỉ được BCS chủ động nạp trong ứng dụng, không nằm trong migration. `.openai/hosting.json` giữ ID Site; không tái sử dụng ID khi dựng Site độc lập khác.
+
+Kiểm thử `tests/native-flow.mjs` chỉ chấp nhận máy chủ loopback. Nó dùng dữ liệu thử local, kiểm tra đăng nhập hai vai trò, phân quyền, gửi/duyệt yêu cầu, đăng ký, cấp mật khẩu, đổi mật khẩu và thu hồi phiên. Không chạy bộ fixture này trên production.

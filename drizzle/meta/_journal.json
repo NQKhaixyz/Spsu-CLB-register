@@ -8,6 +8,13 @@
       "when": 1793418511346,
       "tag": "0000_true_mongu",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793421265641,
+      "tag": "0001_loose_moon_knight",
+      "breakpoints": true
     }
   ]
 }
