@@ -40,11 +40,15 @@ Website mở công khai; người dùng đăng nhập bằng tài khoản CLB đ
 
 ## Phát triển
 
-Giao diện dùng một mèo SVG độc lập (`components/screen-cat.tsx`) chạy trên toàn
-khung nhìn, theo chuột, lăn khi bấm và hỗ trợ kéo thả bằng chuột/cảm ứng. Nhân vật
-tránh các điều khiển, giữ vị trí khi đổi màn hình, dừng vòng lặp khi tab bị ẩn và
-tôn trọng thiết lập giảm chuyển động. Nền Sylva, iframe và runtime Three.js cũ đã
-được gỡ; hoạt ảnh không sử dụng WebGL hoặc dữ liệu máy chủ.
+Mèo Bông dùng tranh SVG tự vẽ (`components/furball-art.tsx`), tham khảo phong cách
+mèo tròn mềm của [Pet Furball](https://ddrkirbyisq.itch.io/pet-furball), không dùng
+mã nguồn hay tài sản của trò chơi. `lib/screen-pet.ts` xử lý chuyển động toàn màn
+hình, theo chuột, vuốt ve, giữ để bóp mềm, kéo/thả và quán tính. Menu cạnh mèo có
+cho ăn, chơi bóng, lăn, mưa nhỏ, sấy khô và ngủ/đánh thức. Âm thanh tổng hợp chỉ
+bật khi người dùng chọn; có thể ẩn/gọi mèo. Hai tùy chọn này lưu trên trình duyệt.
+Nhân vật né điều khiển, hỗ trợ cảm ứng/bàn phím, giữ vị trí khi đổi trang, dừng
+khi tab/pet bị ẩn và tôn trọng giảm chuyển động. Không dùng WebGL, Sylva hoặc
+dữ liệu máy chủ cho pet; dữ liệu và điểm CLB độc lập hoàn toàn.
 
 Node >=22.13; React 19; Vinext/Vite; Cloudflare Workers + D1; ExcelJS; CSS đáp ứng; Lucide.
 
