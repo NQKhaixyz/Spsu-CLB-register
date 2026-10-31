@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import "./club.css";
-import "./garden.css";
-import "@designcodeio/threeui/style.css";
-import "./sylva.css";
-import { GardenBackdrop } from "../components/garden/scene";
+import "./theme.css";
+import "./screen-cat.css";
+import { ScreenCat } from "../components/screen-cat";
 
 export const metadata: Metadata = {
   title: "Nhịp CLB · Họp & lịch trực",
@@ -22,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className="antialiased"><GardenBackdrop /><div className="club-interface">{children}</div></body>
+      <body className="antialiased"><div className="club-interface">{children}</div><ScreenCat /></body>
     </html>
   );
 }

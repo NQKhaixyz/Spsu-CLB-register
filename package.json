@@ -15,8 +15,6 @@
     "test": "node scripts/test-club.mjs"
   },
   "dependencies": {
-    "three": "0.187.0",
-    "exceljs": "4.4.0",
     "@base-ui/react": "^1.7.0",
     "@hookform/resolvers": "^5.7.1",
     "@shadcn/react": "^0.3.0",
@@ -26,6 +24,7 @@
     "date-fns": "^4.4.0",
     "drizzle-orm": "0.45.2",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "4.4.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
     "next": "16.3.4",
@@ -43,7 +42,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/three": "0.187.0",
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
     "@tailwindcss/postcss": "4.2.1",

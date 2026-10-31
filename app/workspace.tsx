@@ -351,7 +351,6 @@ export default function Workspace() {
     return (
       <div className="welcome setup">
         <Brand />
-        <div className="setup-garden-space" aria-hidden="true" />
         <span className="eyebrow">BẮT ĐẦU MỘT NHỊP MỚI</span>
         <h1>Hoàn tất hồ sơ của bạn.</h1>
         <p>Bổ sung MSSV để bắt đầu. Lịch trực đã được gắn với hồ sơ của bạn.</p>

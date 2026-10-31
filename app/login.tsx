@@ -42,10 +42,10 @@ export default function Login({
     }
   }
   return (
-    <main className="sylva-login">
-      <header className="sylva-masthead"><Brand /><span>HỌP TUẦN & LỊCH TRỰC C1</span></header>
-      <div className="sylva-login-layout">
-      <section className="sylva-intro" aria-labelledby="club-heading">
+    <main className="entry-login">
+      <header className="entry-masthead"><Brand /><span>HỌP TUẦN & LỊCH TRỰC C1</span></header>
+      <div className="entry-login-layout">
+      <section className="entry-intro" aria-labelledby="club-heading">
         <span className="eyebrow">KẾT NỐI · THAM GIA · ĐÓNG GÓP</span>
         <h1 id="club-heading">Cùng một nhịp.</h1>
         <p>Lịch họp, ca trực và hoạt động thành viên.<br />Tất cả trong một không gian chung.</p>
@@ -161,7 +161,7 @@ export default function Login({
         </div>
       </section>
       </div>
-      <footer className="sylva-login-footer"><span>Nhịp CLB</span><span>Không gian hoạt động thành viên</span></footer>
+      <footer className="entry-login-footer"><span>Nhịp CLB</span><span>Không gian hoạt động thành viên</span></footer>
     </main>
   );
 }

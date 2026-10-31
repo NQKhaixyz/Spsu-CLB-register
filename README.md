@@ -40,6 +40,12 @@ Website mở công khai; người dùng đăng nhập bằng tài khoản CLB đ
 
 ## Phát triển
 
+Giao diện dùng một mèo SVG độc lập (`components/screen-cat.tsx`) chạy trên toàn
+khung nhìn, theo chuột, lăn khi bấm và hỗ trợ kéo thả bằng chuột/cảm ứng. Nhân vật
+tránh các điều khiển, giữ vị trí khi đổi màn hình, dừng vòng lặp khi tab bị ẩn và
+tôn trọng thiết lập giảm chuyển động. Nền Sylva, iframe và runtime Three.js cũ đã
+được gỡ; hoạt ảnh không sử dụng WebGL hoặc dữ liệu máy chủ.
+
 Node >=22.13; React 19; Vinext/Vite; Cloudflare Workers + D1; ExcelJS; CSS đáp ứng; Lucide.
 
 ```text

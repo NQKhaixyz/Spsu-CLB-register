@@ -5,7 +5,6 @@ import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { configureToolEnvironment } from "./scripts/tool-environment.mjs";
 import { sites } from "./scripts/vite/sites-vite-plugin";
 import { connectorPreview } from "./scripts/vite/connector-preview-plugin.mjs";
-import { fileURLToPath } from "node:url";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -45,10 +44,6 @@ export default defineConfig(async ({ command }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    resolve: { alias: [
-      { find: "@designcodeio/threeui/style.css", replacement: fileURLToPath(new URL("./vendor/threeui/style.css", import.meta.url)) },
-      { find: "@designcodeio/threeui", replacement: fileURLToPath(new URL("./vendor/threeui/index.tsx", import.meta.url)) },
-    ] },
     server: {
       ...(managedLinux
         ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] }

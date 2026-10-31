@@ -1,0 +1,44 @@
+.screen-cat { position:fixed; left:0; top:0; width:132px; height:120px; z-index:65; pointer-events:none; opacity:0; will-change:transform; --cat-facing:1; --cat-look-x:0px; --cat-look-y:0px; }
+.screen-cat[data-ready=true] { opacity:1; }
+.screen-cat-touch { width:100%; height:100%; border:0; margin:0; padding:0; background:transparent; cursor:grab; pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none; border-radius:45%; transition:none; }
+.screen-cat-touch:focus-visible { outline:2px dashed #567a65; outline-offset:3px; background:#eef4eb88; }
+.screen-cat-art { display:block; width:100%; height:100%; overflow:visible; filter:drop-shadow(0 3px 2px #293b3210); }
+.cat-facing { transform:scaleX(var(--cat-facing)); transform-origin:80px 82px; }
+.cat-roll { transform-origin:80px 80px; }
+.cat-breathe { transform-origin:80px 125px; animation:cat-breathe 3s ease-in-out infinite; }
+.cat-tail { transform-origin:108px 103px; animation:cat-tail 3.4s ease-in-out infinite; }
+.cat-head { transform-origin:79px 85px; }
+.cat-eyes { transform-origin:79px 65px; animation:cat-blink 5.2s infinite; }
+.cat-pupils { transform:translate(var(--cat-look-x),var(--cat-look-y)); }
+.cat-leg { transform-origin:80px 99px; }
+.cat-sleep-eyes,.cat-beans,.cat-heart,.cat-zzz { opacity:0; }
+.screen-cat[data-state=walk] .cat-breathe,.screen-cat[data-state=chase] .cat-breathe { animation:cat-trot .36s ease-in-out infinite; }
+.screen-cat[data-state=walk] .cat-leg-front,.screen-cat[data-state=chase] .cat-leg-front { animation:cat-step .36s ease-in-out infinite; }
+.screen-cat[data-state=walk] .cat-leg-back,.screen-cat[data-state=chase] .cat-leg-back { animation:cat-step .36s ease-in-out infinite reverse; }
+.screen-cat[data-state=chase] .cat-breathe,.screen-cat[data-state=chase] .cat-leg { animation-duration:.24s; }
+.screen-cat[data-state=chase] .cat-tail { transform:rotate(-15deg); }
+.screen-cat[data-state=roll] .cat-roll { animation:cat-roll 1.45s ease-in-out both; }
+.screen-cat[data-state=roll] .cat-beans { opacity:1; }
+.screen-cat[data-state=roll] .cat-leg { animation:cat-step .22s ease-in-out infinite alternate; }
+.screen-cat[data-state=roll] .cat-heart,.screen-cat[data-state=pet] .cat-heart { animation:cat-heart 1.45s ease-out both; }
+.screen-cat[data-state=drag] .screen-cat-touch { cursor:grabbing; }
+.screen-cat[data-state=drag] .cat-roll { transform:rotate(-8deg) translateY(-7px); }
+.screen-cat[data-state=drag] .cat-leg { transform:translateY(4px); }
+.screen-cat[data-state=drag] .cat-tail { transform:rotate(20deg); }
+.screen-cat[data-state=land] .cat-roll { animation:cat-land .6s ease-out both; }
+.screen-cat[data-state=sleep] .cat-eyes { opacity:0; }
+.screen-cat[data-state=sleep] .cat-sleep-eyes,.screen-cat[data-state=pet] .cat-sleep-eyes { opacity:1; }
+.screen-cat[data-state=sleep] .cat-zzz { animation:cat-zzz 3s ease-in-out infinite; }
+.screen-cat[data-state=pet] .cat-eyes { opacity:0; }
+.screen-cat[data-state=sleep] .cat-head { transform:rotate(8deg) translateY(3px); }
+@keyframes cat-breathe { 50% { transform:scale(1.015,.985); } }
+@keyframes cat-tail { 50% { transform:rotate(-9deg); } }
+@keyframes cat-blink { 0%,42%,46%,100% { transform:scaleY(1); } 44% { transform:scaleY(.08); } }
+@keyframes cat-trot { 50% { transform:translateY(-4px) rotate(1deg); } }
+@keyframes cat-step { 0%,100% { transform:translate(1px,-2px) rotate(6deg); } 50% { transform:translate(-2px,2px) rotate(-6deg); } }
+@keyframes cat-roll { 0% { transform:rotate(0) scale(1); } 15% { transform:rotate(-18deg) scale(1.04,.93); } 47% { transform:rotate(175deg) translateY(-6px); } 80% { transform:rotate(365deg); } 100% { transform:rotate(360deg); } }
+@keyframes cat-land { 0% { transform:translateY(-7px); } 30% { transform:scale(1.13,.82) translateY(5px); } 65% { transform:scale(.96,1.03); } 100% { transform:scale(1); } }
+@keyframes cat-heart { 0% { opacity:0; transform:translateY(4px); } 25% { opacity:1; } 100% { opacity:0; transform:translateY(-22px); } }
+@keyframes cat-zzz { 0%,100% { opacity:.2; transform:translateY(0); } 50% { opacity:.8; transform:translateY(-7px); } }
+@media(max-width:760px) { .screen-cat { width:112px; height:102px; } }
+@media(prefers-reduced-motion:reduce) { .screen-cat * { animation:none!important; } .screen-cat[data-state=pet] .cat-heart { opacity:1; } }

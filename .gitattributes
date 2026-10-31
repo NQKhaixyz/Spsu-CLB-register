@@ -1,4 +1,0 @@
-# Preserve the registered ThreeUI revision byte-for-byte on Windows and Linux.
-vendor/threeui/upstream/** -text
-public/landing-pages/inner-green-3d.html -text
-public/landing-pages/inner-green-assets/three.min.js -text
