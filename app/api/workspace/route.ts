@@ -1,6 +1,8 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
+import { env } from "cloudflare:workers";
+import { canInitializeClub } from "../../../lib/access";
 import { applyAction } from "../../../lib/actions";
-import { mutate } from "../../../lib/store";
+import { mutate, ClubNotReadyError } from "../../../lib/store";
 import type { Club } from "../../../lib/club";
 
 export const dynamic = "force-dynamic";
@@ -62,9 +64,13 @@ export async function GET() {
   try {
     const user = await getChatGPTUser();
     if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
-    const { club, revision } = await mutate(user.userId, () => null);
+    const allowed =
+      canInitializeClub(env.CLUB_OWNER_EMAIL, user.email) ||
+      (import.meta.env.DEV && user.userId === "local_seedy");
+    const { club, revision } = await mutate(user.userId, () => null, allowed);
     return json(view(club, user, revision));
   } catch (e) {
+    if (e instanceof ClubNotReadyError) return json({ error: e.message }, 409);
     console.error("workspace:get", e);
     return json({ error: "Không tải được dữ liệu. Vui lòng thử lại." }, 500);
   }
@@ -82,8 +88,13 @@ export async function POST(request: Request) {
       action: string;
       data?: Record<string, unknown>;
     };
-    const { club, revision } = await mutate(user.userId, (c) =>
-      applyAction(c, user, action, data),
+    const allowed =
+      canInitializeClub(env.CLUB_OWNER_EMAIL, user.email) ||
+      (import.meta.env.DEV && user.userId === "local_seedy");
+    const { club, revision } = await mutate(
+      user.userId,
+      (c) => applyAction(c, user, action, data),
+      allowed,
     );
     return json(view(club, user, revision));
   } catch (e) {

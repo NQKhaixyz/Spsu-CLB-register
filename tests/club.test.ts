@@ -16,7 +16,21 @@ import {
   type Member,
 } from "../lib/club";
 import { applyAction } from "../lib/actions";
+import { canInitializeClub } from "../lib/access";
 import { makeReport, readImport } from "../lib/excel";
+
+test("Public visitors cannot claim ownership before the configured owner", () => {
+  assert.equal(
+    canInitializeClub("owner@example.com", "stranger@example.com"),
+    false,
+  );
+  assert.equal(canInitializeClub(undefined, "stranger@example.com"), false);
+  assert.equal(canInitializeClub("", "stranger@example.com"), false);
+  assert.equal(
+    canInitializeClub("owner@example.com", "OWNER@example.com"),
+    true,
+  );
+});
 
 const adminIdentity = {
   userId: "owner",

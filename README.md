@@ -4,7 +4,7 @@ Website quản lý họp tuần, quy chế, lịch trực C1 và báo cáo Excel
 
 ## Bắt đầu sử dụng
 
-1. Đăng nhập qua ChatGPT, nhập họ tên và MSSV. Trong bản riêng tư mới, tài khoản đầu tiên là chủ quản trị BCS.
+1. Chủ quản trị đăng nhập qua ChatGPT bằng email đã được cấu hình cho chủ Site, nhập họ tên và MSSV. Người truy cập khác không thể tự nhận quyền BCS dù vào website trước. Sau khi chủ quản trị khởi tạo CLB, các thành viên có thể tạo hồ sơ.
 2. Có thể chọn **Xem dữ liệu mẫu** để trải nghiệm. Dữ liệu mẫu được đánh dấu rõ. Khi sẵn sàng, vào **Cài đặt CLB → Xóa dữ liệu mẫu** để bắt đầu danh sách thật, giữ tài khoản BCS.
 3. Vào **Thành viên → Nhập Excel**, tải file mẫu rồi nhập danh sách. Email cần khớp tài khoản ChatGPT để gắn đúng MSSV có sẵn. Người chưa có trong danh sách có thể tự tạo hồ sơ khi được cấp quyền truy cập website.
 4. Vào **Lịch trực C1 → Nhập lịch rảnh**, dùng file mẫu. Cột ca rảnh nhận 1/x/có/rảnh; ca bận để trống hoặc 0. Cột cuối ghi nguyện vọng trực thêm.
@@ -33,7 +33,7 @@ Website quản lý họp tuần, quy chế, lịch trực C1 và báo cáo Excel
 
 `POST /api/maintenance` không nhận đầu vào. Nó chỉ đồng bộ lịch theo giờ Việt Nam, đóng các tuần đã hết hạn và mở tuần hiện tại. JSON trả về `ok`, `changed`, `currentWeek`, `timezone`. Có thể gọi lại an toàn.
 
-Site mới giữ quyền riêng tư của chủ sở hữu. Tác vụ đám mây liên kết gọi endpoint lúc 00:00 thứ Hai, lấy quyền truy cập dịch vụ từ công cụ Sites tại mỗi lần chạy; không ghi token vào mã nguồn hoặc lịch. Mỗi lần đọc/ghi của người dùng cũng đồng bộ lịch để khôi phục khi tác vụ chưa chạy. Nếu không truy cập nhiều tuần, hệ thống bù các tuần bị bỏ qua; BCS phải bổ sung ngày họp hoặc đánh dấu nghỉ trước khi báo cáo.
+Quyền truy cập website có thể mở công khai; đăng ký và xem dữ liệu cá nhân vẫn yêu cầu đăng nhập. Biến môi trường bí mật `CLUB_OWNER_EMAIL` cố định tài khoản được khởi tạo chủ quản trị, không nằm trong mã nguồn. Tác vụ đám mây liên kết gọi endpoint lúc 00:00 thứ Hai, lấy quyền truy cập dịch vụ từ công cụ Sites tại mỗi lần chạy; không ghi token vào mã nguồn hoặc lịch. Mỗi lần đọc/ghi của người dùng cũng đồng bộ lịch để khôi phục khi tác vụ chưa chạy. Nếu không truy cập nhiều tuần, hệ thống bù các tuần bị bỏ qua; BCS phải bổ sung ngày họp hoặc đánh dấu nghỉ trước khi báo cáo.
 
 ## Phát triển
 
