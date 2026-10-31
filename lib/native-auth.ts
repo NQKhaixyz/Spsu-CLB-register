@@ -55,15 +55,23 @@ export async function getNativeUser(
     )
     .bind(await tokenHash(token), Date.now())
     .first<Omit<Account, "password_hash">>();
-  return account
-    ? {
-        userId: account.user_id,
-        displayName: account.display_name,
-        email: account.email,
-        accountId: account.id,
-        login: account.login,
-      }
-    : null;
+  if (!account) return null;
+  const { club } = await readState("", false);
+  const member = club.members.find((m) => m.userId === account.user_id);
+  if (!member?.active) {
+    await db()
+      .prepare("DELETE FROM auth_sessions WHERE account_id=?")
+      .bind(account.id)
+      .run();
+    return null;
+  }
+  return {
+    userId: account.user_id,
+    displayName: account.display_name,
+    email: account.email,
+    accountId: account.id,
+    login: account.login,
+  };
 }
 async function issueSession(accountId: string) {
   const token = randomToken();

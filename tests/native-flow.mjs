@@ -149,6 +149,42 @@ assert.equal(imported.status, 200);
 const target = imported.body.club.members.find(
   (x) => x.studentId === importedId,
 );
+const blockedClaim = await api(
+  "profile",
+  {
+    name: "Không được nhận hồ sơ này",
+    studentId: importedId,
+  },
+  registered.cookie,
+);
+assert.equal(blockedClaim.status, 400);
+const afterClaim = await request("/api/workspace", null, a);
+assert.equal(
+  afterClaim.body.club.members.find((x) => x.id === target.id).userId,
+  undefined,
+);
+const signupMemberId = signupView.body.me.id;
+await api("member", { memberId: signupMemberId, active: false }, a);
+assert.equal(
+  (await request("/api/workspace", null, registered.cookie)).status,
+  401,
+);
+assert.equal(
+  (await api("profile", { name: "Blocked", studentId }, registered.cookie))
+    .status,
+  401,
+);
+await api("member", { memberId: signupMemberId, active: true }, a);
+assert.equal(
+  (await request("/api/workspace", null, registered.cookie)).status,
+  401,
+);
+const reenabled = await auth("login", {
+  login: studentId,
+  password: "NewMember!2026",
+});
+assert.equal(reenabled.status, 200);
+await auth("logout", {}, reenabled.cookie);
 const issued = await auth(
   "account",
   { memberId: target.id, password: "Imported!2026" },
@@ -185,5 +221,5 @@ assert.equal((await request("/api/workspace", null, a)).body.isAdmin, true);
 await auth("logout", {}, registered.cookie);
 await auth("logout", {}, a);
 console.log(
-  "PASS: native admin/member login, masked member data, role enforcement, cross-account approval, signup, duplicate protection, imported-account provisioning, password change, session revocation, logout. No OpenAI sign-in.",
+  "PASS: native admin/member login, masked member data, role enforcement, cross-account approval, signup, duplicate protection, blocked imported-profile takeover, disabled-session rejection and revocation, imported-account provisioning, password change, session revocation, logout. No OpenAI sign-in.",
 );

@@ -71,7 +71,7 @@ test("First owner becomes BCS; normal profile cannot choose admin", () => {
     /BCS/,
   );
 });
-test("An existing MSSV cannot be claimed without matching verified email", () => {
+test("An imported MSSV cannot be claimed through profile updates", () => {
   const c = fixture();
   applyAction(c, adminIdentity, "member", {
     name: "Người khác",
@@ -85,6 +85,38 @@ test("An existing MSSV cannot be claimed without matching verified email", () =>
         studentId: "SV0002",
       }),
     /MSSV/,
+  );
+});
+test("Empty or matching emails cannot link another imported profile", () => {
+  for (const email of ["", memberIdentity.email]) {
+    const c = fixture();
+    applyAction(c, adminIdentity, "member", {
+      name: "Thành viên được nhập",
+      studentId: "IMPORTED001",
+      email,
+    });
+    const before = JSON.stringify(c);
+    assert.throws(
+      () =>
+        applyAction(c, { ...memberIdentity, email }, "profile", {
+          name: "Người nhận nhầm",
+          studentId: "IMPORTED001",
+        }),
+      /BCS/,
+    );
+    assert.equal(JSON.stringify(c), before);
+  }
+});
+test("Inactive members cannot update their profile", () => {
+  const c = fixture();
+  c.members[1].active = false;
+  assert.throws(
+    () =>
+      applyAction(c, memberIdentity, "profile", {
+        name: "Đổi tên",
+        studentId: "SV0001",
+      }),
+    /ngừng hoạt động/,
   );
 });
 test("Absence requires a reason and returning requires approval", () => {

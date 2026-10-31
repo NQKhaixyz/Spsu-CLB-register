@@ -44,6 +44,7 @@ export function applyAction(
     club.logs = club.logs.slice(0, 2000);
   };
   if (action === "profile") {
+    check(!me || me.active, "Tài khoản đã ngừng hoạt động.");
     const name = str(data.name, 100),
       studentId = str(data.studentId, 30);
     check(
@@ -56,14 +57,9 @@ export function applyAction(
         m.id !== me?.id,
     );
     if (existing) {
-      check(
-        !existing.userId &&
-          existing.email?.toLowerCase() === identity.email.toLowerCase(),
-        "MSSV đã có trong danh sách. Nhờ BCS gắn đúng email tài khoản trước khi đăng nhập.",
+      throw new Error(
+        "MSSV đã có trong danh sách. Nhờ BCS cấp tài khoản cho hồ sơ này.",
       );
-      existing.userId = identity.userId;
-      existing.name = name;
-      me = existing;
     } else if (me) {
       me.name = name;
       me.studentId = studentId;
