@@ -13,6 +13,7 @@ import {
   type Club,
   type Member,
   type DutyResult,
+  type AvailabilityDetail,
 } from "./club";
 
 export type Identity = { userId: string; email: string; displayName: string };
@@ -348,6 +349,48 @@ export function applyAction(
     }
     syncWeeks(club);
     note(`Cập nhật thành viên ${m.name}`);
+  } else if (action === "importAvailabilityDetails") {
+    check(
+      Array.isArray(data.rows) &&
+        data.rows.length > 0 &&
+        data.rows.length <= 5000,
+      "File cần có 1–5.000 dòng lịch rảnh.",
+    );
+    const rows: AvailabilityDetail[] = data.rows.map(
+      (row: Record<string, unknown>) => {
+        check(row && typeof row === "object", "Dòng lịch rảnh không hợp lệ.");
+        const sourceRow = Number(row.sourceRow);
+        check(
+          Number.isInteger(sourceRow) && sourceRow >= 2 && sourceRow <= 5001,
+          "Số dòng nguồn không hợp lệ.",
+        );
+        const name = str(row.name, 100),
+          day = str(row.day, 30),
+          period = str(row.period, 100),
+          weeks = str(row.weeks, 200);
+        check(
+          name.length >= 2 && day && period && weeks,
+          `Dòng ${sourceRow} thiếu họ tên, thứ, buổi hoặc tuần học.`,
+        );
+        return {
+          sourceRow,
+          name,
+          day,
+          period,
+          weeks,
+          note: str(row.note, 1000),
+        };
+      },
+    );
+    club.availabilityDataset = {
+      filename: str(data.filename, 200) || "Lịch rảnh chi tiết.xlsx",
+      importedAt: new Date().toISOString(),
+      importedBy: me.name,
+      rows,
+    };
+    note(
+      `Nhập lịch rảnh chi tiết: ${rows.length} dòng; giữ nguyên điều kiện tuần học và khung giờ`,
+    );
   } else if (action === "import") {
     check(
       Array.isArray(data.rows) &&
@@ -459,6 +502,8 @@ export function applyAction(
     check(data.confirm === "BAT DAU", "Chưa xác nhận bắt đầu dữ liệu thật.");
     const real = createClub(club.ownerId);
     real.members = [{ ...me, joined: today(), availability: [] }];
+    if (club.availabilityDataset)
+      real.availabilityDataset = club.availabilityDataset;
     Object.assign(club, real);
     syncWeeks(club);
     note("Bắt đầu dữ liệu thật");

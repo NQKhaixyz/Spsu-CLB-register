@@ -1,5 +1,6 @@
 "use client";
 import Login from "./login";
+import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import {
   useCallback,
   useEffect,
@@ -90,6 +91,7 @@ type Tab =
   | "meetings"
   | "requests"
   | "duties"
+  | "availability"
   | "members"
   | "reports"
   | "settings"
@@ -105,6 +107,7 @@ const tabs = [
   { id: "meetings", name: "Họp hằng tuần", icon: CalendarCheck2 },
   { id: "requests", name: "Yêu cầu đăng ký", icon: MessageSquare },
   { id: "duties", name: "Lịch trực C1", icon: CalendarDays },
+  { id: "availability", name: "Lịch rảnh", icon: ClipboardCheck },
   { id: "members", name: "Thành viên", icon: Users },
   { id: "reports", name: "Báo cáo tháng", icon: FileSpreadsheet },
 ] as const;
@@ -113,6 +116,7 @@ const titles: Record<Tab, string> = {
   meetings: "Họp hằng tuần",
   requests: "Yêu cầu đăng ký",
   duties: "Lịch trực C1",
+  availability: "Lịch rảnh",
   members: "Thành viên",
   reports: "Báo cáo tháng",
   settings: "Cài đặt CLB",
@@ -743,7 +747,10 @@ export default function Workspace() {
         kind === "availability"
           ? "Nhập lịch rảnh từ Excel"
           : "Nhập danh sách thành viên",
-      description: "Dùng file .xlsx theo mẫu để hệ thống ghép đúng MSSV.",
+      description:
+        kind === "availability"
+          ? "Hỗ trợ mẫu MSSV hoặc file chi tiết gồm Họ và tên, Thứ, Buổi, Tuần học."
+          : "Dùng file .xlsx theo mẫu để hệ thống ghép đúng MSSV.",
       content: (
         <form
           onSubmit={async (e) => {
@@ -753,8 +760,49 @@ export default function Workspace() {
             ).files?.[0];
             if (!file) return;
             try {
-              const { readImport } = await import("../lib/excel");
-              const rows = await readImport(file, kind);
+              const { readImport, readAvailabilityUpload } = await import(
+                "../lib/excel"
+              );
+              let rows;
+              if (kind === "availability") {
+                const upload = await readAvailabilityUpload(file);
+                if (upload.format === "details") {
+                  setModal({
+                    title: "Xem trước lịch rảnh chi tiết",
+                    description: upload.filename,
+                    wide: true,
+                    content: (
+                      <>
+                        <AvailabilityPreview rows={upload.rows} />
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (
+                              await act(
+                                "importAvailabilityDetails",
+                                {
+                                  filename: upload.filename,
+                                  rows: upload.rows,
+                                },
+                                `Đã lưu ${upload.rows.length} dòng lịch rảnh chi tiết`,
+                              )
+                            )
+                              go("availability");
+                          }}
+                        >
+                          <FormFooter
+                            label={`Lưu ${upload.rows.length} dòng lịch rảnh`}
+                            onCancel={closeModal}
+                            busy={busy}
+                          />
+                        </form>
+                      </>
+                    ),
+                  });
+                  return;
+                }
+                rows = upload.rows;
+              } else rows = await readImport(file, kind);
               await act(
                 "import",
                 { kind, rows },
@@ -771,7 +819,11 @@ export default function Workspace() {
           <div className="upload-zone">
             <Upload size={30} />
             <strong>Chọn file Excel của bạn</strong>
-            <span>Tối đa 3 MB · 1.500 thành viên</span>
+            <span>
+              {kind === "availability"
+                ? "Tối đa 3 MB · 5.000 dòng chi tiết hoặc 1.500 thành viên theo mẫu"
+                : "Tối đa 3 MB · 1.500 thành viên"}
+            </span>
             <input
               name="file"
               type="file"
@@ -796,7 +848,9 @@ export default function Workspace() {
           {kind === "availability" ? (
             <p className="dialog-copy">
               Điền 1 hoặc x vào ca rảnh, để trống ca bận. Lịch mới áp dụng khi
-              xếp lịch nháp tiếp theo; lịch đã công bố vẫn giữ nguyên.
+              xếp lịch nháp tiếp theo; lịch đã công bố vẫn giữ nguyên. File theo
+              tuần học và khung giờ cụ thể sẽ được lưu tại mục Lịch rảnh để đối
+              chiếu trước khi áp dụng.
             </p>
           ) : null}
           <FormFooter label="Nhập dữ liệu" onCancel={closeModal} busy={busy} />
@@ -2691,7 +2745,7 @@ export default function Workspace() {
           </div>
         </header>
         <main id="main-content" className="main-content">
-          {club.demo ? (
+          {club.demo && activeTab !== "availability" ? (
             <div className="demo-banner">
               <Sparkles size={15} />
               <span>
@@ -2781,6 +2835,12 @@ export default function Workspace() {
             </>
           ) : activeTab === "duties" ? (
             duties()
+          ) : activeTab === "availability" ? (
+            <AvailabilityPage
+              dataset={club.availabilityDataset}
+              onImport={() => importDialog("availability")}
+              busy={busy}
+            />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "reports" ? (

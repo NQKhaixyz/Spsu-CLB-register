@@ -61,6 +61,20 @@ export type Rule = {
   C: number;
   D: number;
 };
+export type AvailabilityDetail = {
+  sourceRow: number;
+  name: string;
+  day: string;
+  period: string;
+  weeks: string;
+  note: string;
+};
+export type AvailabilityDataset = {
+  filename: string;
+  importedAt: string;
+  importedBy: string;
+  rows: AvailabilityDetail[];
+};
 export type Club = {
   ownerId: string;
   name: string;
@@ -71,6 +85,7 @@ export type Club = {
   rules: Rule[];
   days: number[];
   availabilityVersion: string;
+  availabilityDataset?: AvailabilityDataset;
   logs: { at: string; actor: string; text: string }[];
 };
 export type View = {

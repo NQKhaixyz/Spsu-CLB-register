@@ -7,7 +7,7 @@ Website quản lý họp tuần, quy chế, lịch trực C1 và báo cáo Excel
 1. Mở website và đăng nhập bằng MSSV/tên đăng nhập cùng mật khẩu CLB. Không cần tài khoản OpenAI. Hai tài khoản khởi tạo là `admin` (BCS) và `member` (thành viên thử); mật khẩu được cấu hình riêng trong bí mật runtime, không nằm trong mã nguồn. Quyền BCS của tài khoản chủ được giữ nguyên khi chuyển từ cách đăng nhập cũ.
 2. Có thể chọn **Xem dữ liệu mẫu** để trải nghiệm. Dữ liệu mẫu được đánh dấu rõ. Khi sẵn sàng, vào **Cài đặt CLB → Xóa dữ liệu mẫu** để bắt đầu danh sách thật, giữ tài khoản BCS.
 3. Vào **Thành viên → Nhập Excel**, tải file mẫu rồi nhập danh sách. BCS bấm **Mật khẩu** ở dòng thành viên để cấp tài khoản. Thành viên chưa có trong danh sách có thể tự đăng ký bằng họ tên, MSSV và mật khẩu; tài khoản tự đăng ký luôn có quyền thành viên.
-4. Vào **Lịch trực C1 → Nhập lịch rảnh**, dùng file mẫu. Cột ca rảnh nhận 1/x/có/rảnh; ca bận để trống hoặc 0. Cột cuối ghi nguyện vọng trực thêm.
+4. Vào **Lịch trực C1 → Nhập lịch rảnh** hoặc **Lịch rảnh → Nhập lịch rảnh**. Mẫu MSSV có các cột ca rảnh nhận 1/x/có/rảnh; ca bận để trống hoặc 0. Cột cuối ghi nguyện vọng trực thêm. File chi tiết có bốn cột đầu **Họ và tên, Thứ, Buổi, Tuần học**, cột thứ năm là ghi chú tùy chọn: hệ thống cho xem trước rồi lưu nguyên từng dòng tại **Lịch rảnh**. Bản chi tiết chưa được dùng để xếp lịch cho đến khi ghép MSSV, xác định mốc tuần học và giờ ca trực. Không quy đổi khung giờ ngắn thành rảnh cả buổi.
 5. Đặt A/B/C và ngày trực trong **Cài đặt CLB**. D để dự phòng, luôn 0. Mặc định hệ số thật bằng 0 cho đến khi BCS cấu hình.
 6. Chọn tháng, **Xếp lịch nháp**, kiểm tra các ca thiếu người, chỉnh hoặc bỏ ca nghỉ, rồi **Công bố lịch**.
 7. Trong **Họp hằng tuần**, đặt ngày họp trong tuần tự mở; BCS tích vắng thực tế/có phép/qua quy chế và chốt.
@@ -23,7 +23,7 @@ Website quản lý họp tuần, quy chế, lịch trực C1 và báo cáo Excel
 - BCS rà soát người đăng ký nhưng không đến bằng ô Vắng. Đăng ký tham gia chưa bị tích vắng được xem là có mặt khi chốt.
 - Hai ca trực/người/tháng là **mức ưu tiên, không phải giới hạn**. Chia lượt đầu và lượt thứ hai trước khi phân thêm; khi có người muốn trực thêm, ưu tiên họ cho các lượt vượt mức.
 - Xếp hai người/ca, sáng và chiều, theo lịch rảnh. Thuật toán gợi ý dùng cách chọn ca khó xếp trước và ưu tiên lượt ít; không cam kết tối ưu toán học toàn cục. Ca thiếu vẫn hiển thị để BCS chỉnh.
-- Lịch rảnh mới thay thế dữ liệu rảnh cũ, không sửa lịch đã công bố. Lịch đã công bố chỉ chỉnh từng ca để giữ kết quả xác minh.
+- Lịch rảnh theo mẫu MSSV thay thế dữ liệu rảnh cố định cũ, không sửa lịch đã công bố. Lịch đã công bố chỉ chỉnh từng ca để giữ kết quả xác minh. Bản Excel chi tiết theo tuần học được lưu riêng cho BCS xem và lọc, không tạo MSSV hay tài khoản giả. Bản chi tiết được giữ lại khi chuyển từ dữ liệu mẫu sang dữ liệu thật.
 - Điểm = A × trực đủ − B × vắng trực không phép − C × vắng họp không phép. Quy chế không cộng/trừ. Bản nháp và ca chưa xác minh không tính điểm.
 - Thành viên mới không bị tính vắng các tuần trước. Ngừng hoạt động vẫn giữ lịch sử và báo cáo tháng liên quan.
 - Sửa kết quả họp đã chốt cần lý do. BCS không thể hạ quyền hoặc ngừng hoạt động chủ quản trị.

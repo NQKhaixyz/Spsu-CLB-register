@@ -3806,3 +3806,76 @@ td {
 .member-password-action {
   margin-left: 14px;
 }
+
+.availability-notice {
+  display: block;
+  margin-bottom: 22px;
+}
+.availability-notice p {
+  margin: 7px 0 0;
+  line-height: 1.65;
+}
+.availability-toolbar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 0 24px 20px;
+}
+.availability-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border, #e1e7de);
+  border-radius: 9px;
+  padding: 0 12px;
+  flex: 1;
+}
+.availability-search input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  min-height: 40px;
+  outline: none;
+  font: inherit;
+  font-size: 12px;
+}
+.availability-search:focus-within {
+  outline: 2px solid #17674a;
+  outline-offset: 2px;
+}
+.availability-toolbar select {
+  min-height: 42px;
+  border: 1px solid #dfe5dc;
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: white;
+  font: inherit;
+  font-size: 12px;
+}
+.availability-table table {
+  min-width: 790px;
+}
+.availability-table td:nth-child(2),
+.availability-table td:last-child {
+  white-space: normal;
+  min-width: 160px;
+}
+.availability-table td:last-child {
+  max-width: 250px;
+  line-height: 1.6;
+}
+.availability-pagination {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .availability-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0 16px 16px;
+  }
+  .availability-toolbar input {
+    font-size: 16px;
+  }
+}

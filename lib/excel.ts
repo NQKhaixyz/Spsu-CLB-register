@@ -8,7 +8,9 @@ import {
   scoreFor,
   statusNames,
   type Club,
+  type AvailabilityDetail,
 } from "./club";
+import type { Worksheet } from "exceljs";
 
 export async function makeReport(club: Club, month: string) {
   const { default: ExcelJS } = await import("exceljs");
@@ -249,13 +251,16 @@ export async function downloadTemplate(kind: "members" | "availability") {
     `mau-${kind === "members" ? "thanh-vien" : "lich-ranh"}.xlsx`,
   );
 }
-export async function readImport(file: File, kind: "members" | "availability") {
+async function loadImportSheet(file: File) {
   if (file.size > 3_000_000) throw new Error("File cần nhỏ hơn 3 MB.");
   const { default: ExcelJS } = await import("exceljs");
   const b = new ExcelJS.Workbook();
   await b.xlsx.load(await file.arrayBuffer());
   const s = b.worksheets[0];
   if (!s) throw new Error("File không có trang dữ liệu.");
+  return s;
+}
+function parseTemplate(s: Worksheet, kind: "members" | "availability") {
   const text = (row: number, col: number) => s.getCell(row, col).text.trim();
   if (
     text(1, 1).toUpperCase() !== "MSSV" ||
@@ -291,4 +296,49 @@ export async function readImport(file: File, kind: "members" | "availability") {
     });
   }
   return rows;
+}
+export async function readImport(file: File, kind: "members" | "availability") {
+  return parseTemplate(await loadImportSheet(file), kind);
+}
+export async function readAvailabilityUpload(file: File) {
+  const s = await loadImportSheet(file);
+  const text = (row: number, col: number) => s.getCell(row, col).text.trim();
+  const header = (col: number) =>
+    text(1, col).normalize("NFC").toLowerCase().replace(/\s+/g, " ");
+  if (
+    ["họ và tên", "họ tên"].includes(header(1)) &&
+    header(2) === "thứ" &&
+    header(3) === "buổi" &&
+    header(4) === "tuần học"
+  ) {
+    if (s.rowCount > 5001)
+      throw new Error("File chi tiết cần có tối đa 5.000 dòng lịch rảnh.");
+    const rows: AvailabilityDetail[] = [];
+    for (let r = 2; r <= s.rowCount; r++) {
+      if (![1, 2, 3, 4, 5].some((c) => text(r, c))) continue;
+      const name = text(r, 1),
+        day = text(r, 2),
+        period = text(r, 3),
+        weeks = text(r, 4),
+        note = text(r, 5);
+      if (!name || !day || !period || !weeks)
+        throw new Error(`Dòng ${r} thiếu họ tên, thứ, buổi hoặc tuần học.`);
+      if (
+        name.length > 100 ||
+        day.length > 30 ||
+        period.length > 100 ||
+        weeks.length > 200 ||
+        note.length > 1000
+      )
+        throw new Error(`Nội dung dòng ${r} quá dài. Kiểm tra lại các cột.`);
+      rows.push({ sourceRow: r, name, day, period, weeks, note });
+    }
+    if (!rows.length) throw new Error("File không có dòng lịch rảnh nào.");
+    return { format: "details" as const, filename: file.name, rows };
+  }
+  return {
+    format: "template" as const,
+    filename: file.name,
+    rows: parseTemplate(s, "availability"),
+  };
 }

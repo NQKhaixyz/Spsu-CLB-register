@@ -18,7 +18,7 @@ import {
 } from "../lib/club";
 import { applyAction } from "../lib/actions";
 import { canInitializeClub } from "../lib/access";
-import { makeReport, readImport } from "../lib/excel";
+import { makeReport, readImport, readAvailabilityUpload } from "../lib/excel";
 
 test("Public visitors cannot claim ownership before the configured owner", () => {
   assert.equal(
@@ -418,4 +418,83 @@ test("Excel availability import recognizes all seven days and preference", async
   const rows = await readImport(file, "availability");
   assert.deepEqual(rows[0].availability, ["1-am", "0-am"]);
   assert.equal(rows[0].extraDuties, true);
+});
+
+test("Detailed availability preserves time windows, academic weeks, notes and source row numbers", async () => {
+  const { default: ExcelJS } = await import("exceljs");
+  const b = new ExcelJS.Workbook(),
+    s = b.addWorksheet("Lịch rảnh");
+  s.addRow(["Họ và tên", "Thứ", "Buổi", "Tuần học"]);
+  s.addRow(["Thành viên một", "Thứ 3", "8h- 10h", "2-19", "Ghi chú riêng"]);
+  s.addRow(["Thành viên một", "Thứ 5", "14h-16h", "11,15,17"]);
+  s.addRow([]);
+  s.addRow(["Thành viên hai", "Thứ 2", "Cả ngày", "trừ tuần 13"]);
+  const result = await readAvailabilityUpload(
+    new File([new Uint8Array(await b.xlsx.writeBuffer())], "lich.xlsx"),
+  );
+  assert.equal(result.format, "details");
+  assert.equal(result.rows.length, 3);
+  if (result.format !== "details") throw new Error("Expected detailed format");
+  assert.deepEqual(result.rows[0], {
+    sourceRow: 2,
+    name: "Thành viên một",
+    day: "Thứ 3",
+    period: "8h- 10h",
+    weeks: "2-19",
+    note: "Ghi chú riêng",
+  });
+  assert.equal(result.rows[1].weeks, "11,15,17");
+  assert.equal(result.rows[2].sourceRow, 5);
+  assert.equal(result.rows[2].weeks, "trừ tuần 13");
+});
+
+test("Detailed availability rejects incomplete rows instead of silently dropping them", async () => {
+  const { default: ExcelJS } = await import("exceljs");
+  const b = new ExcelJS.Workbook(),
+    s = b.addWorksheet("Data");
+  s.addRow(["Họ và tên", "Thứ", "Buổi", "Tuần học"]);
+  s.addRow(["Thành viên", "Thứ 2", "Sáng", ""]);
+  await assert.rejects(() =>
+    readAvailabilityUpload(
+      new File([new Uint8Array(Buffer.from([]))], "empty.xlsx"),
+    ),
+  );
+  const file = new File(
+    [new Uint8Array(await b.xlsx.writeBuffer())],
+    "invalid.xlsx",
+  );
+  await assert.rejects(() => readAvailabilityUpload(file), /Dòng 2/);
+});
+
+test("Detailed import is BCS-only and does not invent MSSVs or overwrite effective schedules", () => {
+  const c = fixture();
+  const beforeMembers = JSON.stringify(c.members),
+    beforeSchedules = JSON.stringify(c.schedules),
+    beforeVersion = c.availabilityVersion;
+  const data = {
+    filename: "lich.xlsx",
+    rows: [
+      {
+        sourceRow: 2,
+        name: "Thành viên trong file",
+        day: "Thứ 3",
+        period: "8h- 10h",
+        weeks: "trừ tuần 13",
+        note: "Tháng 11: t4-6 full",
+      },
+    ],
+  };
+  assert.throws(
+    () => applyAction(c, memberIdentity, "importAvailabilityDetails", data),
+    /BCS/,
+  );
+  applyAction(c, adminIdentity, "importAvailabilityDetails", data);
+  assert.equal(JSON.stringify(c.members), beforeMembers);
+  assert.equal(JSON.stringify(c.schedules), beforeSchedules);
+  assert.equal(c.availabilityVersion, beforeVersion);
+  assert.deepEqual(c.availabilityDataset?.rows, data.rows);
+  assert.equal(c.availabilityDataset?.importedBy, "Chủ nhiệm");
+  c.demo = true;
+  applyAction(c, adminIdentity, "resetDemo", { confirm: "BAT DAU" });
+  assert.deepEqual(c.availabilityDataset?.rows, data.rows);
 });
