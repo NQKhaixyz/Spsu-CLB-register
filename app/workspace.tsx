@@ -1,6 +1,8 @@
 "use client";
 import Login from "./login";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
+import DutyRegister from "./duty-register";
+import { availabilityForDuty } from "../lib/availability";
 import {
   useCallback,
   useEffect,
@@ -672,7 +674,7 @@ export default function Workspace() {
                 required
                 minLength={3}
                 defaultValue={member?.studentId}
-                readOnly={!!member}
+                readOnly={!!member && !member.needsStudentId}
               />
             </Field>
           </div>
@@ -886,7 +888,8 @@ export default function Workspace() {
     const candidates = liveMembers.filter(
       (m) =>
         m.joined <= shift.date &&
-        m.availability.includes(`${weekday(shift.date)}-${shift.period}`) &&
+        availabilityForDuty(club, m, shift.date, shift.period, shift)
+          .available &&
         !shift.assignments.some(
           (a, i) => i !== position && a.memberId === m.id,
         ),
@@ -1481,12 +1484,17 @@ export default function Workspace() {
     const visibleShifts = schedule?.shifts ?? [];
     const seats = visibleShifts.flatMap((t) => t.assignments).length;
     const shortage = visibleShifts.length * 2 - seats;
-    const counts = liveMembers.map((m) => ({
-      m,
-      n: visibleShifts
-        .flatMap((t) => t.assignments)
-        .filter((a) => a.memberId === m.id).length,
-    }));
+    const linkedIds = club.availabilityDataset?.settings
+      ? new Set(Object.values(club.availabilityDataset.memberLinks ?? {}))
+      : null;
+    const counts = liveMembers
+      .filter((m) => !linkedIds || linkedIds.has(m.id))
+      .map((m) => ({
+        m,
+        n: visibleShifts
+          .flatMap((t) => t.assignments)
+          .filter((a) => a.memberId === m.id).length,
+      }));
     return (
       <>
         <div className="page-heading">
@@ -1527,6 +1535,16 @@ export default function Workspace() {
                   : "Hãy nhập lịch rảnh để bắt đầu."}
               </p>
             </div>
+            {club.availabilityDataset?.settings ? (
+              <p className="hint">
+                Ca sáng {club.availabilityDataset.settings.amStart}–
+                {club.availabilityDataset.settings.amEnd} · Ca chiều{" "}
+                {club.availabilityDataset.settings.pmStart}–
+                {club.availabilityDataset.settings.pmEnd} · Cho phép đến muộn
+                tối đa {club.availabilityDataset.settings.allowedLateMinutes}{" "}
+                phút khi xếp lịch.
+              </p>
+            ) : null}
             <Button
               disabled={busy || !!schedule?.published}
               onClick={() =>
@@ -1629,7 +1647,7 @@ export default function Workspace() {
                             onClick={() =>
                               setModal({
                                 title: `Trực C1 · ${dateLabel(date, true)}`,
-                                description: `Ca ${shift.period === "am" ? "sáng" : "chiều"} · ${schedule.published ? "Đã công bố" : "Bản nháp"}`,
+                                description: `Ca ${shift.period === "am" ? "sáng" : "chiều"}${shift.startTime ? ` ${shift.startTime}–${shift.endTime}` : ""}${shift.academicWeek ? ` · Tuần học ${shift.academicWeek}` : ""} · ${schedule.published ? "Đã công bố" : "Bản nháp"}`,
                                 content: (
                                   <div className="shift-detail">
                                     {[0, 1].map((position) => {
@@ -1661,6 +1679,16 @@ export default function Workspace() {
                                               Vị trí chưa được phân công
                                             </p>
                                           )}
+                                          {a?.availabilityNote ? (
+                                            <p className="assignment-note">
+                                              {a.availabilityNote}
+                                            </p>
+                                          ) : null}
+                                          {a?.note ? (
+                                            <p className="assignment-note">
+                                              BCS: {a.note}
+                                            </p>
+                                          ) : null}
                                           {isAdmin ? (
                                             <>
                                               <Button
@@ -1704,6 +1732,74 @@ export default function Workspace() {
                                                     ))}
                                                   </select>
                                                 </Field>
+                                              ) : null}
+                                              {a && schedule.published ? (
+                                                <label className="checkbox-label">
+                                                  <input
+                                                    type="checkbox"
+                                                    aria-label={`Đến muộn: ${m?.name}`}
+                                                    defaultChecked={!!a.late}
+                                                    disabled={[
+                                                      "unexcused",
+                                                      "excused",
+                                                      "cancelled",
+                                                    ].includes(a.result)}
+                                                    onChange={(e) =>
+                                                      act(
+                                                        "shift",
+                                                        {
+                                                          month,
+                                                          shiftId: shift.id,
+                                                          position,
+                                                          late: e.target
+                                                            .checked,
+                                                        },
+                                                        "Đã ghi nhận đến muộn",
+                                                      )
+                                                    }
+                                                  />{" "}
+                                                  Đến muộn{" "}
+                                                  <small>
+                                                    Không tích = không đến muộn.
+                                                    Không tự trừ điểm.
+                                                  </small>
+                                                </label>
+                                              ) : null}
+                                              {a ? (
+                                                <form
+                                                  onSubmit={(e) =>
+                                                    act(
+                                                      "shift",
+                                                      {
+                                                        ...getForm(e),
+                                                        month,
+                                                        shiftId: shift.id,
+                                                        position,
+                                                      },
+                                                      "Đã lưu ghi chú ca trực",
+                                                    )
+                                                  }
+                                                >
+                                                  <Field
+                                                    label={`Ghi chú BCS: ${m?.name}`}
+                                                  >
+                                                    <textarea
+                                                      name="note"
+                                                      maxLength={1000}
+                                                      defaultValue={
+                                                        a.note ?? ""
+                                                      }
+                                                      placeholder="Ví dụ: Có ca học tan lúc 14:30"
+                                                    />
+                                                  </Field>
+                                                  <Button
+                                                    type="submit"
+                                                    variant="secondary"
+                                                    disabled={busy}
+                                                  >
+                                                    Lưu ghi chú
+                                                  </Button>
+                                                </form>
                                               ) : null}
                                             </>
                                           ) : a?.memberId === me!.id ? (
@@ -1798,6 +1894,17 @@ export default function Workspace() {
                 </aside>
               ) : null}
             </div>
+            {isAdmin ? (
+              <DutyRegister
+                key={schedule.month}
+                schedule={schedule}
+                members={club.members}
+                busy={busy}
+                onUpdate={(data) =>
+                  act("shift", data, "Đã lưu kết quả ca trực", false)
+                }
+              />
+            ) : null}
           </>
         ) : (
           <section className="panel">
@@ -1893,7 +2000,9 @@ export default function Workspace() {
                         </span>
                       </div>
                     </td>
-                    <td className="mono muted">{m.studentId}</td>
+                    <td className="mono muted">
+                      {m.studentId || "Chờ bổ sung MSSV"}
+                    </td>
                     <td>
                       {m.role === "admin" ? (
                         <span className="role-tag">
@@ -1903,7 +2012,13 @@ export default function Workspace() {
                         "Thành viên"
                       )}
                     </td>
-                    <td>{m.availability.length} khung giờ/tuần</td>
+                    <td>
+                      {Object.values(
+                        club.availabilityDataset?.memberLinks ?? {},
+                      ).includes(m.id)
+                        ? `${club.availabilityDataset?.rows.filter((r) => club.availabilityDataset?.memberLinks?.[r.name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi")] === m.id).length} khung theo tuần học`
+                        : `${m.availability.length} khung giờ/tuần`}
+                    </td>
                     <td>
                       {m.extraDuties ? (
                         <span className="green-text">Có nguyện vọng</span>
@@ -1926,6 +2041,12 @@ export default function Workspace() {
                       <button
                         className="text-button member-password-action"
                         onClick={() => passwordDialog(m)}
+                        disabled={m.needsStudentId}
+                        title={
+                          m.needsStudentId
+                            ? "Bổ sung MSSV trước khi cấp tài khoản"
+                            : undefined
+                        }
                       >
                         Mật khẩu
                       </button>
@@ -2745,7 +2866,9 @@ export default function Workspace() {
           </div>
         </header>
         <main id="main-content" className="main-content">
-          {club.demo && activeTab !== "availability" ? (
+          {club.demo &&
+          activeTab !== "availability" &&
+          !(activeTab === "duties" && schedule?.sourceFilename) ? (
             <div className="demo-banner">
               <Sparkles size={15} />
               <span>
@@ -2840,6 +2963,21 @@ export default function Workspace() {
               dataset={club.availabilityDataset}
               onImport={() => importDialog("availability")}
               busy={busy}
+              onActivate={async (data) => {
+                if (
+                  await act(
+                    "activateAvailabilityDetails",
+                    data,
+                    "Đã áp dụng lịch rảnh và xếp bản nháp",
+                    false,
+                  )
+                ) {
+                  setMonth(String(data.month));
+                  go("duties");
+                  return true;
+                }
+                return false;
+              }}
             />
           ) : activeTab === "members" ? (
             members()

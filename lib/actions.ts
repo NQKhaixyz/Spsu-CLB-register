@@ -15,6 +15,13 @@ import {
   type DutyResult,
   type AvailabilityDetail,
 } from "./club";
+import {
+  availabilityForDuty,
+  clockMinutes,
+  personKey,
+  validateDetailRows,
+} from "./availability";
+import type { AvailabilitySettings } from "./club";
 
 export type Identity = { userId: string; email: string; displayName: string };
 export function check(condition: unknown, message: string): asserts condition {
@@ -253,17 +260,36 @@ export function applyAction(
         "Thành viên đã có trong ca này.",
       );
       check(
-        replacement.availability.includes(
-          `${weekday(shift.date)}-${shift.period}`,
-        ),
+        availabilityForDuty(club, replacement, shift.date, shift.period, shift)
+          .available,
         "Thành viên không rảnh trong ca này theo dữ liệu hiện tại.",
       );
       if (a) {
         a.originalId ??= a.memberId;
         a.memberId = replacement.id;
         a.result = "unverified";
+        a.late = false;
+        a.note = "";
+        a.availabilityNote = availabilityForDuty(
+          club,
+          replacement,
+          shift.date,
+          shift.period,
+          shift,
+        ).note;
       } else {
-        a = { memberId: replacement.id, result: "unverified" };
+        a = {
+          memberId: replacement.id,
+          result: "unverified",
+          late: false,
+          availabilityNote: availabilityForDuty(
+            club,
+            replacement,
+            shift.date,
+            shift.period,
+            shift,
+          ).note,
+        };
         shift.assignments.push(a);
       }
       note(`Đổi người ca ${shift.id}: ${replacement.name}`);
@@ -282,7 +308,27 @@ export function applyAction(
         "Kết quả không hợp lệ.",
       );
       a.result = data.result as DutyResult;
+      if (["unexcused", "excused", "cancelled"].includes(a.result))
+        a.late = false;
       note(`Xác minh ca ${shift.id}: ${data.result}`);
+    }
+    if (data.late !== undefined) {
+      check(
+        s.published && a,
+        "Công bố lịch và phân người trước khi ghi nhận đến muộn.",
+      );
+      check(typeof data.late === "boolean", "Ô đến muộn không hợp lệ.");
+      check(
+        !data.late || !["unexcused", "excused", "cancelled"].includes(a.result),
+        "Người vắng hoặc ca hủy không ghi nhận đến muộn.",
+      );
+      a.late = data.late;
+      note(`Ghi nhận đến muộn ca ${shift.id}: ${data.late ? "Có" : "Không"}`);
+    }
+    if (data.note !== undefined) {
+      check(a, "Ca chưa có người.");
+      a.note = str(data.note, 1000);
+      note(`Cập nhật ghi chú ca ${shift.id}`);
     }
     if (data.remove) {
       check(!s?.published, "Chỉ bỏ ca khi còn là bản nháp.");
@@ -317,6 +363,26 @@ export function applyAction(
       };
       club.members.push(m);
     } else {
+      if (
+        data.studentId !== undefined &&
+        str(data.studentId, 30) !== m.studentId
+      ) {
+        const studentId = str(data.studentId, 30);
+        check(
+          /^[a-zA-Z0-9._-]{3,30}$/.test(studentId),
+          "MSSV cần có 3–30 ký tự hợp lệ.",
+        );
+        check(
+          !club.members.some(
+            (other) =>
+              other.id !== data.memberId &&
+              other.studentId.toLowerCase() === studentId.toLowerCase(),
+          ),
+          "MSSV đã tồn tại.",
+        );
+        m.studentId = studentId;
+        m.needsStudentId = false;
+      }
       if (data.name) m.name = str(data.name, 100);
       if (data.email !== undefined) m.email = str(data.email, 200);
       if (data.active !== undefined && !!data.active !== m.active) {
@@ -349,6 +415,93 @@ export function applyAction(
     }
     syncWeeks(club);
     note(`Cập nhật thành viên ${m.name}`);
+  } else if (action === "activateAvailabilityDetails") {
+    const dataset = club.availabilityDataset;
+    check(dataset?.rows.length, "Chưa có file lịch rảnh chi tiết.");
+    check(
+      /^\d{4}-(0[1-9]|1[0-2])$/.test(data.month),
+      "Tháng xếp lịch không hợp lệ.",
+    );
+    check(
+      !club.schedules.find((s) => s.month === data.month)?.published,
+      "Tháng này đã có lịch công bố. Không thể thay bằng bản nháp.",
+    );
+    const settings: AvailabilitySettings = {
+      anchorDate: str(data.anchorDate, 10),
+      anchorWeek: Number(data.anchorWeek),
+      startDate: str(data.startDate, 10),
+      amStart: str(data.amStart, 5),
+      amEnd: str(data.amEnd, 5),
+      pmStart: str(data.pmStart, 5),
+      pmEnd: str(data.pmEnd, 5),
+      allowedLateMinutes: Number(data.allowedLateMinutes),
+      ignoreSourceNotes: true,
+    };
+    check(
+      validDate(settings.anchorDate) && validDate(settings.startDate),
+      "Mốc tuần học và ngày bắt đầu trực không hợp lệ.",
+    );
+    check(
+      Number.isInteger(settings.anchorWeek) &&
+        settings.anchorWeek >= 1 &&
+        settings.anchorWeek <= 53,
+      "Số tuần học phải từ 1–53.",
+    );
+    check(
+      Number.isInteger(settings.allowedLateMinutes) &&
+        settings.allowedLateMinutes >= 0 &&
+        settings.allowedLateMinutes <= 60,
+      "Mức đến muộn cho phép cần từ 0–60 phút.",
+    );
+    check(
+      clockMinutes(settings.amStart) < clockMinutes(settings.amEnd) &&
+        clockMinutes(settings.amEnd) <= clockMinutes(settings.pmStart) &&
+        clockMinutes(settings.pmStart) < clockMinutes(settings.pmEnd),
+      "Khung giờ ca sáng/chiều không hợp lệ.",
+    );
+    validateDetailRows(dataset.rows, settings);
+    const links: Record<string, string> = {};
+    for (const row of dataset.rows) {
+      const key = personKey(row.name);
+      if (links[key]) continue;
+      const linked = dataset.memberLinks?.[key];
+      let member = linked
+        ? club.members.find((m) => m.id === linked)
+        : undefined;
+      if (!member) {
+        const matches = club.members.filter((m) => personKey(m.name) === key);
+        check(
+          matches.length <= 1,
+          `Có nhiều hồ sơ trùng tên ${row.name}. BCS cần phân biệt trước khi áp dụng.`,
+        );
+        member = matches[0];
+      }
+      if (!member) {
+        member = {
+          id: uid(),
+          name: row.name,
+          studentId: "",
+          role: "member",
+          active: true,
+          joined: today(),
+          availability: [],
+          extraDuties: false,
+          needsStudentId: true,
+        };
+        club.members.push(member);
+      }
+      links[key] = member.id;
+    }
+    dataset.settings = settings;
+    dataset.memberLinks = links;
+    club.availabilityVersion = new Date().toISOString();
+    syncWeeks(club);
+    const draft = makeSchedule(club, data.month);
+    club.schedules = club.schedules.filter((s) => s.month !== data.month);
+    club.schedules.push(draft);
+    note(
+      `Áp dụng lịch rảnh theo tuần học từ ${settings.startDate}; ${Object.keys(links).length} người; cho phép đến muộn ${settings.allowedLateMinutes} phút`,
+    );
   } else if (action === "importAvailabilityDetails") {
     check(
       Array.isArray(data.rows) &&
@@ -501,7 +654,15 @@ export function applyAction(
     check(club.demo, "Chỉ có thể xóa dữ liệu mẫu.");
     check(data.confirm === "BAT DAU", "Chưa xác nhận bắt đầu dữ liệu thật.");
     const real = createClub(club.ownerId);
-    real.members = [{ ...me, joined: today(), availability: [] }];
+    const linkedIds = new Set(
+      Object.values(club.availabilityDataset?.memberLinks ?? {}),
+    );
+    real.members = [
+      { ...me, joined: today(), availability: [] },
+      ...club.members.filter(
+        (m) => m.id !== me.id && (!!m.userId || linkedIds.has(m.id)),
+      ),
+    ];
     if (club.availabilityDataset)
       real.availabilityDataset = club.availabilityDataset;
     Object.assign(club, real);

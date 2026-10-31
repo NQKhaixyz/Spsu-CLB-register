@@ -18,6 +18,11 @@ import {
 } from "../lib/club";
 import { applyAction } from "../lib/actions";
 import { canInitializeClub } from "../lib/access";
+import {
+  academicWeekFor,
+  availabilityForDuty,
+  weekMatches,
+} from "../lib/availability";
 import { makeReport, readImport, readAvailabilityUpload } from "../lib/excel";
 
 test("Public visitors cannot claim ownership before the configured owner", () => {
@@ -497,4 +502,153 @@ test("Detailed import is BCS-only and does not invent MSSVs or overwrite effecti
   c.demo = true;
   applyAction(c, adminIdentity, "resetDemo", { confirm: "BAT DAU" });
   assert.deepEqual(c.availabilityDataset?.rows, data.rows);
+});
+
+const detailedSettings = {
+  anchorDate: "2026-11-09",
+  anchorWeek: 11,
+  startDate: "2026-11-09",
+  amStart: "08:30",
+  amEnd: "11:30",
+  pmStart: "14:00",
+  pmEnd: "17:30",
+  allowedLateMinutes: 30,
+  ignoreSourceNotes: true,
+};
+function detailedFixture(period = "14h30-17h30") {
+  const c = fixture(),
+    m = c.members[1];
+  c.availabilityDataset = {
+    filename: "test.xlsx",
+    importedAt: "",
+    importedBy: "BCS",
+    settings: detailedSettings,
+    memberLinks: { [m.name.toLocaleLowerCase("vi")]: m.id },
+    rows: [
+      {
+        sourceRow: 2,
+        name: m.name,
+        day: "Thứ 2",
+        period,
+        weeks: "2-18",
+        note: "Không dùng cột này",
+      },
+    ],
+  };
+  return { c, m };
+}
+test("Academic week 11 is 9–15 November, with ranges, lists and exclusions", () => {
+  assert.equal(academicWeekFor("2026-11-09", detailedSettings), 11);
+  assert.equal(academicWeekFor("2026-11-15", detailedSettings), 11);
+  assert.equal(academicWeekFor("2026-11-16", detailedSettings), 12);
+  assert.equal(weekMatches("11,15,17", 12), false);
+  assert.equal(weekMatches("2-18", 18), true);
+  assert.equal(weekMatches("trừ tuần 13", 13, 19), false);
+  assert.equal(weekMatches("trừ tuần 13", 14, 19), true);
+  assert.equal(weekMatches("trừ tuần 13", 20, 19), false);
+});
+test("Duty eligibility allows 30 minutes late, rejects 31 and early departure", () => {
+  const { c, m } = detailedFixture();
+  const accepted = availabilityForDuty(c, m, "2026-11-09", "pm");
+  assert.equal(accepted.available, true);
+  assert.equal(accepted.lateMinutes, 30);
+  assert.match(accepted.note, /Có ca học tan lúc 14:30/);
+  assert.doesNotMatch(accepted.note, /Không dùng/);
+  c.availabilityDataset!.rows[0].period = "14h31-17h30";
+  assert.equal(availabilityForDuty(c, m, "2026-11-09", "pm").available, false);
+  c.availabilityDataset!.rows[0].period = "14h30-17h29";
+  assert.equal(availabilityForDuty(c, m, "2026-11-09", "pm").available, false);
+  c.availabilityDataset!.rows[0].period = "8h-10h";
+  assert.equal(availabilityForDuty(c, m, "2026-11-09", "am").available, false);
+  c.availabilityDataset!.rows.push({
+    ...c.availabilityDataset!.rows[0],
+    sourceRow: 3,
+    period: "10h-12h",
+  });
+  assert.equal(availabilityForDuty(c, m, "2026-11-09", "am").available, true);
+  assert.equal(availabilityForDuty(c, m, "2026-11-02", "am").available, false);
+});
+test("Activating detailed availability creates pending MSSV profiles, is repeatable and makes a private draft", () => {
+  const c = fixture();
+  applyAction(c, adminIdentity, "importAvailabilityDetails", {
+    filename: "real.xlsx",
+    rows: [
+      {
+        sourceRow: 2,
+        name: "Người chờ MSSV",
+        day: "Thứ 2",
+        period: "Cả ngày",
+        weeks: "11-18",
+        note: "Bỏ qua",
+      },
+    ],
+  });
+  const data = { ...detailedSettings, month: "2026-11" };
+  assert.throws(
+    () => applyAction(c, memberIdentity, "activateAvailabilityDetails", data),
+    /BCS/,
+  );
+  applyAction(c, adminIdentity, "activateAvailabilityDetails", data);
+  const m = c.members.find((x) => x.name === "Người chờ MSSV")!;
+  assert.equal(m.studentId, "");
+  assert.equal(m.needsStudentId, true);
+  assert.equal(m.userId, undefined);
+  const s = c.schedules.find((s) => s.month === "2026-11")!;
+  assert.equal(s.published, false);
+  assert.ok(s.shifts.every((s) => s.date >= "2026-11-09"));
+  assert.equal(s.shifts.find((s) => s.date === "2026-11-09")?.academicWeek, 11);
+  const count = c.members.length;
+  applyAction(c, adminIdentity, "activateAvailabilityDetails", data);
+  assert.equal(c.members.length, count);
+  applyAction(c, adminIdentity, "member", {
+    memberId: m.id,
+    studentId: "SV_READY",
+  });
+  assert.equal(m.needsStudentId, false);
+  assert.equal(m.id, c.availabilityDataset?.memberLinks?.["người chờ mssv"]);
+  c.demo = true;
+  applyAction(c, adminIdentity, "resetDemo", { confirm: "BAT DAU" });
+  assert.ok(c.members.some((x) => x.id === m.id));
+  assert.ok(c.availabilityDataset?.settings);
+});
+test("Late checkbox is manual, does not change points and is exported with notes", async () => {
+  const { c, m } = detailedFixture();
+  c.rules = [{ month: "2000-01", A: 10, B: 15, C: 5, D: 0 }];
+  c.schedules = [makeSchedule(c, "2026-11")];
+  const s = c.schedules[0],
+    shift = s.shifts.find((s) => s.date === "2026-11-09" && s.period === "pm")!;
+  const position = shift.assignments.findIndex((a) => a.memberId === m.id);
+  assert.ok(position >= 0);
+  assert.equal(shift.assignments[position].late, false);
+  const data = { month: s.month, shiftId: shift.id, position };
+  assert.throws(
+    () => applyAction(c, adminIdentity, "shift", { ...data, late: true }),
+    /Công bố/,
+  );
+  s.published = true;
+  applyAction(c, adminIdentity, "shift", { ...data, result: "completed" });
+  const before = scoreFor(c, m.id, s.month).points;
+  applyAction(c, adminIdentity, "shift", {
+    ...data,
+    late: true,
+    note: "Có ca học tan lúc 14:30",
+  });
+  assert.equal(scoreFor(c, m.id, s.month).points, before);
+  assert.throws(
+    () => applyAction(c, memberIdentity, "shift", { ...data, late: false }),
+    /BCS/,
+  );
+  const { buffer } = await makeReport(c, "2026-11");
+  const { default: ExcelJS } = await import("exceljs");
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(buffer);
+  const sheet = book.getWorksheet("Chi tiết trực")!;
+  assert.equal(sheet.getCell("K3").value, "Đến muộn");
+  const first = sheet
+    .getRows(4, sheet.rowCount - 3)!
+    .find((r) => r.getCell(11).value === "Có")!;
+  assert.ok(first);
+  assert.match(first.getCell(10).text, /14:30/);
+  applyAction(c, adminIdentity, "shift", { ...data, late: false });
+  assert.equal(shift.assignments[position].late, false);
 });

@@ -10,8 +10,12 @@ import {
   Upload,
   Users,
 } from "lucide-react";
-import type { AvailabilityDataset, AvailabilityDetail } from "../lib/club";
-import { Badge, Button, Empty, PanelHead, Stat } from "./ui";
+import {
+  today,
+  type AvailabilityDataset,
+  type AvailabilityDetail,
+} from "../lib/club";
+import { Badge, Button, Empty, PanelHead, Stat, Field } from "./ui";
 
 const personKey = (name: string) =>
   name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
@@ -37,9 +41,9 @@ export function AvailabilityPreview({ rows }: { rows: AvailabilityDetail[] }) {
         </p>
       ) : null}
       <p className="dialog-copy">
-        Bản chi tiết này được lưu để xem và đối chiếu. Để đưa vào xếp lịch cần
-        ghép đúng MSSV, xác định ngày bắt đầu tuần học số 1 và giờ ca
-        sáng/chiều.
+        Bản chi tiết được lưu để xem và đối chiếu. Đặt mốc tuần học và giờ ca để
+        áp dụng xếp lịch. Những tên chưa có trong danh sách được tạo hồ sơ chờ
+        BCS bổ sung MSSV trước khi cấp tài khoản.
       </p>
     </>
   );
@@ -82,10 +86,12 @@ export default function AvailabilityPage({
   dataset,
   onImport,
   busy,
+  onActivate,
 }: {
   dataset?: AvailabilityDataset;
   onImport: () => void;
   busy: boolean;
+  onActivate: (data: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [search, setSearch] = useState("");
   const [day, setDay] = useState("all");
@@ -153,12 +159,125 @@ export default function AvailabilityPage({
             />
           </div>
           <div className="notice amber availability-notice">
-            <strong>Đã lưu bản chi tiết · Chưa áp dụng xếp lịch</strong>
+            <strong>
+              {dataset.settings
+                ? "Đã áp dụng lịch rảnh theo tuần học"
+                : "Đã lưu bản chi tiết · Chưa áp dụng xếp lịch"}
+            </strong>
             <p>
-              File chưa có MSSV. Cần ghép thành viên, bổ sung mốc tuần học và
-              giờ ca sáng/chiều trước khi phân công theo dữ liệu này.
+              {dataset.settings
+                ? `Tuần ${dataset.settings.anchorWeek} bắt đầu ${dataset.settings.anchorDate}. Ca sáng ${dataset.settings.amStart}–${dataset.settings.amEnd}, ca chiều ${dataset.settings.pmStart}–${dataset.settings.pmEnd}. Cho phép đến muộn tối đa ${dataset.settings.allowedLateMinutes} phút.`
+                : "Đặt mốc tuần học và giờ ca bên dưới để xếp lịch. Người chưa có MSSV được tạo hồ sơ theo tên, chờ BCS bổ sung MSSV trước khi cấp tài khoản."}
             </p>
           </div>
+          <section className="panel availability-settings">
+            <PanelHead
+              title="Áp dụng và xếp lịch nháp"
+              description="Bản nháp dành cho BCS kiểm tra trước khi công bố."
+            />
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const f = Object.fromEntries(new FormData(e.currentTarget));
+                await onActivate({
+                  ...f,
+                  anchorWeek: Number(f.anchorWeek),
+                  allowedLateMinutes: Number(f.allowedLateMinutes),
+                  ignoreSourceNotes: true,
+                });
+              }}
+            >
+              <div className="form-grid">
+                <Field label="Tuần học tại mốc">
+                  <input
+                    name="anchorWeek"
+                    type="number"
+                    min={1}
+                    max={53}
+                    required
+                    defaultValue={dataset.settings?.anchorWeek ?? 11}
+                  />
+                </Field>
+                <Field label="Ngày bắt đầu tuần học tại mốc">
+                  <input
+                    name="anchorDate"
+                    type="date"
+                    required
+                    defaultValue={dataset.settings?.anchorDate ?? today()}
+                  />
+                </Field>
+                <Field label="Bắt đầu phân ca từ ngày">
+                  <input
+                    name="startDate"
+                    type="date"
+                    required
+                    defaultValue={dataset.settings?.startDate ?? today()}
+                  />
+                </Field>
+                <Field label="Tháng xếp lịch nháp">
+                  <input
+                    name="month"
+                    type="month"
+                    required
+                    defaultValue={(
+                      dataset.settings?.startDate ?? today()
+                    ).slice(0, 7)}
+                  />
+                </Field>
+                <Field label="Ca sáng bắt đầu">
+                  <input
+                    name="amStart"
+                    type="time"
+                    required
+                    defaultValue={dataset.settings?.amStart ?? "08:30"}
+                  />
+                </Field>
+                <Field label="Ca sáng kết thúc">
+                  <input
+                    name="amEnd"
+                    type="time"
+                    required
+                    defaultValue={dataset.settings?.amEnd ?? "11:30"}
+                  />
+                </Field>
+                <Field label="Ca chiều bắt đầu">
+                  <input
+                    name="pmStart"
+                    type="time"
+                    required
+                    defaultValue={dataset.settings?.pmStart ?? "14:00"}
+                  />
+                </Field>
+                <Field label="Ca chiều kết thúc">
+                  <input
+                    name="pmEnd"
+                    type="time"
+                    required
+                    defaultValue={dataset.settings?.pmEnd ?? "17:30"}
+                  />
+                </Field>
+                <Field label="Đến muộn tối đa (phút)">
+                  <input
+                    name="allowedLateMinutes"
+                    type="number"
+                    min={0}
+                    max={60}
+                    required
+                    defaultValue={dataset.settings?.allowedLateMinutes ?? 30}
+                  />
+                </Field>
+              </div>
+              <p className="hint">
+                Cột ghi chú cuối file không dùng để xếp lịch. BCS nhập ghi chú
+                ca và tích Đến muộn trong bảng theo dõi trực. Chỉ các khung rảnh
+                đủ đến hết ca và bắt đầu không muộn quá mức cho phép mới được
+                chọn.
+              </p>
+              <Button type="submit" disabled={busy}>
+                Áp dụng và xếp lịch nháp
+              </Button>
+            </form>
+          </section>
           <section className="panel">
             <PanelHead
               title={dataset.filename}

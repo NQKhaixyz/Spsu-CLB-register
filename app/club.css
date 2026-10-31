@@ -3869,6 +3869,80 @@ td {
   align-items: center;
   gap: 10px;
 }
+.availability-settings {
+  margin-bottom: 24px;
+}
+.availability-settings > form {
+  padding: 0 24px 24px;
+}
+.assignment-note {
+  white-space: normal;
+  line-height: 1.65;
+  font-size: 12px;
+  color: #647264;
+}
+.shift-person > form {
+  width: 100%;
+}
+.shift-person .checkbox-label {
+  flex-wrap: wrap;
+}
+.duty-register {
+  margin-top: 24px;
+}
+.duty-register table {
+  min-width: 1100px;
+}
+.duty-register td {
+  vertical-align: top;
+}
+.duty-register td:first-child {
+  min-width: 150px;
+}
+.duty-cell-detail {
+  display: block;
+  white-space: normal;
+  line-height: 1.6;
+  margin-top: 6px;
+  color: #738071;
+}
+.duty-note-cell {
+  min-width: 290px;
+  max-width: 390px;
+  white-space: normal;
+}
+.duty-note-cell p {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.duty-note-cell form {
+  display: flex;
+  gap: 8px;
+}
+.duty-register input:not([type="checkbox"]),
+.duty-register select {
+  font: inherit;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #dfe5dc;
+  border-radius: 7px;
+  background: white;
+  font-size: 11px;
+  min-width: 0;
+}
+.duty-note-cell input {
+  flex: 1;
+  width: 180px;
+}
+.duty-register input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #17674a;
+}
+.duty-register-hint {
+  padding: 0 24px 16px;
+}
 @media (max-width: 640px) {
   .availability-toolbar {
     flex-direction: column;

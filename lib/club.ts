@@ -1,3 +1,4 @@
+import { academicWeekFor, createDutyAvailability } from "./availability";
 export type Registration = "unregistered" | "attending" | "absent" | "pending";
 export type DutyResult =
   | "unverified"
@@ -17,6 +18,7 @@ export type Member = {
   left?: string;
   availability: string[];
   extraDuties: boolean;
+  needsStudentId?: boolean;
 };
 export type Entry = {
   memberId: string;
@@ -41,18 +43,25 @@ export type Assignment = {
   memberId: string;
   originalId?: string;
   result: DutyResult;
+  late?: boolean;
+  availabilityNote?: string;
+  note?: string;
 };
 export type Shift = {
   id: string;
   date: string;
   period: "am" | "pm";
   assignments: Assignment[];
+  startTime?: string;
+  endTime?: string;
+  academicWeek?: number;
 };
 export type Schedule = {
   month: string;
   published: boolean;
   shifts: Shift[];
   availabilityVersion?: string;
+  sourceFilename?: string;
 };
 export type Rule = {
   month: string;
@@ -74,6 +83,19 @@ export type AvailabilityDataset = {
   importedAt: string;
   importedBy: string;
   rows: AvailabilityDetail[];
+  settings?: AvailabilitySettings;
+  memberLinks?: Record<string, string>;
+};
+export type AvailabilitySettings = {
+  anchorDate: string;
+  anchorWeek: number;
+  startDate: string;
+  amStart: string;
+  amEnd: string;
+  pmStart: string;
+  pmEnd: string;
+  allowedLateMinutes: number;
+  ignoreSourceNotes: boolean;
 };
 export type Club = {
   ownerId: string;
@@ -300,25 +322,40 @@ export function scoreFor(club: Club, memberId: string, month: string) {
   };
 }
 export function makeSchedule(club: Club, month: string): Schedule {
+  const availableFor = createDutyAvailability(club),
+    detailSettings = club.availabilityDataset?.settings;
   const members = club.members.filter(
     (m) => m.active && m.joined <= monthDays(month).at(-1)!,
   );
   const counts = new Map(members.map((m) => [m.id, 0]));
   const shifts: Shift[] = monthDays(month)
-    .filter((d) => club.days.includes(weekday(d)))
+    .filter(
+      (d) =>
+        club.days.includes(weekday(d)) &&
+        (!detailSettings || d >= detailSettings.startDate),
+    )
     .flatMap((date) =>
       (["am", "pm"] as const).map((period) => ({
         id: `${date}-${period}`,
         date,
         period,
         assignments: [] as Assignment[],
+        ...(detailSettings
+          ? {
+              startTime:
+                period === "am"
+                  ? detailSettings.amStart
+                  : detailSettings.pmStart,
+              endTime:
+                period === "am" ? detailSettings.amEnd : detailSettings.pmEnd,
+              academicWeek: academicWeekFor(date, detailSettings),
+            }
+          : {}),
       })),
     );
   const available = (s: Shift) =>
     members.filter(
-      (m) =>
-        m.joined <= s.date &&
-        m.availability.includes(`${weekday(s.date)}-${s.period}`),
+      (m) => m.joined <= s.date && availableFor(m, s.date, s.period).available,
     );
   const sorted = [...shifts].sort(
     (a, b) =>
@@ -352,7 +389,12 @@ export function makeSchedule(club: Club, month: string): Schedule {
       });
       const m = candidates[0];
       if (m) {
-        shift.assignments.push({ memberId: m.id, result: "unverified" });
+        shift.assignments.push({
+          memberId: m.id,
+          result: "unverified",
+          late: false,
+          availabilityNote: availableFor(m, shift.date, shift.period).note,
+        });
         counts.set(m.id, counts.get(m.id)! + 1);
       }
     }
@@ -362,6 +404,9 @@ export function makeSchedule(club: Club, month: string): Schedule {
     published: false,
     shifts,
     availabilityVersion: club.availabilityVersion,
+    ...(detailSettings
+      ? { sourceFilename: club.availabilityDataset?.filename }
+      : {}),
   };
 }
 export function demoClub(ownerId: string, owner?: Member): Club {

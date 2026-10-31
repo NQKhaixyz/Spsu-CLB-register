@@ -167,6 +167,10 @@ export async function makeReport(club: Club, month: string) {
       "Người thực tế phụ trách",
       "Kết quả",
       "Điểm",
+      "Khung giờ ca",
+      "Tuần học",
+      "Ghi chú",
+      "Đến muộn",
     ],
     schedules.flatMap((s) =>
       s.shifts.flatMap((t) =>
@@ -182,6 +186,10 @@ export async function makeReport(club: Club, month: string) {
             : a.result === "unexcused"
               ? -rulesFor(club, month).B
               : 0,
+          t.startTime ? `${t.startTime}–${t.endTime}` : "",
+          t.academicWeek ?? "",
+          [a.availabilityNote, a.note].filter(Boolean).join(" · "),
+          a.late ? "Có" : "Không",
         ]),
       ),
     ),
