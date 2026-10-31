@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./club.css";
 import "./garden.css";
+import "@designcodeio/threeui/style.css";
+import "./sylva.css";
 import { AtmosphereProvider, ClubSurface } from "../components/garden/atmosphere";
 import { GardenBackdrop } from "../components/garden/scene";
 

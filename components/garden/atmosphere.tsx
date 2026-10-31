@@ -4,7 +4,7 @@ import { Clock3, Moon, Pause, Play, Sun, Sunrise, Sunset } from "lucide-react";
 import { gardenHour, gardenLabels, periodAt, type GardenMode } from "../../lib/garden-time";
 
 const Atmosphere = createContext({ hour: 12, mode: "live" as GardenMode, paused: false,
-  focused: false, toggleFocus: () => {}, clock: "--:--", setMode: (_mode: GardenMode) => {}, toggleMotion: () => {} });
+  focused: false, toggleFocus: () => {}, visitor: false, setVisitor: (_value: boolean) => {}, clock: "--:--", setMode: (_mode: GardenMode) => {}, toggleMotion: () => {} });
 export function useAtmosphere() { return useContext(Atmosphere); }
 
 export function AtmosphereProvider({ children }: { children: ReactNode }) {
@@ -12,6 +12,7 @@ export function AtmosphereProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<GardenMode>("live");
   const [paused, setPaused] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [visitor, setVisitor] = useState(false);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setFocused(false); };
     document.addEventListener("keydown", escape);
@@ -39,7 +40,7 @@ export function AtmosphereProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem("nhip-garden-motion-v1", next ? "paused" : "playing"); } catch { /* Optional preference storage. */ }
   }
   const clock = now ? now.toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" }) : "--:--";
-  return <Atmosphere.Provider value={{ hour, mode, paused, clock, setMode, toggleMotion, focused, toggleFocus: () => setFocused(value => !value) }}>
+  return <Atmosphere.Provider value={{ hour, mode, paused, clock, setMode, toggleMotion, focused, visitor, setVisitor, toggleFocus: () => setFocused(value => !value) }}>
     {children}
   </Atmosphere.Provider>;
 }

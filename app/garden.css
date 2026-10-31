@@ -1,6 +1,8 @@
 /* A quiet, tactile Japanese garden. Business controls stay on readable paper. */
 @font-face { font-family: "Garden Serif"; src: url("/fonts/noto-serif-regular.woff2") format("woff2"); font-style: normal; font-weight: 400; font-display: swap; }
 @font-face { font-family: "Garden Serif"; src: url("/fonts/noto-serif-italic.woff2") format("woff2"); font-style: italic; font-weight: 400; font-display: swap; }
+@font-face { font-family: "Garden Serif"; src: url("/fonts/noto-serif-bold.woff2") format("woff2"); font-style: normal; font-weight: 700; font-display: swap; }
+@font-face { font-family: "Garden Serif"; src: url("/fonts/noto-serif-bold-italic.woff2") format("woff2"); font-style: italic; font-weight: 700; font-display: swap; }
 :root {
   --ink: #34443b;
   --muted: #788078;
@@ -38,27 +40,27 @@ html { background: var(--paper); }
 body { color: var(--ink); background: transparent; }
 .ambient-wash { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 90% 0%, var(--ambient), transparent 70%), #f4f2e9; transition: background 3s; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-.garden-clock { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.garden-clock { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .garden-clock > svg { color: #bc8c57; }
 .garden-clock > i { width: 5px; height: 5px; border-radius: 50%; background: #baa587; }
 .garden-clock > i.clock-live { background: #789a79; box-shadow: 0 0 0 3px #789a7915; }
-.garden-kicker { display: flex; align-items: center; gap: 9px; font-size: 9px; font-weight: 600; letter-spacing: 1.6px; color: var(--garden-secondary); }
+.garden-kicker { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 700; letter-spacing: 1.6px; color: var(--garden-secondary); }
 .garden-kicker > span { width: 6px; height: 6px; border-radius: 50%; background: #a77a62; box-shadow: 0 0 0 4px #a77a6212; }
 .garden-controls { display: flex; gap: 6px; align-items: center; position: relative; z-index: 3; }
 .garden-time-picker, .garden-controls > button { border: 1px solid #ffffff59; background: var(--garden-glass); color: var(--garden-text); backdrop-filter: blur(12px); box-shadow: 0 3px 9px #31433508; border-radius: 9px; display: flex; align-items: center; gap: 6px; min-height: 34px; }
 .garden-time-picker { padding: 0 8px; }
-.garden-time-picker select { background: transparent; border: 0; color: inherit; font-size: 10px; cursor: pointer; padding: 8px 2px; max-width: 140px; }
+.garden-time-picker select { background: transparent; border: 0; color: inherit; font-size: 13px; cursor: pointer; padding: 8px 2px; max-width: 140px; }
 .garden-time-picker option { background: #fffdf5; color: #34443b; }
 .garden-controls > button { width: 35px; justify-content: center; }
 .garden-controls > button:hover { background: #fff6; transform: translateY(-1px); }
-.garden-cats-caption { display: flex; align-items: center; gap: 6px; font-size: 10px; line-height: 1.6; color: var(--garden-secondary); }
+.garden-cats-caption { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.6; color: var(--garden-secondary); }
 .garden-scene { width: 100%; height: 100%; position: relative; overflow: hidden; isolation: isolate; }
 .garden-canvas { position: absolute; inset: 0; z-index: 2; touch-action: pan-y; }
 .garden-canvas canvas { width: 100%; height: 100%; display: block; }
 .garden-fallback { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 22px; align-content: center; color: var(--garden-text); }
 .garden-fallback .fallback-house { border-top: 15px solid #63736a; border-bottom: 9px solid #9b7659; background: #ebd5b4; padding: 20px 55px; font-size: 34px; color: #80624e; }
 .garden-fallback > span { font-size: 40px; }
-.garden-fallback > p { flex-basis: 100%; text-align: center; font-size: 12px; }
+.garden-fallback > p { flex-basis: 100%; text-align: center; font-size: 15px; }
 .garden-scene[data-scene-status="fallback"] .garden-canvas { visibility: hidden; }
 
 /* Login is a spacious two-part composition, rather than a modal over the scene. */
@@ -71,23 +73,23 @@ body { color: var(--ink); background: transparent; }
 .brand small { letter-spacing: 1.7px; }
 .login-story .brand small { color: var(--garden-secondary); }
 .login-story-main { margin: auto 0; padding: 45px 0 6px; }
-.login-story h1 { font-family: "Garden Serif", Georgia, serif; font-size: clamp(36px, 3.5vw, 55px); line-height: 1.18; letter-spacing: -1.7px; font-weight: 400; color: var(--garden-text); margin: 22px 0 15px; position: relative; z-index: 3; }
-.login-story h1 em { font-weight: 400; color: #7a8268; }
+.login-story h1 { font-family: "Garden Serif", Georgia, serif; font-size: clamp(36px, 3.5vw, 55px); line-height: 1.18; letter-spacing: -1.7px; font-weight: 600; color: var(--garden-text); margin: 22px 0 15px; position: relative; z-index: 3; }
+.login-story h1 em { font-weight: 600; color: #7a8268; }
 :root[data-garden-time="night"] .login-story h1 em { color: #e4c28b; }
-.login-story-main > p { font-size: 12px; line-height: 1.8; max-width: 430px; color: var(--garden-secondary); }
-.login-story-footer { font-size: 10px; color: var(--garden-secondary); padding-top: 28px; }
+.login-story-main > p { font-size: 15px; line-height: 1.8; max-width: 430px; color: var(--garden-secondary); }
+.login-story-footer { font-size: 13px; color: var(--garden-secondary); padding-top: 28px; }
 .login-form-side { background: transparent; padding: 48px 48px 20px; }
 .login-form-card { max-width: 380px; width: 100%; }
 .login-key { background: linear-gradient(145deg, #fffcf3, #e7e8dc); color: #67775c; border: 1px solid #fff; border-radius: 17px; width: 56px; height: 56px; box-shadow: 0 8px 20px #5c6b4e10, inset 0 -3px 5px #49634808; margin-bottom: 26px; }
-.login-form-card h2 { font-family: "Garden Serif", Georgia, serif; font-size: 34px; font-weight: 400; letter-spacing: -1px; color: #394b40; }
-.login-form-card > .eyebrow { color: #7f8878; letter-spacing: 1.5px; font-size: 9px; }
-.login-form-card > p { color: #7a8175; font-size: 12px; margin-top: 12px; margin-bottom: 30px; }
-.login-form-card .field input { background: #fffdf7; border: 1px solid #e2e2d6; border-radius: 10px; height: 48px; font-size: 12px; box-shadow: inset 0 2px 4px #4a604304; }
-.login-form-card .field > span { font-size: 11px; color: #52604e; }
+.login-form-card h2 { font-family: "Garden Serif", Georgia, serif; font-size: 34px; font-weight: 600; letter-spacing: -1px; color: #394b40; }
+.login-form-card > .eyebrow { color: #7f8878; letter-spacing: 1.5px; font-size: 13px; }
+.login-form-card > p { color: #7a8175; font-size: 15px; margin-top: 12px; margin-bottom: 30px; }
+.login-form-card .field input { background: #fffdf7; border: 1px solid #e2e2d6; border-radius: 10px; height: 48px; font-size: 15px; box-shadow: inset 0 2px 4px #4a604304; }
+.login-form-card .field > span { font-size: 14px; color: #52604e; }
 .login-submit { min-height: 48px; border-radius: 10px; }
-.login-toggle { font-size: 11px; }
-.login-native-note { margin-top: 28px; color: #7a8476; font-size: 10px; }
-.login-bottom-note { font-size: 9px; color: #8b9183; letter-spacing: 0.5px; }
+.login-toggle { font-size: 14px; }
+.login-native-note { margin-top: 28px; color: #7a8476; font-size: 13px; }
+.login-bottom-note { font-size: 13px; color: #8b9183; letter-spacing: 0.5px; }
 
 /* Warm paper panels over the continuous Japanese garden. */
 .sidebar { background: #fdfcf4eb; border-right: 1px solid #ddded1; box-shadow: 5px 0 30px #3c574705; backdrop-filter: blur(20px); padding-top: 28px; }
@@ -103,13 +105,13 @@ body { color: var(--ink); background: transparent; }
 .garden-hero { position: relative; overflow: hidden; min-height: 340px; margin: 0 0 31px; background: linear-gradient(120deg, var(--sky-bottom) 0%, var(--sky-top) 100%); color: var(--garden-text); border-radius: 22px; border: 1px solid #fff9; box-shadow: 0 20px 35px -25px #304c3b33, inset 0 1px 0 #fffc; isolation: isolate; }
 .garden-hero-copy { position: relative; z-index: 3; padding: 35px 32px 30px; width: 44%; pointer-events: none; }
 .garden-hero-copy button { pointer-events: auto; }
-.garden-hero-copy .garden-kicker { font-size: 8px; letter-spacing: 1.3px; white-space: nowrap; }
-.garden-hero h2 { font-family: "Garden Serif", Georgia, serif; font-size: clamp(29px, 2.6vw, 42px); font-weight: 400; line-height: 1.2; letter-spacing: -0.9px; margin: 20px 0 15px; }
-.garden-hero h2 em { font-weight: 400; }
-.garden-hero-copy > p { color: var(--garden-secondary); font-size: 11px; line-height: 1.85; }
-.garden-action { border: 1px solid #fffa; border-radius: 9px; background: #fffff0a6; box-shadow: 0 4px 9px #354b3810; color: #435943; display: inline-flex; align-items: center; gap: 13px; padding: 10px 13px; margin-top: 19px; font-size: 11px; font-weight: 600; }
+.garden-hero-copy .garden-kicker { font-size: 13px; letter-spacing: 1.3px; white-space: nowrap; }
+.garden-hero h2 { font-family: "Garden Serif", Georgia, serif; font-size: clamp(29px, 2.6vw, 42px); font-weight: 600; line-height: 1.2; letter-spacing: -0.9px; margin: 20px 0 15px; }
+.garden-hero h2 em { font-weight: 600; }
+.garden-hero-copy > p { color: var(--garden-secondary); font-size: 14px; line-height: 1.85; }
+.garden-action { border: 1px solid #fffa; border-radius: 9px; background: #fffff0a6; box-shadow: 0 4px 9px #354b3810; color: #435943; display: inline-flex; align-items: center; gap: 13px; padding: 10px 13px; margin-top: 19px; font-size: 14px; font-weight: 700; }
 .garden-action:hover { transform: translateY(-2px); box-shadow: 0 7px 16px #354b3820; background: #fffdf0; }
-.garden-hero-copy .garden-cats-caption { margin-top: 19px; font-size: 9px; }
+.garden-hero-copy .garden-cats-caption { margin-top: 19px; font-size: 13px; }
 .garden-hero > .garden-controls { position: absolute; right: 20px; bottom: 17px; }
 .garden-hero + .page-heading .eyebrow { display: none; }
 .garden-hero + .page-heading h1 { font-size: 22px; letter-spacing: -0.5px; margin-top: 0; }
@@ -119,7 +121,7 @@ body { color: var(--ink); background: transparent; }
 .panel, .stat-card { background: #fffef8; }
 .stat-card { position: relative; box-shadow: 0 4px 0 #e6e8dd, 0 9px 19px #3f594008; border: 1px solid #fff; }
 .stat-card:not(:disabled):hover { transform: translateY(-4px); box-shadow: 0 7px 0 #e1e5d7, 0 14px 25px #3f594016; }
-.stat-card strong { font-family: "Garden Serif", Georgia, serif; font-weight: 400; font-size: 37px; }
+.stat-card strong { font-family: "Garden Serif", Georgia, serif; font-weight: 600; font-size: 37px; }
 .stat-icon { border-radius: 10px; box-shadow: inset 0 1px 0 #fff7, 0 3px 6px #39523209; }
 .btn.primary { background: linear-gradient(150deg, #5b795b, #405f47); border: 1px solid #48664b; box-shadow: 0 3px 0 #304f37, 0 5px 13px #3d5c3e15, inset 0 1px 0 #fff2; color: #fffef3; }
 .btn.primary:hover:not(:disabled) { transform: translateY(-1px); background: linear-gradient(150deg, #688565, #4a6b50); box-shadow: 0 4px 0 #304f37, 0 8px 16px #3d5c3e20; }
@@ -167,11 +169,11 @@ tbody tr:hover { background: #f5f7ed; }
 @media (max-width: 620px) {
   .native-login .login-story { padding: 21px 20px 17px; border-radius: 18px; }
   .login-story .brand { font-size: 27px; }
-  .login-story .brand small { font-size: 7px; }
+  .login-story .brand small { font-size: 13px; }
   .login-story h1 { font-size: 34px; margin: 17px 0 11px; }
-  .login-story-main > p { font-size: 11px; max-width: 270px; }
-  .garden-kicker { font-size: 7px; letter-spacing: 1.1px; }
-  .garden-time-picker select { font-size: 9px; max-width: 105px; }
+  .login-story-main > p { font-size: 14px; max-width: 270px; }
+  .garden-kicker { font-size: 13px; letter-spacing: 1.1px; }
+  .garden-time-picker select { font-size: 13px; max-width: 105px; }
   .garden-time-picker { gap: 3px; padding: 0 5px; }
   .garden-controls > button { width: 31px; }
   .login-form-side { padding: 32px 15px 10px; }
@@ -180,14 +182,14 @@ tbody tr:hover { background: #f5f7ed; }
   .login-native-note { margin-top: 22px; }
   .topbar { padding: 0 16px; }
   .topbar-right { gap: 7px; }
-  .topbar-right > .garden-clock { font-size: 10px; gap: 5px; }
+  .topbar-right > .garden-clock { font-size: 13px; gap: 5px; }
   .topbar-right > .garden-clock > i { display: none; }
   .garden-hero { min-height: 485px; border-radius: 17px; margin-bottom: 26px; }
   .garden-hero-copy { padding: 25px 23px 0; width: 100%; }
-  .garden-hero-copy .garden-kicker { font-size: 7px; white-space: nowrap; max-width: none; padding-right: 0; }
+  .garden-hero-copy .garden-kicker { font-size: 13px; white-space: nowrap; max-width: none; padding-right: 0; }
   .garden-hero h2 { font-size: 29px; margin: 16px 0 10px; }
-  .garden-hero-copy > p { font-size: 10px; line-height: 1.65; }
-  .garden-action { margin-top: 13px; padding: 9px 11px; font-size: 10px; }
+  .garden-hero-copy > p { font-size: 13px; line-height: 1.65; }
+  .garden-action { margin-top: 13px; padding: 9px 11px; font-size: 13px; }
   .garden-hero-copy .garden-cats-caption { display: none; }
   .garden-hero > .garden-controls { right: 15px; bottom: 12px; }
   .garden-hero + .page-heading h1 { font-size: 21px; }
@@ -207,14 +209,14 @@ html, body { min-height: 100%; background: #d6dfcd; }
 html[data-garden-focus="true"] { overflow: hidden; }
 html[data-garden-focus="true"] .club-interface { opacity: 0; visibility: hidden; pointer-events: none; }
 .garden-dock { position: fixed; z-index: 45; bottom: max(18px, env(safe-area-inset-bottom)); right: 22px; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #ffffff91; border-radius: 15px; background: #f7f7eccc; backdrop-filter: blur(18px); box-shadow: 0 6px 30px #2c413322, inset 0 1px 0 #fff9; color: #425744; }
-.garden-dock-period { padding: 0 5px; font-size: 10px; }
+.garden-dock-period { padding: 0 5px; font-size: 13px; }
 .garden-dock .garden-time-picker, .garden-dock .garden-controls > button { background: #fffff666; color: #425744; border-color: #d8dfcf; }
-.garden-focus-button { display: inline-flex; align-items: center; gap: 7px; border: 0; background: #46644e; border-radius: 9px; color: #fffdf0; min-height: 34px; padding: 8px 12px; font-size: 10px; white-space: nowrap; }
+.garden-focus-button { display: inline-flex; align-items: center; gap: 7px; border: 0; background: #46644e; border-radius: 9px; color: #fffdf0; min-height: 34px; padding: 8px 12px; font-size: 13px; white-space: nowrap; }
 .garden-focus-button:hover { background: #36563f; }
 .garden-view-caption { position: fixed; left: 40px; top: 40px; z-index: 2; color: var(--garden-text); text-shadow: 0 1px 10px var(--sky-bottom); }
-.garden-view-caption > span { font-size: 11px; letter-spacing: 3px; }
-.garden-view-caption h1 { font-family: "Garden Serif", Georgia, serif; font-weight: 400; font-size: 40px; margin: 12px 0; }
-.garden-view-caption p { font-size: 12px; margin-bottom: 20px; }
+.garden-view-caption > span { font-size: 14px; letter-spacing: 3px; }
+.garden-view-caption h1 { font-family: "Garden Serif", Georgia, serif; font-weight: 600; font-size: 40px; margin: 12px 0; }
+.garden-view-caption p { font-size: 15px; margin-bottom: 20px; }
 .native-login { grid-template-columns: minmax(0, 1fr) minmax(350px, 440px); gap: 6vw; padding: 40px 6vw 100px; align-items: stretch; }
 .native-login .login-story { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
 .login-story-top { align-items: flex-start; }
@@ -268,8 +270,8 @@ html[data-garden-focus="true"] .club-interface { opacity: 0; visibility: hidden;
   .login-form-side { width: min(440px,100%); margin: auto; padding: 28px 24px; }
   .garden-dock { bottom: max(12px, env(safe-area-inset-bottom)); right: 12px; left: 12px; justify-content: center; gap: 7px; padding: 8px; }
   .garden-dock-period { display: none; }
-  .garden-focus-button { font-size: 10px; padding: 8px 10px; }
-  .garden-dock .garden-time-picker select { font-size: 10px; max-width: 117px; }
+  .garden-focus-button { font-size: 13px; padding: 8px 10px; }
+  .garden-dock .garden-time-picker select { font-size: 13px; max-width: 117px; }
   .garden-hero { min-height: 330px; margin-bottom: 22px; }
   .garden-hero-copy { width: min(390px,100%); padding: 22px; background: linear-gradient(100deg, #fffdf1e6, #fffdf1bb); }
   .garden-hero h2 { font-size: 29px; }
@@ -277,4 +279,80 @@ html[data-garden-focus="true"] .club-interface { opacity: 0; visibility: hidden;
   .page-heading { padding: 18px; }
   .garden-view-caption { left: 24px; top: 30px; }
   .garden-view-caption h1 { font-size: 29px; }
+}
+
+/* Larger, stronger typography; keep controls spacious and tables scrollable. */
+:root { font-size: 16px; --muted: #657160; }
+body { font-weight: 600; line-height: 1.55; }
+h1, h2, h3, strong, .field > span, .field-label { font-weight: 700; }
+.login-story h1, .login-story h1 em, .login-form-card h2,
+.garden-hero h2, .garden-hero h2 em, .garden-view-caption h1, .stat-card strong { font-weight: 700; }
+.login-story h1 { font-size: clamp(40px, 3.8vw, 60px); line-height: 1.25; letter-spacing: -1.1px; }
+.login-form-card h2 { font-size: 36px; line-height: 1.35; }
+.garden-hero h2 { font-size: clamp(32px, 2.7vw, 44px); line-height: 1.3; }
+.page-heading h1, .garden-hero + .page-heading h1 { font-size: 30px; line-height: 1.4; }
+.panel-head h2 { font-size: 20px; line-height: 1.4; }
+.login-story-main > p, .login-form-card > p, .garden-hero-copy > p,
+.page-heading p, .field input:not([type="checkbox"]), .field select, .field textarea { font-size: 16px; }
+.login-form-card .field input { font-size: 16px; height: 52px; }
+.login-form-card .field > span, .field-label { font-size: 15px; }
+.login-form-card > .eyebrow, .garden-kicker, .garden-hero-copy .garden-kicker { font-size: 13px; font-weight: 700; letter-spacing: 0.8px; line-height: 1.7; white-space: normal; max-width: none; }
+.garden-hero-copy .garden-cats-caption, .login-story-footer { font-size: 14px; font-weight: 600; }
+.brand small, .login-story .brand small { font-size: 11px; line-height: 1.5; letter-spacing: 1.1px; }
+.btn, .garden-action { font-size: 15px; font-weight: 700; min-height: 44px; line-height: 1.4; }
+.text-button, .forgot-password, .login-toggle, .login-toggle > button { font-size: 14px; font-weight: 700; }
+.hint, .muted, .panel-head p, .stat-bottom, .person-cell small, .table-footer,
+.breadcrumb, .breadcrumb strong, .login-form-card > p, .login-native-note, .login-bottom-note { color: #626f5c; }
+th { font-size: 13px; font-weight: 700; color: #51644d; }
+td, .person-cell strong { font-size: 15px; }
+.person-cell small, .table-footer, .badge, .calendar-number small { font-size: 13px; }
+.table-search input { font-size: 15px; min-height: 30px; }
+.table-toolbar, .panel-head, .heading-actions, .schedule-summary, .page-heading { flex-wrap: wrap; }
+.table-tabs { flex-wrap: wrap; gap: 10px 17px; }
+.week-select, .month-select input { font-size: 14px; }
+.week-select { min-width: 215px; }
+.sidebar nav button { font-size: 16px; font-weight: 700; min-height: 46px; }
+.sidebar-bottom > button { font-size: 14px; font-weight: 600; min-height: 42px; }
+.sidebar-user strong, .workspace-label strong { font-size: 15px; }
+.sidebar-user > div > span, .workspace-label > div > span { font-size: 13px; }
+.duty-calendar { min-width: 0; overflow-x: auto; }
+.calendar-day-labels, .calendar-grid { min-width: 840px; }
+.calendar-day-labels > span, .calendar-shift { font-size: 14px; }
+.calendar-cell { min-height: 155px; }
+.calendar-shift { min-height: 47px; line-height: 1.55; padding: 7px; }
+.calendar-number { font-size: 16px; font-weight: 700; }
+.garden-view-caption p { font-size: 16px; max-width: 560px; }
+.garden-clock { font-size: 14px; font-weight: 700; }
+.garden-dock .garden-time-picker select { font-size: 14px; font-weight: 700; max-width: 160px; }
+.garden-focus-button { font-size: 14px; font-weight: 700; min-height: 40px; }
+.garden-dock-period { font-size: 13px; font-weight: 600; }
+.garden-controls > button { width: 40px; min-height: 40px; }
+.garden-time-picker { min-height: 40px; }
+.topbar { min-height: 78px; height: auto; padding-top: 16px; padding-bottom: 16px; }
+@media (min-width: 761px) {
+  .sidebar { width: 264px; }
+  .main-shell { margin-left: 264px; }
+}
+@media (max-width: 1100px) {
+  .topbar-role { display: none; }
+  .topbar-right { gap: 8px; }
+  .garden-hero-copy { width: min(560px, 100%); }
+}
+@media (max-width: 760px) {
+  .sidebar { width: min(290px, 86vw); }
+  .main-shell { margin-left: 0; }
+  .login-story h1 { font-size: 38px; }
+  .login-form-card h2 { font-size: 32px; }
+  .garden-hero h2 { font-size: 32px; }
+  .garden-hero-copy { width: 100%; }
+  .garden-hero { min-height: 0; padding-bottom: 60px; }
+  .page-heading h1, .garden-hero + .page-heading h1 { font-size: 27px; }
+  .garden-dock { flex-wrap: wrap; gap: 6px; }
+  .garden-dock .garden-time-picker select { font-size: 13px; max-width: 138px; }
+  .garden-focus-button { font-size: 13px; padding: 8px; }
+  .login-story-top > .garden-clock { display: none; }
+  .garden-view-caption p { font-size: 15px; max-width: calc(100vw - 48px); }
+  .topbar-right > .garden-clock { font-size: 13px; }
+  .main-content { padding-bottom: 120px; }
+  .topbar { gap: 8px; }
 }

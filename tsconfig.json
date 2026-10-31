@@ -25,6 +25,12 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@designcodeio/threeui": [
+        "./vendor/threeui/index.tsx"
+      ],
+      "@designcodeio/threeui/style.css": [
+        "./vendor/threeui/style.css"
       ]
     },
     "types": [
@@ -48,6 +54,7 @@
     ".wrangler",
     ".sites-runtime",
     "outputs",
-    "work"
+    "work",
+    "vendor/threeui/upstream"
   ]
 }

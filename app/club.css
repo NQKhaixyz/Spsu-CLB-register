@@ -11,7 +11,7 @@
   font-family: "Segoe UI", Arial, sans-serif;
   color: var(--ink);
   background: var(--paper);
-  font-size: 14px;
+  font-size: 16px;
   font-synthesis: none;
 }
 * {
@@ -117,7 +117,7 @@ input[type="checkbox"]:disabled {
 }
 .mono {
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: 15px;
   letter-spacing: 0.1px;
 }
 .center {
@@ -128,11 +128,11 @@ input[type="checkbox"]:disabled {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: 15px;
 }
 .eyebrow {
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 700;
   letter-spacing: 1.45px;
   color: #7a897e;
   display: inline-flex;
@@ -144,13 +144,13 @@ input[type="checkbox"]:disabled {
 }
 .hint {
   color: #899187;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.8;
   margin: 14px 0;
 }
 .field-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   display: block;
   margin-bottom: 9px;
 }
@@ -203,9 +203,9 @@ input[type="checkbox"]:disabled {
 }
 .brand small {
   display: block;
-  font-size: 7px;
+  font-size: 13px;
   letter-spacing: 2px;
-  font-weight: 600;
+  font-weight: 700;
   margin-top: 6px;
   color: #8b9687;
 }
@@ -233,8 +233,8 @@ input[type="checkbox"]:disabled {
   min-width: 0;
 }
 .workspace-label strong {
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 700;
   display: block;
   white-space: nowrap;
   overflow: hidden;
@@ -242,7 +242,7 @@ input[type="checkbox"]:disabled {
 }
 .workspace-label span:not(.workspace-symbol) {
   display: block;
-  font-size: 9px;
+  font-size: 13px;
   color: #8f978c;
   margin-top: 3px;
 }
@@ -250,8 +250,8 @@ input[type="checkbox"]:disabled {
   color: #879080;
 }
 .nav-label {
-  font-size: 8px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 700;
   color: #a4aa9e;
   letter-spacing: 1.2px;
   margin: 0 13px 14px;
@@ -272,7 +272,7 @@ input[type="checkbox"]:disabled {
   border-radius: 8px;
   padding: 12px 13px;
   text-align: left;
-  font-size: 12px;
+  font-size: 15px;
   color: #7c857a;
   min-height: 43px;
 }
@@ -289,7 +289,7 @@ input[type="checkbox"]:disabled {
 .sidebar-bottom > button.active {
   background: #eaf1e6;
   color: #426d42;
-  font-weight: 600;
+  font-weight: 700;
 }
 .sidebar nav button.active:before {
   content: "";
@@ -306,10 +306,10 @@ input[type="checkbox"]:disabled {
   border-radius: 5px;
   min-width: 20px;
   height: 19px;
-  font-size: 10px;
+  font-size: 13px;
   display: grid;
   place-items: center;
-  font-weight: 600;
+  font-weight: 700;
 }
 .sidebar-week {
   margin: 37px 8px 20px;
@@ -319,7 +319,7 @@ input[type="checkbox"]:disabled {
   border-radius: 10px;
 }
 .sidebar-week > div:first-child {
-  font-size: 8px;
+  font-size: 13px;
   letter-spacing: 1px;
   color: #8b9977;
   display: flex;
@@ -336,8 +336,8 @@ input[type="checkbox"]:disabled {
   flex-shrink: 0;
 }
 .sidebar-week strong {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   display: block;
   margin: 10px 0 6px;
   letter-spacing: 0.4px;
@@ -345,7 +345,7 @@ input[type="checkbox"]:disabled {
 }
 .sidebar-week p {
   color: #9aa48d;
-  font-size: 9px;
+  font-size: 13px;
 }
 .week-progress {
   height: 3px;
@@ -363,7 +363,7 @@ input[type="checkbox"]:disabled {
   margin-top: auto;
 }
 .sidebar-bottom > button {
-  font-size: 11px;
+  font-size: 14px;
   padding: 10px 13px;
   min-height: 38px;
 }
@@ -384,12 +384,12 @@ input[type="checkbox"]:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
 }
 .sidebar-user div > span {
   display: block;
-  font-size: 9px;
+  font-size: 13px;
   margin-top: 4px;
   color: #959c90;
 }
@@ -414,15 +414,15 @@ input[type="checkbox"]:disabled {
   display: flex;
   align-items: center;
   gap: 13px;
-  font-size: 11px;
+  font-size: 14px;
   color: #a0a699;
 }
 .breadcrumb > svg {
   color: #b6bcb0;
 }
 .breadcrumb strong {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: #616d5e;
 }
 .topbar-right {
@@ -431,7 +431,7 @@ input[type="checkbox"]:disabled {
   gap: 18px;
 }
 .today-label {
-  font-size: 10px;
+  font-size: 13px;
   color: #939b8b;
   font-variant-numeric: tabular-nums;
 }
@@ -445,7 +445,7 @@ input[type="checkbox"]:disabled {
   display: flex;
   align-items: center;
   gap: 17px;
-  font-size: 10px;
+  font-size: 13px;
   color: #687461;
 }
 .icon-button {
@@ -490,14 +490,14 @@ input[type="checkbox"]:disabled {
 }
 .page-heading h1 {
   font-size: 29px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.9px;
   margin: 8px 0 9px;
   line-height: 1.35;
 }
 .page-heading p {
   color: #92988b;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.7;
 }
 .heading-actions {
@@ -510,7 +510,7 @@ input[type="checkbox"]:disabled {
   border: 1px solid #e0e5d9;
   border-radius: 8px;
   padding: 10px 12px;
-  font-size: 10px;
+  font-size: 13px;
   background: white;
   color: #747e6a;
   min-width: 190px;
@@ -530,7 +530,7 @@ input[type="checkbox"]:disabled {
 .month-select input {
   border: 0;
   outline: 0;
-  font-size: 11px;
+  font-size: 14px;
   width: 125px;
   background: transparent;
   color: #68785c;
@@ -545,8 +545,8 @@ input[type="checkbox"]:disabled {
   padding: 10px 14px;
   line-height: 1.25;
   min-height: 37px;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 .btn.primary {
@@ -589,7 +589,7 @@ input[type="checkbox"]:disabled {
   gap: 7px;
   align-items: center;
   padding: 4px 0;
-  font-size: 10px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .text-button:hover {
@@ -621,7 +621,7 @@ input[type="checkbox"]:disabled {
   justify-content: space-between;
   gap: 8px;
   align-items: center;
-  font-size: 11px;
+  font-size: 14px;
   color: #7f8976;
 }
 .stat-icon {
@@ -636,7 +636,7 @@ input[type="checkbox"]:disabled {
 .stat-card strong {
   display: block;
   font-size: 32px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -1.3px;
   line-height: 1.2;
   margin: 6px 0 13px;
@@ -645,7 +645,7 @@ input[type="checkbox"]:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 13px;
   color: #a1a996;
   gap: 8px;
 }
@@ -689,12 +689,12 @@ input[type="checkbox"]:disabled {
 }
 .meeting-card .eyebrow {
   color: #8b9b77;
-  font-size: 8px;
+  font-size: 13px;
   letter-spacing: 1.1px;
 }
 .meeting-card h2 {
   font-size: 26px;
-  font-weight: 570;
+  font-weight: 600;
   letter-spacing: -0.8px;
   line-height: 1.3;
   margin: 22px 0 7px;
@@ -704,7 +704,7 @@ input[type="checkbox"]:disabled {
   color: #3a5433;
 }
 .meeting-card > p {
-  font-size: 11px;
+  font-size: 14px;
   color: #97a585;
   position: relative;
   z-index: 1;
@@ -722,7 +722,7 @@ input[type="checkbox"]:disabled {
   align-items: center;
   gap: 8px;
   color: #7e8f6d;
-  font-size: 10px;
+  font-size: 13px;
 }
 .meeting-info svg {
   color: #91a080;
@@ -750,7 +750,7 @@ input[type="checkbox"]:disabled {
 }
 .avatar-stack > span:last-child:not(.avatar) {
   color: #8a9a78;
-  font-size: 9px;
+  font-size: 13px;
   margin-left: 9px;
   max-width: 125px;
 }
@@ -761,8 +761,8 @@ input[type="checkbox"]:disabled {
   width: 33px;
   height: 33px;
   min-width: 33px;
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   border-radius: 50%;
   background: #edf0e4;
   color: #7d8e61;
@@ -773,7 +773,7 @@ input[type="checkbox"]:disabled {
   width: 27px;
   height: 27px;
   min-width: 27px;
-  font-size: 8px;
+  font-size: 13px;
 }
 .avatar.color-1 {
   background: #f5e9e0;
@@ -861,10 +861,10 @@ input[type="checkbox"]:disabled {
   gap: 5px;
   padding: 5px 8px;
   border-radius: 5px;
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1;
   white-space: nowrap;
-  font-weight: 450;
+  font-weight: 600;
   color: #9b825b;
   background: #f8f2e6;
 }
@@ -894,7 +894,7 @@ input[type="checkbox"]:disabled {
 .meeting-card .badge.attending {
   background: #dde9d1;
   color: #7e9766;
-  font-size: 8px;
+  font-size: 13px;
 }
 .panel {
   background: #fff;
@@ -911,13 +911,13 @@ input[type="checkbox"]:disabled {
   gap: 12px;
 }
 .panel-head h2 {
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.4;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.15px;
 }
 .panel-head p {
-  font-size: 10px;
+  font-size: 13px;
   color: #a0a68f;
   margin-top: 5px;
   line-height: 1.6;
@@ -931,7 +931,7 @@ input[type="checkbox"]:disabled {
   display: grid;
   place-items: center;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .requests-panel .panel-head {
   padding-bottom: 10px;
@@ -952,21 +952,21 @@ input[type="checkbox"]:disabled {
   min-width: 0;
 }
 .request-person strong {
-  font-size: 11px;
-  font-weight: 550;
+  font-size: 14px;
+  font-weight: 600;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .request-person > div > span {
-  font-size: 9px;
+  font-size: 13px;
   color: #a1a994;
   display: block;
   margin-top: 4px;
 }
 .request-week {
-  font-size: 8px;
+  font-size: 13px;
   color: #b1b7a5;
 }
 .request-actions {
@@ -984,7 +984,7 @@ input[type="checkbox"]:disabled {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  font-size: 9px;
+  font-size: 13px;
   padding: 5px 10px;
 }
 .request-actions > button + button {
@@ -1007,14 +1007,14 @@ input[type="checkbox"]:disabled {
   border-top: 1px solid #f0f2ea;
 }
 .panel-link .text-button {
-  font-size: 9px;
+  font-size: 13px;
 }
 .request-details {
   background: #fafbf7;
   border-radius: 8px;
   padding: 12px;
   margin: 12px 0 0 42px;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.8;
   color: #7d8974;
 }
@@ -1022,7 +1022,7 @@ input[type="checkbox"]:disabled {
   margin-top: 7px;
 }
 .request-details p > span {
-  font-weight: 600;
+  font-weight: 700;
   color: #5f6f55;
 }
 .requests-panel:has(.request-details) .request-item {
@@ -1052,18 +1052,18 @@ input[type="checkbox"]:disabled {
   align-items: center;
   gap: 6px;
   color: #99a08d;
-  font-size: 10px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .table-tabs button.selected {
   border-bottom-color: #6f8f58;
   color: #5b7e46;
-  font-weight: 600;
+  font-weight: 700;
 }
 .table-tabs button > span {
   background: #f2f4ed;
   color: #a6ad9b;
-  font-size: 8px;
+  font-size: 13px;
   min-width: 17px;
   height: 15px;
   display: grid;
@@ -1092,7 +1092,7 @@ input[type="checkbox"]:disabled {
   outline: 0;
   background: transparent;
   width: 100%;
-  font-size: 9px;
+  font-size: 13px;
   color: #667a54;
 }
 .table-search input::placeholder {
@@ -1108,8 +1108,8 @@ table {
   white-space: nowrap;
 }
 th {
-  font-size: 8px;
-  font-weight: 550;
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.5px;
   color: #a2aa94;
   background: #fcfdf9;
@@ -1119,7 +1119,7 @@ th {
 td {
   padding: 13px 17px;
   border-bottom: 1px solid #eff1e9;
-  font-size: 10px;
+  font-size: 13px;
   color: #6c7b5e;
 }
 th:first-child,
@@ -1139,7 +1139,7 @@ tbody tr:hover {
 .number-cell {
   width: 45px;
   color: #b2b8a5;
-  font-size: 9px;
+  font-size: 13px;
 }
 .person-cell {
   display: flex;
@@ -1152,14 +1152,14 @@ tbody tr:hover {
   min-width: 0;
 }
 .person-cell strong {
-  font-size: 10px;
-  font-weight: 550;
+  font-size: 13px;
+  font-weight: 600;
   color: #596b4d;
   display: block;
 }
 .person-cell small {
   display: block;
-  font-size: 8px;
+  font-size: 13px;
   line-height: 1.5;
   color: #a7af9a;
   margin-top: 3px;
@@ -1181,7 +1181,7 @@ tbody tr:hover {
   justify-content: space-between;
   gap: 10px;
   color: #adb39f;
-  font-size: 9px;
+  font-size: 13px;
 }
 .pagination {
   display: flex;
@@ -1198,7 +1198,7 @@ tbody tr:hover {
   border: 1px solid #e9ecdf;
   border-radius: 5px;
   color: #a0ab90;
-  font-size: 9px;
+  font-size: 13px;
 }
 .pagination span {
   background: #f0f4e9;
@@ -1227,13 +1227,13 @@ tbody tr:hover {
   flex: 1;
 }
 .upcoming-row > div > strong {
-  font-size: 11px;
-  font-weight: 550;
+  font-size: 14px;
+  font-weight: 600;
   display: block;
   color: #647654;
 }
 .upcoming-row > div > span {
-  font-size: 9px;
+  font-size: 13px;
   color: #a5ae96;
   display: block;
   margin-top: 5px;
@@ -1255,13 +1255,13 @@ tbody tr:hover {
   gap: 3px;
 }
 .date-tile > span {
-  font-size: 6px !important;
+  font-size: 13px !important;
   color: #a0b08c !important;
   letter-spacing: 0.4px;
   margin: 0 !important;
 }
 .date-tile > strong {
-  font-size: 18px !important;
+  font-size: 20px !important;
   color: #72885d !important;
   line-height: 1;
 }
@@ -1291,22 +1291,22 @@ tbody tr:hover {
   transform: rotate(-20deg);
 }
 .note-card h3 {
-  font-size: 19px;
-  font-weight: 500;
+  font-size: 21px;
+  font-weight: 600;
   letter-spacing: -0.4px;
   line-height: 1.45;
   color: #7c8066;
   position: relative;
 }
 .note-card p {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.9;
   color: #a6a88f;
   max-width: 250px;
   margin: 12px 0 17px;
 }
 .note-card > span {
-  font-size: 7px;
+  font-size: 13px;
   letter-spacing: 1.3px;
   color: #a0a384;
   display: flex;
@@ -1319,7 +1319,7 @@ tbody tr:hover {
   align-items: center;
   gap: 13px;
   color: #a0aa92;
-  font-size: 10px;
+  font-size: 13px;
 }
 .page-footer {
   padding: 26px 0 24px;
@@ -1327,7 +1327,7 @@ tbody tr:hover {
   align-items: center;
   justify-content: space-between;
   color: #afb5a3;
-  font-size: 8px;
+  font-size: 13px;
   gap: 15px;
 }
 .page-footer > span:first-child {
@@ -1344,7 +1344,7 @@ tbody tr:hover {
   border: 1px solid #e9e6d7;
   border-radius: 7px;
   color: #a59b78;
-  font-size: 9px;
+  font-size: 13px;
   margin: 0 0 23px;
 }
 .demo-banner > span {
@@ -1357,7 +1357,7 @@ tbody tr:hover {
   align-items: center;
   gap: 6px;
   color: #8d8867;
-  font-size: 9px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .welcome-banner {
@@ -1373,7 +1373,7 @@ tbody tr:hover {
   align-items: center;
   gap: 8px;
   color: #9ca58c;
-  font-size: 10px;
+  font-size: 13px;
   padding: 19px 0;
 }
 .week-notice svg {
@@ -1391,7 +1391,7 @@ tbody tr:hover {
   margin-bottom: 20px;
   border: 1px solid;
   line-height: 1.7;
-  font-size: 11px;
+  font-size: 14px;
 }
 .notice > svg {
   flex-shrink: 0;
@@ -1401,11 +1401,11 @@ tbody tr:hover {
   flex: 1;
 }
 .notice strong {
-  font-size: 12px;
-  font-weight: 550;
+  font-size: 15px;
+  font-weight: 600;
 }
 .notice p {
-  font-size: 10px;
+  font-size: 13px;
   margin-top: 5px;
   color: inherit;
   opacity: 0.8;
@@ -1448,13 +1448,13 @@ tbody tr:hover {
   margin-bottom: 17px;
 }
 .empty h3 {
-  font-size: 14px;
-  font-weight: 550;
+  font-size: 16px;
+  font-weight: 600;
   color: #7a8b67;
   margin-bottom: 8px;
 }
 .empty p {
-  font-size: 11px;
+  font-size: 14px;
   color: #a0aa91;
   line-height: 1.8;
   max-width: 340px;
@@ -1471,10 +1471,10 @@ tbody tr:hover {
   margin-bottom: 10px;
 }
 .requests-panel .empty h3 {
-  font-size: 11px;
+  font-size: 14px;
 }
 .requests-panel .empty p {
-  font-size: 9px;
+  font-size: 13px;
 }
 .members-toolbar {
   display: flex;
@@ -1482,7 +1482,7 @@ tbody tr:hover {
   align-items: center;
   padding: 20px 22px;
   border-bottom: 1px solid var(--line);
-  font-size: 11px;
+  font-size: 14px;
   color: #89987a;
 }
 .members-toolbar .table-search {
@@ -1497,11 +1497,11 @@ tbody tr:hover {
   background: #eef4e8;
   padding: 4px 7px;
   border-radius: 4px;
-  font-size: 9px;
+  font-size: 13px;
 }
 .score {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: #7f9e66;
   display: inline-block;
   min-width: 33px;
@@ -1522,7 +1522,7 @@ tbody tr:hover {
   border-radius: 10px;
   padding: 18px 20px;
   margin: 0 0 23px;
-  font-size: 10px;
+  font-size: 13px;
   color: #8d9d75;
   flex-wrap: wrap;
 }
@@ -1532,13 +1532,13 @@ tbody tr:hover {
   gap: 8px;
 }
 .formula-bar strong {
-  font-size: 12px;
+  font-size: 15px;
   color: #788e60;
-  font-weight: 500;
+  font-weight: 600;
 }
 .formula-bar strong i {
   font-style: normal;
-  font-weight: 650;
+  font-weight: 700;
 }
 .formula-bar .text-button {
   margin-left: auto;
@@ -1556,7 +1556,7 @@ tbody tr:hover {
   gap: 12px;
 }
 .schedule-summary > div > span:last-child:not(.badge) {
-  font-size: 10px;
+  font-size: 13px;
   color: #9da88b;
 }
 .duty-layout {
@@ -1576,7 +1576,7 @@ tbody tr:hover {
 .calendar-day-labels > span {
   text-align: center;
   padding: 13px 5px;
-  font-size: 9px;
+  font-size: 13px;
   color: #9caa88;
 }
 .calendar-grid {
@@ -1601,13 +1601,13 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: #869874;
   padding: 1px 4px 7px;
 }
 .calendar-number small {
-  font-size: 6px;
+  font-size: 13px;
   color: #8da574;
 }
 .calendar-cell.today {
@@ -1625,7 +1625,7 @@ tbody tr:hover {
   background: #eff4e6;
   color: #8ca175;
   width: 100%;
-  font-size: 7px;
+  font-size: 13px;
   line-height: 1.6;
   text-align: left;
   padding: 5px 4px;
@@ -1669,10 +1669,10 @@ tbody tr:hover {
   padding: 17px 15px 12px;
 }
 .distribution .panel-head h2 {
-  font-size: 12px;
+  font-size: 15px;
 }
 .distribution .panel-head p {
-  font-size: 9px;
+  font-size: 13px;
 }
 .distribution-list {
   padding: 0 14px;
@@ -1685,14 +1685,14 @@ tbody tr:hover {
   gap: 7px;
   padding: 10px 0;
   border-bottom: 1px solid #f0f3e9;
-  font-size: 9px;
+  font-size: 13px;
   color: #83966e;
 }
 .distribution-list > div > span:not(.avatar) {
   flex: 1;
 }
 .distribution-list strong {
-  font-size: 10px;
+  font-size: 13px;
   color: #8ca775;
   border-radius: 4px;
   background: #f0f5e9;
@@ -1700,7 +1700,7 @@ tbody tr:hover {
   height: 21px;
   display: grid;
   place-items: center;
-  font-weight: 500;
+  font-weight: 600;
 }
 .distribution-list strong.extra-count {
   color: #b39c6f;
@@ -1708,12 +1708,12 @@ tbody tr:hover {
 }
 .distribution-list small {
   display: block;
-  font-size: 7px;
+  font-size: 13px;
   margin-top: 2px;
   color: #b3aa88;
 }
 .distribution-note {
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.8;
   color: #a2ad90;
   padding: 14px 15px 19px;
@@ -1744,7 +1744,7 @@ tbody tr:hover {
   margin: 12px 0 0;
 }
 .day-options > label {
-  font-size: 10px;
+  font-size: 13px;
   color: #91a07f;
   display: flex;
   align-items: center;
@@ -1777,13 +1777,13 @@ tbody tr:hover {
   margin-top: 6px;
 }
 .audit-list strong {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: #839574;
   display: block;
 }
 .audit-list small {
-  font-size: 8px;
+  font-size: 13px;
   color: #aeb89e;
   display: block;
   margin-top: 4px;
@@ -1807,7 +1807,7 @@ tbody tr:hover {
   padding: 0 22px;
 }
 .registration-status > p {
-  font-size: 11px;
+  font-size: 14px;
   color: #a1ad91;
   line-height: 1.8;
   margin: 12px 0;
@@ -1841,13 +1841,13 @@ tbody tr:hover {
   flex: 1;
 }
 .extra-preference strong {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: #81986a;
   display: block;
 }
 .extra-preference small {
-  font-size: 9px;
+  font-size: 13px;
   color: #adb99c;
   margin-top: 4px;
   display: block;
@@ -1864,7 +1864,7 @@ tbody tr:hover {
 }
 .my-score > span {
   color: #a1b18a;
-  font-size: 8px;
+  font-size: 13px;
   letter-spacing: 1.2px;
 }
 .my-score > strong {
@@ -1872,17 +1872,17 @@ tbody tr:hover {
   font-size: 60px;
   line-height: 1.4;
   color: #799d59;
-  font-weight: 400;
+  font-weight: 600;
   letter-spacing: -3px;
 }
 .my-score p {
-  font-size: 10px;
+  font-size: 13px;
   color: #a4b28f;
 }
 .personal-score > .hint {
   padding: 0 22px 14px;
   text-align: center;
-  font-size: 10px;
+  font-size: 13px;
 }
 .history-list > div {
   display: flex;
@@ -1896,13 +1896,13 @@ tbody tr:hover {
   flex: 1;
 }
 .history-list strong {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   display: block;
   color: #8a9e73;
 }
 .history-list > div > div > span {
-  font-size: 9px;
+  font-size: 13px;
   color: #b2bca3;
   display: block;
   margin-top: 5px;
@@ -1914,11 +1914,11 @@ tbody tr:hover {
   padding: 13px 0;
   border-bottom: 1px solid var(--line);
   line-height: 1.8;
-  font-size: 12px;
+  font-size: 15px;
   color: #7f9070;
 }
 .detail-lines p > span {
-  font-size: 10px;
+  font-size: 13px;
   color: #a4af95;
   display: block;
   margin-bottom: 5px;
@@ -1944,13 +1944,13 @@ tbody tr:hover {
   margin: 0;
 }
 .shift-person .person-cell strong {
-  font-size: 12px;
+  font-size: 15px;
 }
 .shift-person .person-cell small {
-  font-size: 10px;
+  font-size: 13px;
 }
 .shift-person > p {
-  font-size: 12px;
+  font-size: 15px;
 }
 .mobile-menu,
 .mobile-close {
@@ -1996,14 +1996,14 @@ tbody tr:hover {
   flex: 1;
 }
 .dialog-heading h2 {
-  font-size: 20px;
-  font-weight: 550;
+  font-size: 22px;
+  font-weight: 600;
   letter-spacing: -0.5px;
   color: #506944;
   line-height: 1.4;
 }
 .dialog-heading p {
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.9;
   color: #9aa88a;
   margin-top: 8px;
@@ -2012,7 +2012,7 @@ tbody tr:hover {
   margin: -4px -8px 0 0;
 }
 .dialog-copy {
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.9;
   color: #9ca88e;
   margin: 14px 0;
@@ -2022,12 +2022,12 @@ tbody tr:hover {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 18px;
-  font-size: 12px;
+  font-size: 15px;
   color: #82956f;
 }
 .field > span {
-  font-size: 11px;
-  font-weight: 550;
+  font-size: 14px;
+  font-weight: 600;
 }
 .field input:not([type="checkbox"]),
 .field textarea,
@@ -2038,13 +2038,13 @@ tbody tr:hover {
   border-radius: 8px;
   background: #fcfef9;
   color: #657f52;
-  font-size: 12px;
+  font-size: 15px;
   min-height: 40px;
 }
 .field input::placeholder,
 .field textarea::placeholder {
   color: #bac4ad;
-  font-size: 11px;
+  font-size: 14px;
 }
 .field textarea {
   min-height: 110px;
@@ -2052,9 +2052,9 @@ tbody tr:hover {
   line-height: 1.7;
 }
 .field small {
-  font-size: 10px;
+  font-size: 13px;
   color: #a7b398;
-  font-weight: 400;
+  font-weight: 600;
 }
 .form-grid {
   display: grid;
@@ -2074,7 +2074,7 @@ tbody tr:hover {
   display: flex;
   gap: 9px;
   align-items: center;
-  font-size: 11px;
+  font-size: 14px;
   color: #8ea077;
   line-height: 1.8;
   margin: 10px 0 22px;
@@ -2088,13 +2088,13 @@ tbody tr:hover {
   border: 1px solid #e9eddf;
   border-radius: 8px;
   overflow: hidden;
-  font-size: 10px;
+  font-size: 13px;
   color: #9aaa87;
 }
 .availability-grid > strong {
   text-align: center;
-  font-size: 9px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   padding: 10px;
   background: #fafcf5;
 }
@@ -2128,16 +2128,16 @@ tbody tr:hover {
   margin-bottom: 15px;
 }
 .upload-zone strong {
-  font-size: 12px;
+  font-size: 15px;
   color: #8ca773;
-  font-weight: 500;
+  font-weight: 600;
 }
 .upload-zone > span {
-  font-size: 10px;
+  font-size: 13px;
   color: #b0bea0;
 }
 .upload-zone input {
-  font-size: 10px;
+  font-size: 13px;
   max-width: 100%;
   color: #9baa87;
   padding-top: 8px;
@@ -2166,7 +2166,7 @@ tbody tr:hover {
   padding: 15px 18px;
   box-shadow: 0 8px 35px #25381a20;
   color: #78995b;
-  font-size: 12px;
+  font-size: 15px;
   max-width: min(520px, calc(100vw - 40px));
   animation: rise 0.2s ease-out;
 }
@@ -2197,17 +2197,17 @@ tbody tr:hover {
   display: flex;
   gap: 7px;
   align-items: center;
-  font-size: 10px;
+  font-size: 13px;
   padding: 9px 13px;
 }
 .help-content p {
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.9;
   color: #95a682;
   margin: 17px 0;
 }
 .help-content strong {
-  font-weight: 550;
+  font-weight: 600;
   color: #748d5d;
 }
 .welcome {
@@ -2266,29 +2266,29 @@ tbody tr:hover {
 .welcome h1 {
   font-size: 36px;
   letter-spacing: -1.3px;
-  font-weight: 500;
+  font-weight: 600;
   color: #526e43;
   line-height: 1.4;
   margin: 16px 0;
 }
 .welcome > .eyebrow {
   color: #9cb18c;
-  font-size: 8px;
+  font-size: 13px;
   letter-spacing: 1.6px;
 }
 .welcome > p {
-  font-size: 12px;
+  font-size: 15px;
   color: #a1b090;
   line-height: 1.9;
   margin-bottom: 28px;
 }
 .welcome > .btn {
-  font-size: 12px;
+  font-size: 15px;
   padding: 13px 22px;
   border-radius: 9px;
 }
 .welcome > small {
-  font-size: 9px;
+  font-size: 13px;
   color: #aebca0;
   margin-top: 17px;
 }
@@ -2324,7 +2324,7 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 9px;
+  font-size: 13px;
   color: #adbc9e;
   line-height: 1.8;
   overflow-wrap: anywhere;
@@ -2343,7 +2343,7 @@ tbody tr:hover {
   margin-bottom: 15px;
 }
 .loading-screen p {
-  font-size: 11px;
+  font-size: 14px;
 }
 @keyframes fade {
   from {
@@ -2394,7 +2394,7 @@ tbody tr:hover {
     font-size: 30px;
   }
   .meeting-card > p {
-    font-size: 12px;
+    font-size: 15px;
   }
   .meeting-card h2 {
     margin-top: 25px;
@@ -2403,7 +2403,7 @@ tbody tr:hover {
     margin-top: 23px;
   }
   .meeting-info > span {
-    font-size: 11px;
+    font-size: 14px;
   }
   .meeting-art {
     right: 35px;
@@ -2416,33 +2416,33 @@ tbody tr:hover {
     padding: 16px 24px 17px;
   }
   .request-person strong {
-    font-size: 12px;
+    font-size: 15px;
   }
   .request-actions > button {
-    font-size: 10px;
+    font-size: 13px;
     padding: 6px 12px;
   }
   .panel-head h2 {
-    font-size: 15px;
+    font-size: 17px;
   }
   .stat-top {
-    font-size: 12px;
+    font-size: 15px;
   }
   .stat-bottom {
-    font-size: 10px;
+    font-size: 13px;
   }
   .calendar-shift {
-    font-size: 9px;
+    font-size: 13px;
   }
   .calendar-cell {
     min-height: 145px;
     padding: 11px 7px;
   }
   .calendar-number {
-    font-size: 12px;
+    font-size: 15px;
   }
   .calendar-day-labels > span {
-    font-size: 10px;
+    font-size: 13px;
   }
   .duty-layout {
     grid-template-columns: minmax(0, 1fr) 250px;
@@ -2472,16 +2472,16 @@ tbody tr:hover {
     font-size: 25px;
   }
   .page-heading .eyebrow {
-    font-size: 8px;
+    font-size: 13px;
   }
   .stat-card {
     padding: 15px 13px;
   }
   .stat-top {
-    font-size: 10px;
+    font-size: 13px;
   }
   .stat-bottom {
-    font-size: 8px;
+    font-size: 13px;
   }
   .stat-icon {
     width: 28px;
@@ -2503,21 +2503,21 @@ tbody tr:hover {
     gap: 4px;
   }
   .meeting-card .eyebrow {
-    font-size: 7px;
+    font-size: 13px;
   }
   .meeting-card-bottom .btn {
     padding: 8px 10px;
-    font-size: 9px;
+    font-size: 13px;
   }
   .avatar-stack > span:last-child:not(.avatar) {
-    font-size: 8px;
+    font-size: 13px;
     max-width: 100px;
   }
   .table-tabs {
     gap: 13px;
   }
   .table-tabs button {
-    font-size: 9px;
+    font-size: 13px;
   }
   .table-search {
     max-width: 145px;
@@ -2527,13 +2527,13 @@ tbody tr:hover {
     padding-right: 15px;
   }
   .request-person strong {
-    font-size: 10px;
+    font-size: 13px;
   }
   .request-actions {
     gap: 5px;
   }
   .request-actions > button {
-    font-size: 8px;
+    font-size: 13px;
     padding: 5px 7px;
   }
   .heading-actions {
@@ -2551,7 +2551,7 @@ tbody tr:hover {
     max-height: 250px;
   }
   .distribution-note {
-    font-size: 9px;
+    font-size: 13px;
   }
   .day-options {
     gap: 4px;
@@ -2561,7 +2561,7 @@ tbody tr:hover {
     flex-wrap: wrap;
   }
   .page-footer {
-    font-size: 7px;
+    font-size: 13px;
   }
   .saving-indicator {
     left: 224px;
@@ -2600,10 +2600,10 @@ tbody tr:hover {
     font-size: 28px;
   }
   .meeting-card .eyebrow {
-    font-size: 8px;
+    font-size: 13px;
   }
   .meeting-card-bottom .btn {
-    font-size: 11px;
+    font-size: 14px;
   }
   .meeting-card {
     min-height: 260px;
@@ -2626,7 +2626,7 @@ tbody tr:hover {
     height: 14px;
   }
   .stat-bottom {
-    font-size: 7px;
+    font-size: 13px;
   }
   .table-toolbar {
     flex-wrap: wrap;
@@ -2642,7 +2642,7 @@ tbody tr:hover {
     gap: 18px;
   }
   .table-tabs button {
-    font-size: 10px;
+    font-size: 13px;
   }
   .table-tabs {
     order: 2;
@@ -2681,10 +2681,10 @@ tbody tr:hover {
     min-width: 190px;
   }
   .note-card h3 {
-    font-size: 17px;
+    font-size: 19px;
   }
   .note-card p {
-    font-size: 9px;
+    font-size: 13px;
   }
 }
 @media (max-width: 760px) {
@@ -2724,10 +2724,10 @@ tbody tr:hover {
   }
   .breadcrumb {
     gap: 8px;
-    font-size: 10px;
+    font-size: 13px;
   }
   .breadcrumb strong {
-    font-size: 10px;
+    font-size: 13px;
   }
   .topbar-role {
     display: none;
@@ -2742,7 +2742,7 @@ tbody tr:hover {
     font-size: 27px;
   }
   .page-heading > select {
-    font-size: 9px;
+    font-size: 13px;
     padding: 9px;
     min-width: 145px;
     max-width: 145px;
@@ -2756,7 +2756,7 @@ tbody tr:hover {
     padding: 16px 18px;
   }
   .stat-top {
-    font-size: 11px;
+    font-size: 14px;
   }
   .stat-icon {
     width: 30px;
@@ -2770,7 +2770,7 @@ tbody tr:hover {
     font-size: 32px;
   }
   .stat-bottom {
-    font-size: 9px;
+    font-size: 13px;
   }
   .overview-middle {
     gap: 20px;
@@ -2784,7 +2784,7 @@ tbody tr:hover {
     gap: 17px;
   }
   .page-footer {
-    font-size: 8px;
+    font-size: 13px;
     flex-wrap: wrap;
   }
   .notice {
@@ -2806,19 +2806,19 @@ tbody tr:hover {
     max-width: 240px;
   }
   .demo-banner {
-    font-size: 8px;
+    font-size: 13px;
     gap: 7px;
     padding: 10px;
   }
   .demo-banner button {
-    font-size: 8px;
+    font-size: 13px;
   }
   .page-heading .eyebrow {
-    font-size: 7px;
+    font-size: 13px;
     letter-spacing: 1.1px;
   }
   .calendar-shift {
-    font-size: 7px;
+    font-size: 13px;
   }
   .calendar-cell {
     min-height: 115px;
@@ -2858,7 +2858,7 @@ tbody tr:hover {
     letter-spacing: -0.65px;
   }
   .page-heading p {
-    font-size: 10px;
+    font-size: 13px;
   }
   .page-heading > select {
     max-width: none;
@@ -2874,27 +2874,27 @@ tbody tr:hover {
   .heading-actions .week-select {
     width: auto;
     min-width: 175px;
-    font-size: 9px;
+    font-size: 13px;
   }
   .heading-actions .btn {
-    font-size: 10px;
+    font-size: 13px;
     padding: 9px 11px;
   }
   .page-heading .eyebrow {
-    font-size: 7px;
+    font-size: 13px;
   }
   .stat-card {
     padding: 14px 15px;
   }
   .stat-top {
-    font-size: 10px;
+    font-size: 13px;
   }
   .stat-card strong {
     font-size: 30px;
     margin-top: 7px;
   }
   .stat-bottom {
-    font-size: 8px;
+    font-size: 13px;
   }
   .stats-grid {
     gap: 12px;
@@ -2909,13 +2909,13 @@ tbody tr:hover {
     margin-top: 23px;
   }
   .meeting-card > p {
-    font-size: 10px;
+    font-size: 13px;
   }
   .meeting-info {
     margin-top: 21px;
   }
   .meeting-info > span {
-    font-size: 10px;
+    font-size: 13px;
   }
   .meeting-art {
     right: -15px;
@@ -2925,11 +2925,11 @@ tbody tr:hover {
     opacity: 0.6;
   }
   .meeting-card-top .badge {
-    font-size: 7px;
+    font-size: 13px;
     padding: 5px;
   }
   .meeting-card .eyebrow {
-    font-size: 7px;
+    font-size: 13px;
   }
   .meeting-card-bottom {
     margin-top: 22px;
@@ -2937,17 +2937,17 @@ tbody tr:hover {
   }
   .avatar-stack > span:last-child:not(.avatar) {
     max-width: 110px;
-    font-size: 8px;
+    font-size: 13px;
   }
   .meeting-card-bottom .btn {
-    font-size: 9px;
+    font-size: 13px;
     padding: 9px 11px;
   }
   .meeting-card .avatar.small {
     width: 23px;
     height: 23px;
     min-width: 23px;
-    font-size: 7px;
+    font-size: 13px;
   }
   .requests-panel .request-list {
     grid-template-columns: 1fr;
@@ -2960,20 +2960,20 @@ tbody tr:hover {
     padding: 15px 20px;
   }
   .request-person strong {
-    font-size: 11px;
+    font-size: 14px;
   }
   .request-actions > button {
-    font-size: 9px;
+    font-size: 13px;
     padding: 6px 10px;
   }
   .panel-head {
     padding: 19px 18px 15px;
   }
   .panel-head h2 {
-    font-size: 13px;
+    font-size: 16px;
   }
   .panel-head p {
-    font-size: 9px;
+    font-size: 13px;
   }
   .table-toolbar {
     padding-left: 18px;
@@ -2983,18 +2983,18 @@ tbody tr:hover {
     gap: 15px;
   }
   .table-tabs button {
-    font-size: 9px;
+    font-size: 13px;
   }
   .table-toolbar > .table-search {
-    font-size: 10px;
+    font-size: 13px;
     margin-bottom: 3px;
   }
   .table-search input {
-    font-size: 10px;
+    font-size: 13px;
   }
   .table-footer {
     padding: 12px 18px;
-    font-size: 8px;
+    font-size: 13px;
   }
   .bottom-grid {
     grid-template-columns: 1fr;
@@ -3006,11 +3006,11 @@ tbody tr:hover {
     font-size: 22px;
   }
   .note-card p {
-    font-size: 11px;
+    font-size: 14px;
     max-width: 270px;
   }
   .note-card > span {
-    font-size: 8px;
+    font-size: 13px;
   }
   .note-icon {
     right: 25px;
@@ -3021,13 +3021,13 @@ tbody tr:hover {
     gap: 11px;
   }
   .upcoming-row > div > strong {
-    font-size: 10px;
+    font-size: 13px;
   }
   .upcoming-row > div > span {
-    font-size: 8px;
+    font-size: 13px;
   }
   .upcoming-row .badge {
-    font-size: 8px;
+    font-size: 13px;
   }
   .demo-banner {
     align-items: flex-start;
@@ -3044,10 +3044,10 @@ tbody tr:hover {
     margin-left: 20px;
   }
   .notice p {
-    font-size: 10px;
+    font-size: 13px;
   }
   .notice strong {
-    font-size: 11px;
+    font-size: 14px;
   }
   .notice > div {
     min-width: 0;
@@ -3061,7 +3061,7 @@ tbody tr:hover {
     gap: 8px;
   }
   .calendar-day-labels > span {
-    font-size: 6px;
+    font-size: 13px;
     padding: 10px 1px;
   }
   .calendar-cell {
@@ -3069,7 +3069,7 @@ tbody tr:hover {
     min-height: 100px;
   }
   .calendar-number {
-    font-size: 8px;
+    font-size: 13px;
     padding: 1px 3px 4px;
   }
   .calendar-number small {
@@ -3077,7 +3077,7 @@ tbody tr:hover {
   }
   .calendar-shift {
     display: block;
-    font-size: 6px;
+    font-size: 13px;
     line-height: 1.5;
     padding: 4px 3px;
     min-height: 30px;
@@ -3100,7 +3100,7 @@ tbody tr:hover {
     flex-direction: column;
   }
   .formula-bar strong {
-    font-size: 11px;
+    font-size: 14px;
   }
   .formula-bar .text-button {
     margin-left: 0;
@@ -3118,7 +3118,7 @@ tbody tr:hover {
     gap: 5px;
   }
   .day-options > label {
-    font-size: 9px;
+    font-size: 13px;
     padding: 6px 5px;
   }
   .settings-layout {
@@ -3133,10 +3133,10 @@ tbody tr:hover {
     max-height: 92dvh;
   }
   .dialog-heading h2 {
-    font-size: 19px;
+    font-size: 21px;
   }
   .dialog-heading p {
-    font-size: 11px;
+    font-size: 14px;
   }
   .form-grid {
     gap: 11px;
@@ -3144,12 +3144,12 @@ tbody tr:hover {
   .field input:not([type="checkbox"]),
   .field select,
   .field textarea {
-    font-size: 14px;
+    font-size: 16px;
   }
   .toast {
     right: 15px;
     bottom: 17px;
-    font-size: 11px;
+    font-size: 14px;
     padding: 13px 14px;
     max-width: calc(100vw - 30px);
   }
@@ -3182,10 +3182,10 @@ tbody tr:hover {
     width: 17px;
   }
   .history-list strong {
-    font-size: 10px;
+    font-size: 13px;
   }
   .history-list > div > .green-text {
-    font-size: 8px;
+    font-size: 13px;
     margin-left: 26px;
   }
   .members-toolbar {
@@ -3193,14 +3193,14 @@ tbody tr:hover {
     gap: 12px;
   }
   .members-toolbar > span {
-    font-size: 10px;
+    font-size: 13px;
     white-space: nowrap;
   }
   .members-toolbar .table-search {
     max-width: 180px;
   }
   .page-footer {
-    font-size: 7px;
+    font-size: 13px;
     padding: 23px 2px;
   }
   .page-footer > span {
@@ -3216,7 +3216,7 @@ tbody tr:hover {
     font-size: 29px;
   }
   .welcome > p {
-    font-size: 11px;
+    font-size: 14px;
   }
   .welcome-art {
     margin-bottom: 28px;
@@ -3225,69 +3225,69 @@ tbody tr:hover {
     padding: 23px;
   }
   .welcome > small {
-    font-size: 8px;
+    font-size: 13px;
   }
 }
 .sidebar nav button {
-  font-size: 13px;
+  font-size: 16px;
 }
 .breadcrumb,
 .breadcrumb strong {
-  font-size: 12px;
+  font-size: 15px;
 }
 .page-heading p {
-  font-size: 12px;
+  font-size: 15px;
   color: #7d8976;
 }
 .stat-top {
-  font-size: 12px;
+  font-size: 15px;
 }
 .stat-bottom {
-  font-size: 10px;
+  font-size: 13px;
   color: #85917b;
 }
 .panel-head h2 {
-  font-size: 15px;
+  font-size: 17px;
 }
 .panel-head p {
-  font-size: 11px;
+  font-size: 14px;
   color: #86927c;
 }
 .table-tabs button {
-  font-size: 11px;
+  font-size: 14px;
 }
 .table-tabs button > span {
-  font-size: 9px;
+  font-size: 13px;
 }
 .table-search input {
-  font-size: 11px;
+  font-size: 14px;
 }
 .table-search input::placeholder {
   color: #96a288;
 }
 .table-footer {
-  font-size: 10px;
+  font-size: 13px;
   color: #87947a;
 }
 .person-cell strong {
-  font-size: 12px;
+  font-size: 15px;
 }
 .person-cell small {
-  font-size: 10px;
+  font-size: 13px;
   color: #8b987d;
 }
 th {
-  font-size: 9px;
+  font-size: 13px;
   color: #849175;
 }
 td {
-  font-size: 12px;
+  font-size: 15px;
 }
 .number-cell {
-  font-size: 10px;
+  font-size: 13px;
 }
 .badge {
-  font-size: 10px;
+  font-size: 13px;
 }
 .badge.attending {
   color: #64864b;
@@ -3303,20 +3303,20 @@ td {
   color: #849176;
 }
 .btn {
-  font-size: 12px;
+  font-size: 15px;
 }
 .text-button {
-  font-size: 11px;
+  font-size: 14px;
 }
 .request-person strong {
-  font-size: 12px;
+  font-size: 15px;
 }
 .request-person > div > span {
-  font-size: 10px;
+  font-size: 13px;
   color: #8c997e;
 }
 .request-actions > button {
-  font-size: 10px;
+  font-size: 13px;
 }
 .meeting-card > p {
   color: #859a70;
@@ -3325,24 +3325,24 @@ td {
   color: #748a5e;
 }
 .upcoming-row > div > strong {
-  font-size: 12px;
+  font-size: 15px;
 }
 .upcoming-row > div > span {
-  font-size: 10px;
+  font-size: 13px;
   color: #8b9b7b;
 }
 .page-footer {
-  font-size: 9px;
+  font-size: 13px;
   color: #96a18b;
 }
 .calendar-shift {
-  font-size: 9px;
+  font-size: 13px;
 }
 .calendar-day-labels > span {
-  font-size: 10px;
+  font-size: 13px;
 }
 .distribution-list > div {
-  font-size: 10px;
+  font-size: 13px;
 }
 .meeting-table td input[type="checkbox"] {
   width: 14px;
@@ -3350,52 +3350,52 @@ td {
 }
 @media (max-width: 760px) {
   .sidebar nav button {
-    font-size: 13px;
+    font-size: 16px;
   }
   .page-heading p {
-    font-size: 11px;
+    font-size: 14px;
   }
   .stat-top {
-    font-size: 11px;
+    font-size: 14px;
   }
   .stat-bottom {
-    font-size: 9px;
+    font-size: 13px;
   }
   .calendar-shift {
-    font-size: 8px;
+    font-size: 13px;
   }
   .calendar-day-labels > span {
-    font-size: 9px;
+    font-size: 13px;
   }
 }
 @media (max-width: 520px) {
   .breadcrumb,
   .breadcrumb strong {
-    font-size: 11px;
+    font-size: 14px;
   }
   .btn {
-    font-size: 11px;
+    font-size: 14px;
   }
   .stat-top {
-    font-size: 11px;
+    font-size: 14px;
   }
   .stat-bottom {
-    font-size: 9px;
+    font-size: 13px;
   }
   .table-tabs button {
-    font-size: 10px;
+    font-size: 13px;
   }
   .calendar-shift {
-    font-size: 7px;
+    font-size: 13px;
   }
   .calendar-day-labels > span {
-    font-size: 7px;
+    font-size: 13px;
   }
   .page-footer {
-    font-size: 8px;
+    font-size: 13px;
   }
   .meeting-card-bottom .btn {
-    font-size: 10px;
+    font-size: 13px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3411,7 +3411,7 @@ td {
 .month-select select {
   border: 0;
   outline: 0;
-  font-size: 11px;
+  font-size: 14px;
   width: 148px;
   background: transparent;
   color: #68785c;
@@ -3439,14 +3439,14 @@ td {
   padding: 55px 0 20px;
 }
 .login-story .eyebrow {
-  font-size: 9px;
+  font-size: 13px;
   color: #899f73;
 }
 .login-story h1 {
   font-size: 44px;
   line-height: 1.45;
   letter-spacing: -1.4px;
-  font-weight: 500;
+  font-weight: 600;
   color: #48663c;
   margin: 19px 0 18px;
 }
@@ -3454,7 +3454,7 @@ td {
   color: #9eaf7f;
 }
 .login-story-main > p {
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.95;
   color: #8ca177;
 }
@@ -3531,7 +3531,7 @@ td {
   gap: 7px;
   align-items: center;
   color: #9cae88;
-  font-size: 10px;
+  font-size: 13px;
   letter-spacing: 0.2px;
 }
 .login-form-side {
@@ -3558,19 +3558,19 @@ td {
   margin-bottom: 24px;
 }
 .login-form-card > .eyebrow {
-  font-size: 8px;
+  font-size: 13px;
   letter-spacing: 1.4px;
   color: #9aab88;
 }
 .login-form-card h2 {
   font-size: 30px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.8px;
   color: #4d6840;
   margin: 12px 0 10px;
 }
 .login-form-card > p {
-  font-size: 12px;
+  font-size: 15px;
   color: #9baa8c;
   line-height: 1.8;
   margin-bottom: 29px;
@@ -3579,12 +3579,12 @@ td {
   margin-bottom: 19px;
 }
 .login-form-card .field > span {
-  font-size: 12px;
+  font-size: 15px;
   color: #7d9270;
 }
 .login-form-card .field input {
   padding: 13px 14px;
-  font-size: 13px;
+  font-size: 16px;
   min-height: 44px;
   border-color: #dfe7d5;
   background: white;
@@ -3594,7 +3594,7 @@ td {
 }
 .login-submit {
   width: 100%;
-  font-size: 13px;
+  font-size: 16px;
   padding: 13px 15px;
   margin-top: 9px;
   border-radius: 8px;
@@ -3608,7 +3608,7 @@ td {
   color: #91a47c;
   display: block;
   margin: -7px 0 17px auto;
-  font-size: 10px;
+  font-size: 13px;
   padding: 0;
 }
 .login-error {
@@ -3617,7 +3617,7 @@ td {
   background: #faf0e9;
   border: 1px solid #eeddd0;
   color: #a98165;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.8;
   margin: 12px 0;
 }
@@ -3626,16 +3626,16 @@ td {
   justify-content: center;
   gap: 7px;
   margin: 24px 0 28px;
-  font-size: 11px;
+  font-size: 14px;
   color: #9eac8f;
 }
 .login-toggle > button {
   border: 0;
   background: none;
   padding: 0;
-  font-size: 11px;
+  font-size: 14px;
   color: #5f8447;
-  font-weight: 550;
+  font-weight: 600;
 }
 .login-native-note {
   display: flex;
@@ -3643,13 +3643,13 @@ td {
   justify-content: center;
   gap: 7px;
   color: #acb89d;
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.8;
   padding-top: 20px;
   border-top: 1px solid #e6ebde;
 }
 .login-bottom-note {
-  font-size: 9px;
+  font-size: 13px;
   color: #afb9a1;
   letter-spacing: 0.2px;
   margin-top: 40px;
@@ -3676,7 +3676,7 @@ td {
     font-size: 35px;
   }
   .login-story-main > p {
-    font-size: 12px;
+    font-size: 15px;
   }
   .login-form-side {
     padding: 35px;
@@ -3709,11 +3709,11 @@ td {
     margin: 12px 0 10px;
   }
   .login-story .eyebrow {
-    font-size: 7px;
+    font-size: 13px;
     letter-spacing: 1.2px;
   }
   .login-story-main > p {
-    font-size: 11px;
+    font-size: 14px;
   }
   .login-illustration {
     position: absolute;
@@ -3774,21 +3774,21 @@ td {
     margin-top: 11px;
   }
   .login-form-card > .eyebrow {
-    font-size: 7px;
+    font-size: 13px;
   }
   .login-form-card > p {
-    font-size: 11px;
+    font-size: 14px;
     margin-bottom: 23px;
   }
   .login-form-card .field input {
-    font-size: 16px;
+    font-size: 18px;
   }
   .login-native-note {
-    font-size: 8px;
+    font-size: 13px;
   }
   .login-bottom-note {
     margin-top: 27px;
-    font-size: 8px;
+    font-size: 13px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3837,7 +3837,7 @@ td {
   min-height: 40px;
   outline: none;
   font: inherit;
-  font-size: 12px;
+  font-size: 15px;
 }
 .availability-search:focus-within {
   outline: 2px solid #17674a;
@@ -3850,7 +3850,7 @@ td {
   padding: 8px 12px;
   background: white;
   font: inherit;
-  font-size: 12px;
+  font-size: 15px;
 }
 .availability-table table {
   min-width: 790px;
@@ -3878,7 +3878,7 @@ td {
 .assignment-note {
   white-space: normal;
   line-height: 1.65;
-  font-size: 12px;
+  font-size: 15px;
   color: #647264;
 }
 .shift-person > form {
@@ -3913,7 +3913,7 @@ td {
 }
 .duty-note-cell p {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.65;
 }
 .duty-note-cell form {
@@ -3928,7 +3928,7 @@ td {
   border: 1px solid #dfe5dc;
   border-radius: 7px;
   background: white;
-  font-size: 11px;
+  font-size: 14px;
   min-width: 0;
 }
 .duty-note-cell input {
@@ -3956,6 +3956,6 @@ td {
     padding: 0 16px 16px;
   }
   .availability-toolbar input {
-    font-size: 16px;
+    font-size: 18px;
   }
 }

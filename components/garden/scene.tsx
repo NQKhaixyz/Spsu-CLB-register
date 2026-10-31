@@ -1,31 +1,54 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { SylvaHero } from "@designcodeio/threeui";
 import { ArrowUpRight, PawPrint, Expand, ArrowLeft } from "lucide-react";
 import { GardenClock, GardenControls, useAtmosphere } from "./atmosphere";
 import { gardenLabels, periodAt } from "../../lib/garden-time";
-import type { GardenWorld } from "./world";
 
 export function GardenScene({ className = "" }: { className?: string }) {
-  const host = useRef<HTMLDivElement>(null);
-  const world = useRef<GardenWorld | null>(null);
-  const { hour, paused } = useAtmosphere();
-  const latest = useRef({ hour, paused });
+  const frame = useRef<HTMLIFrameElement | null>(null);
+  const { hour, paused, visitor, focused, toggleFocus, toggleMotion } = useAtmosphere();
   const [status, setStatus] = useState("loading");
-  useEffect(() => { latest.current = { hour, paused }; world.current?.update(hour, paused); }, [hour, paused]);
-  useEffect(() => {
-    let cancelled = false;
-    import("./world").then(({ createGarden }) => {
-      if (cancelled || !host.current) return;
-      try {
-        world.current = createGarden(host.current, latest.current, () => setStatus("fallback"));
-        setStatus("ready");
-      } catch { setStatus("fallback"); }
-    }).catch(() => { if (!cancelled) setStatus("fallback"); });
-    return () => { cancelled = true; world.current?.dispose(); world.current = null; };
+  const settings = useRef({ hour, paused, presentation: "background" as "hero" | "background" });
+  const sync = useCallback(() => {
+    (frame.current?.contentWindow as (Window & { nhipSylva?: { set: (s: typeof settings.current) => void } }) | null)?.nhipSylva?.set(settings.current);
   }, []);
-  return <div className={`garden-scene ${className}`} data-scene-status={status} role="img" aria-label="Khu vườn Nhật Bản 3D với nhà gỗ, hoa anh đào, hồ cá và hai chú mèo: mèo Anh lông ngắn xám trắng và mèo Xiêm.">
-    <div className="garden-canvas" ref={host} aria-hidden="true" />
-    {status !== "ready" ? <div className="garden-fallback" aria-hidden="true"><div className="fallback-house">庭</div><span>🐈</span><span>🐈‍⬛</span><p>{status === "loading" ? "Khu vườn đang thức giấc…" : "Một góc vườn bình yên"}</p></div> : null}
+  useEffect(() => {
+    settings.current = { hour, paused, presentation: visitor && !focused ? "hero" : "background" };
+    sync();
+  }, [hour, paused, visitor, focused, sync]);
+  const applyScene = useCallback((element: HTMLIFrameElement) => {
+    frame.current = element;
+    const doc = element.contentDocument;
+    if (!doc) return;
+    if (!doc.getElementById("nhip-sylva-extension")) {
+      const script = doc.createElement("script"); script.id = "nhip-sylva-extension";
+      script.src = "/landing-pages/inner-green-assets/nhip-sylva.js";
+      script.onload = () => { sync(); setStatus("ready"); };
+      script.onerror = () => setStatus("fallback");
+      doc.body.appendChild(script);
+    }
+    sync();
+  }, [sync]);
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== location.origin || event.source !== frame.current?.contentWindow) return;
+      if (event.data?.type === "nhip-sylva-loaded") { sync(); return; }
+      if (event.data?.type !== "nhip-sylva-action") return;
+      if (event.data.action === "motion") toggleMotion();
+      if (event.data.action === "focus") toggleFocus();
+      if (event.data.action === "login") {
+        if (visitor) window.dispatchEvent(new Event("nhip-open-login"));
+        else if (focused) toggleFocus();
+      }
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [visitor, focused, toggleFocus, toggleMotion, sync]);
+  return <div className={`garden-scene shader-frame ${className}`} data-scene-status={status} aria-label="Thế giới rêu xanh Sylva với mèo Xiêm và mèo Anh lông ngắn bicolor xám trắng">
+    <SylvaHero variant="living-green" headingFont="lexend" bodyFont="lexend" headingWeight="300" bodyWeight="300"
+      primaryColor="#ffffff" headingSize={63} bodySize={16.5} headingLetterSpacing={-0.006} applyScene={applyScene} />
+    {status === "fallback" ? <p className="sylva-load-note" role="status">Không tải được hai bạn mèo. Bạn vẫn có thể đăng nhập CLB.</p> : null}
   </div>;
 }
 
@@ -33,7 +56,7 @@ export function GardenBackdrop() {
   const { focused, toggleFocus, hour, mode } = useAtmosphere();
   return <>
     <div className="garden-backdrop"><GardenScene /></div>
-    {focused ? <div className="garden-view-caption"><span>庭 · NHỊP GARDEN</span><h1>Một góc bình yên.</h1><p>Mèo Anh xám trắng & mèo Xiêm</p><GardenClock /></div> : null}
+    {focused ? <div className="garden-view-caption"><span>NHỊP CLB · LIVING GREEN</span><h1>Cùng một nhịp, cùng lớn lên.</h1><p>Mèo Anh lông ngắn bicolor xám trắng & mèo Xiêm</p><GardenClock /></div> : null}
     <div className="garden-dock">
       <span className="garden-dock-period">{mode === "live" ? "" : "Xem trước · "}{gardenLabels[periodAt(hour)]}</span>
       <GardenControls />
