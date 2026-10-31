@@ -1,6 +1,6 @@
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { applyAction } from "../../../lib/actions";
-import { mutate, readState, synchronize } from "../../../lib/store";
+import { mutate } from "../../../lib/store";
 import type { Club } from "../../../lib/club";
 
 export const dynamic = "force-dynamic";
@@ -61,26 +61,23 @@ function view(
 export async function GET() {
   try {
     const user = await getChatGPTUser();
-    if (!user) return json({ error: "Vui lÃ²ng Ä‘Äƒng nháº­p." }, 401);
+    if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
     const { club, revision } = await mutate(user.userId, () => null);
     return json(view(club, user, revision));
   } catch (e) {
     console.error("workspace:get", e);
-    return json(
-      { error: "KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u. Vui lÃ²ng thá»­ láº¡i." },
-      500,
-    );
+    return json({ error: "Không tải được dữ liệu. Vui lòng thử lại." }, 500);
   }
 }
 export async function POST(request: Request) {
   try {
     const user = await getChatGPTUser();
-    if (!user) return json({ error: "Vui lÃ²ng Ä‘Äƒng nháº­p." }, 401);
+    if (!user) return json({ error: "Vui lòng đăng nhập." }, 401);
     const origin = request.headers.get("origin");
     if (origin && origin !== new URL(request.url).origin)
-      return json({ error: "Nguá»“n yÃªu cáº§u khÃ´ng há»£p lá»‡." }, 403);
+      return json({ error: "Nguồn yêu cầu không hợp lệ." }, 403);
     if (Number(request.headers.get("content-length")) > 1_000_000)
-      return json({ error: "Dá»¯ liá»‡u quÃ¡ lá»›n." }, 413);
+      return json({ error: "Dữ liệu quá lớn." }, 413);
     const { action, data = {} } = (await request.json()) as {
       action: string;
       data?: Record<string, unknown>;
@@ -92,8 +89,7 @@ export async function POST(request: Request) {
   } catch (e) {
     return json(
       {
-        error:
-          e instanceof Error ? e.message : "KhÃ´ng lÆ°u Ä‘Æ°á»£c thay Ä‘á»•i.",
+        error: e instanceof Error ? e.message : "Không lưu được thay đổi.",
       },
       400,
     );

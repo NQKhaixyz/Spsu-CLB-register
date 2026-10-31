@@ -3407,3 +3407,13 @@ td {
     scroll-behavior: auto !important;
   }
 }
+
+.month-select select {
+  border: 0;
+  outline: 0;
+  font-size: 11px;
+  width: 148px;
+  background: transparent;
+  color: #68785c;
+  cursor: pointer;
+}

@@ -835,12 +835,31 @@ export default function Workspace() {
   const monthSelect = (
     <label className="month-select">
       <CalendarDays size={16} />
-      <input
+      <select
         aria-label="Chọn tháng"
-        type="month"
         value={month}
-        onChange={(e) => e.target.value && setMonth(e.target.value)}
-      />
+        onChange={(e) => setMonth(e.target.value)}
+      >
+        {Array.from(
+          new Set([
+            ...Array.from({ length: 48 }, (_, i) =>
+              new Date(Date.UTC(Number(today().slice(0, 4)) - 1, i, 1))
+                .toISOString()
+                .slice(0, 7),
+            ),
+            ...club.schedules.map((s) => s.month),
+            ...club.weeks.map((w) => (w.meetingDate || w.id).slice(0, 7)),
+            month,
+          ]),
+        )
+          .sort()
+          .reverse()
+          .map((value) => (
+            <option key={value} value={value}>
+              {monthLabel(value)}
+            </option>
+          ))}
+      </select>
     </label>
   );
   function meetingCard(personal = false) {
