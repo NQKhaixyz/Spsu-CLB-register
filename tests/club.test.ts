@@ -749,3 +749,74 @@ test("Official roster promotion archives sample data and preserves real members,
   applyAction(c, adminIdentity, "activateOfficialRoster", { latePenalty: 5 });
   assert.equal(JSON.stringify(c.weeks), weeks);
 });
+
+test("Cancelling a whole shift clears points for both people and restores their exact prior results", async () => {
+  const c = schedulerFixture();
+  c.rules = [{ month: "2000-01", A: 10, B: 15, C: 5, D: 5 }];
+  const s = makeSchedule(c, "2026-11");
+  s.published = true;
+  c.schedules = [s];
+  const shift = s.shifts[0],
+    first = shift.assignments[0],
+    second = shift.assignments[1];
+  first.result = "completed";
+  first.late = true;
+  first.note = "Ghi chú trước khi hủy";
+  second.result = "unexcused";
+  const before = structuredClone(shift.assignments),
+    data = { month: s.month, shiftId: shift.id };
+  assert.equal(scoreFor(c, first.memberId, s.month).points, 5);
+  assert.equal(scoreFor(c, second.memberId, s.month).points, -15);
+  assert.throws(
+    () => applyAction(c, memberIdentity, "cancelShift", data),
+    /BCS/,
+  );
+  applyAction(c, adminIdentity, "cancelShift", {
+    ...data,
+    reason: "Thầy cô báo không cần trực",
+  });
+  assert.equal(shift.cancelled, true);
+  assert.equal(shift.assignments.length, 2);
+  assert.ok(
+    shift.assignments.every((a) => a.result === "cancelled" && !a.late),
+  );
+  assert.equal(scoreFor(c, first.memberId, s.month).points, 0);
+  assert.equal(scoreFor(c, second.memberId, s.month).points, 0);
+  assert.throws(
+    () =>
+      applyAction(c, adminIdentity, "shift", {
+        ...data,
+        position: 0,
+        result: "completed",
+      }),
+    /Khôi phục/,
+  );
+  const { buffer } = await makeReport(c, s.month),
+    { default: ExcelJS } = await import("exceljs"),
+    book = new ExcelJS.Workbook();
+  await book.xlsx.load(buffer);
+  const sheet = book.getWorksheet("Chi tiết trực")!;
+  assert.equal(sheet.getCell("G4").value, 0);
+  assert.equal(sheet.getCell("G5").value, 0);
+  assert.equal(sheet.getCell("M4").value, "Đã hủy");
+  applyAction(c, adminIdentity, "restoreShift", data);
+  assert.deepEqual(shift.assignments, before);
+  assert.equal(shift.cancelled, undefined);
+  assert.equal(scoreFor(c, first.memberId, s.month).points, 5);
+  assert.equal(scoreFor(c, second.memberId, s.month).points, -15);
+});
+
+test("Replanning a draft preserves a cancelled shift and does not fill its vacancies", () => {
+  const c = schedulerFixture();
+  c.schedules = [makeSchedule(c, "2026-11")];
+  const shift = c.schedules[0].shifts[0],
+    data = { month: "2026-11", shiftId: shift.id };
+  applyAction(c, adminIdentity, "cancelShift", data);
+  applyAction(c, adminIdentity, "schedule", { month: "2026-11" });
+  const kept = c.schedules[0].shifts.find((s) => s.id === shift.id)!;
+  assert.equal(kept.cancelled, true);
+  assert.ok(kept.assignments.every((a) => a.result === "cancelled"));
+  assert.ok(kept.cancellationSnapshot);
+  applyAction(c, adminIdentity, "restoreShift", data);
+  assert.ok(kept.assignments.every((a) => a.result === "unverified"));
+});

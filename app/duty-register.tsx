@@ -98,6 +98,11 @@ export default function DutyRegister({
                           ? ` · Tuần ${shift.academicWeek}`
                           : ""}
                       </small>
+                      {shift.cancelled ? (
+                        <small className="duty-cell-detail">
+                          Đã hủy cả ca · {shift.cancelReason}
+                        </small>
+                      ) : null}
                     </td>
                     <td>
                       <strong>{name}</strong>
@@ -124,7 +129,7 @@ export default function DutyRegister({
                         <Button
                           type="submit"
                           variant="secondary"
-                          disabled={busy}
+                          disabled={busy || shift.cancelled}
                         >
                           Lưu ghi chú
                         </Button>
@@ -133,17 +138,24 @@ export default function DutyRegister({
                     <td>
                       <select
                         aria-label={`Kết quả trực: ${label}`}
-                        disabled={busy || !schedule.published}
+                        disabled={
+                          busy || !schedule.published || shift.cancelled
+                        }
                         value={a.result}
                         onChange={(e) =>
                           onUpdate({ ...data, result: e.target.value })
                         }
                       >
-                        {Object.entries(dutyNames).map(([value, text]) => (
-                          <option key={value} value={value}>
-                            {text}
-                          </option>
-                        ))}
+                        {Object.entries(dutyNames)
+                          .filter(
+                            ([value]) =>
+                              value !== "cancelled" || a.result === "cancelled",
+                          )
+                          .map(([value, text]) => (
+                            <option key={value} value={value}>
+                              {text}
+                            </option>
+                          ))}
                       </select>
                     </td>
                     <td className="center">

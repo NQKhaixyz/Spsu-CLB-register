@@ -55,6 +55,10 @@ export type Shift = {
   startTime?: string;
   endTime?: string;
   academicWeek?: number;
+  cancelled?: boolean;
+  cancelReason?: string;
+  cancelledAt?: string;
+  cancellationSnapshot?: Assignment[];
 };
 export type Schedule = {
   month: string;
@@ -304,9 +308,9 @@ export function scoreFor(club: Club, memberId: string, month: string) {
   const duties = club.schedules
     .filter((s) => s.month === month && s.published)
     .flatMap((s) =>
-      s.shifts.flatMap((t) =>
-        t.assignments.filter((a) => a.memberId === memberId),
-      ),
+      s.shifts
+        .filter((t) => !t.cancelled)
+        .flatMap((t) => t.assignments.filter((a) => a.memberId === memberId)),
     );
   const weeks = club.weeks.filter(
     (w) => !w.cancelled && w.meetingDate.slice(0, 7) === month,
@@ -350,6 +354,11 @@ export function makeSchedule(club: Club, month: string): Schedule {
     (m) => m.active && m.joined <= monthDays(month).at(-1)!,
   );
   const counts = new Map(members.map((m) => [m.id, 0]));
+  const cancelled = new Map(
+    (club.schedules.find((s) => s.month === month)?.shifts ?? [])
+      .filter((t) => t.cancelled)
+      .map((t) => [t.id, t]),
+  );
   const shifts: Shift[] = monthDays(month)
     .filter(
       (d) =>
@@ -374,6 +383,11 @@ export function makeSchedule(club: Club, month: string): Schedule {
             }
           : {}),
       })),
+    )
+    .map((shift) =>
+      cancelled.has(shift.id)
+        ? structuredClone(cancelled.get(shift.id)!)
+        : shift,
     );
   const available = (s: Shift) =>
     members.filter(
@@ -384,6 +398,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
       available(a).length - available(b).length || a.id.localeCompare(b.id),
   );
   for (const shift of sorted) {
+    if (shift.cancelled) continue;
     for (let seat = 0; seat < 2; seat++) {
       const candidates = available(shift).filter(
         (m) => !shift.assignments.some((a) => a.memberId === m.id),
@@ -397,6 +412,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
           shifts.some(
             (s) =>
               s !== shift &&
+              !s.cancelled &&
               s.date === shift.date &&
               s.assignments.some((a) => a.memberId === id),
           )

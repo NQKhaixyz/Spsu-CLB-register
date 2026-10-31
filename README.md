@@ -12,6 +12,7 @@ Website quản lý họp tuần, quy chế, lịch trực C1 và báo cáo Excel
 6. Chọn tháng, **Xếp lịch nháp**, kiểm tra các ca thiếu người, chỉnh hoặc bỏ ca nghỉ, rồi **Công bố lịch**.
 7. Trong **Họp hằng tuần**, đặt ngày họp trong tuần tự mở; BCS tích vắng thực tế/có phép/qua quy chế và chốt.
 8. Sau khi xác minh với thầy cô, mở từng ca để ghi nhận kết quả trực hoặc đổi người thay. Người trực thay chỉ được cộng A sau khi xác minh đã trực.
+   Nếu buổi trực không diễn ra, BCS mở ca và bấm **Hủy cả ca** một lần cho cả hai người. Ca hủy không cộng/trừ điểm; **Khôi phục ca** đưa lại đúng phân công và kết quả trước khi hủy. Cách này áp dụng cho cả lịch nháp và lịch đã công bố.
 9. Vào **Báo cáo tháng → Xuất Excel**. Có dữ liệu thiếu thì tệp ghi rõ BẢN TẠM. Tệp gồm Tổng hợp tháng, Chi tiết họp, Chi tiết trực, Quy tắc điểm.
 
 ## Quy tắc đã triển khai

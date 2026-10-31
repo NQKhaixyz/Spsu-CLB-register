@@ -1423,7 +1423,7 @@ export default function Workspace() {
             {club.schedules
               .filter((s) => s.published)
               .flatMap((s) => s.shifts)
-              .filter((t) => t.date >= today())
+              .filter((t) => t.date >= today() && !t.cancelled)
               .sort((a, b) => a.id.localeCompare(b.id))
               .slice(0, 2)
               .map((shift) => (
@@ -1482,8 +1482,10 @@ export default function Workspace() {
 
   function duties() {
     const visibleShifts = schedule?.shifts ?? [];
-    const seats = visibleShifts.flatMap((t) => t.assignments).length;
-    const shortage = visibleShifts.length * 2 - seats;
+    const activeShifts = visibleShifts.filter((t) => !t.cancelled),
+      cancelledCount = visibleShifts.length - activeShifts.length;
+    const seats = activeShifts.flatMap((t) => t.assignments).length;
+    const shortage = activeShifts.length * 2 - seats;
     const linkedIds = club.availabilityDataset?.settings
       ? new Set(Object.values(club.availabilityDataset.memberLinks ?? {}))
       : null;
@@ -1491,7 +1493,7 @@ export default function Workspace() {
       .filter((m) => !linkedIds || linkedIds.has(m.id))
       .map((m) => ({
         m,
-        n: visibleShifts
+        n: activeShifts
           .flatMap((t) => t.assignments)
           .filter((a) => a.memberId === m.id).length,
       }));
@@ -1571,7 +1573,10 @@ export default function Workspace() {
                     : "Bản nháp · Chỉ BCS nhìn thấy"}
                 </Badge>
                 <span>
-                  {visibleShifts.length} ca · {seats} lượt được phân
+                  {activeShifts.length} ca hoạt động
+                  {cancelledCount
+                    ? ` · ${cancelledCount} ca đã hủy`
+                    : ""} · {seats} lượt được phân
                   {shortage
                     ? ` · Còn thiếu ${shortage} người`
                     : " · Đã đủ người"}
@@ -1642,14 +1647,21 @@ export default function Workspace() {
                         </span>
                         {shifts.map((shift) => (
                           <button
-                            className={`calendar-shift ${shift.period}`}
+                            className={`calendar-shift ${shift.period} ${shift.cancelled ? "cancelled" : ""}`}
+                            aria-label={`Ca ${shift.period === "am" ? "sáng" : "chiều"} ngày ${dateLabel(date, true)}${shift.cancelled ? " · Đã hủy" : ""}`}
                             key={shift.id}
                             onClick={() =>
                               setModal({
                                 title: `Trực C1 · ${dateLabel(date, true)}`,
-                                description: `Ca ${shift.period === "am" ? "sáng" : "chiều"}${shift.startTime ? ` ${shift.startTime}–${shift.endTime}` : ""}${shift.academicWeek ? ` · Tuần học ${shift.academicWeek}` : ""} · ${schedule.published ? "Đã công bố" : "Bản nháp"}`,
+                                description: `Ca ${shift.period === "am" ? "sáng" : "chiều"}${shift.startTime ? ` ${shift.startTime}–${shift.endTime}` : ""}${shift.academicWeek ? ` · Tuần học ${shift.academicWeek}` : ""} · ${shift.cancelled ? "Đã hủy" : schedule.published ? "Đã công bố" : "Bản nháp"}`,
                                 content: (
                                   <div className="shift-detail">
+                                    {shift.cancelled ? (
+                                      <div className="notice neutral">
+                                        Ca này đã hủy cho cả hai người, không
+                                        cộng/trừ điểm. {shift.cancelReason}
+                                      </div>
+                                    ) : null}
                                     {[0, 1].map((position) => {
                                       const a = shift.assignments[position],
                                         m = a ? findMember(a.memberId) : null;
@@ -1693,6 +1705,9 @@ export default function Workspace() {
                                             <>
                                               <Button
                                                 variant="secondary"
+                                                disabled={
+                                                  busy || shift.cancelled
+                                                }
                                                 onClick={() =>
                                                   changeAssignment(
                                                     shift,
@@ -1705,6 +1720,9 @@ export default function Workspace() {
                                               {a && schedule.published ? (
                                                 <Field label="Kết quả xác minh">
                                                   <select
+                                                    disabled={
+                                                      busy || shift.cancelled
+                                                    }
                                                     defaultValue={a.result}
                                                     onChange={(e) =>
                                                       act(
@@ -1720,16 +1738,21 @@ export default function Workspace() {
                                                       )
                                                     }
                                                   >
-                                                    {Object.entries(
-                                                      dutyNames,
-                                                    ).map(([key, name]) => (
-                                                      <option
-                                                        key={key}
-                                                        value={key}
-                                                      >
-                                                        {name}
-                                                      </option>
-                                                    ))}
+                                                    {Object.entries(dutyNames)
+                                                      .filter(
+                                                        ([key]) =>
+                                                          key !== "cancelled" ||
+                                                          a.result ===
+                                                            "cancelled",
+                                                      )
+                                                      .map(([key, name]) => (
+                                                        <option
+                                                          key={key}
+                                                          value={key}
+                                                        >
+                                                          {name}
+                                                        </option>
+                                                      ))}
                                                   </select>
                                                 </Field>
                                               ) : null}
@@ -1799,7 +1822,9 @@ export default function Workspace() {
                                                   <Button
                                                     type="submit"
                                                     variant="secondary"
-                                                    disabled={busy}
+                                                    disabled={
+                                                      busy || shift.cancelled
+                                                    }
                                                   >
                                                     Lưu ghi chú
                                                   </Button>
@@ -1820,7 +1845,34 @@ export default function Workspace() {
                                         </div>
                                       );
                                     })}
-                                    {isAdmin && !schedule.published ? (
+                                    {isAdmin ? (
+                                      <Button
+                                        variant={
+                                          shift.cancelled
+                                            ? "secondary"
+                                            : "danger"
+                                        }
+                                        disabled={busy}
+                                        onClick={() =>
+                                          act(
+                                            shift.cancelled
+                                              ? "restoreShift"
+                                              : "cancelShift",
+                                            { month, shiftId: shift.id },
+                                            shift.cancelled
+                                              ? "Đã khôi phục cả ca"
+                                              : "Đã hủy cả ca cho hai người; ca này không cộng/trừ điểm",
+                                          )
+                                        }
+                                      >
+                                        {shift.cancelled
+                                          ? "Khôi phục ca"
+                                          : "Hủy cả ca"}
+                                      </Button>
+                                    ) : null}
+                                    {isAdmin &&
+                                    !schedule.published &&
+                                    !shift.cancelled ? (
                                       <Button
                                         variant="danger"
                                         onClick={() =>
@@ -1850,16 +1902,21 @@ export default function Workspace() {
                               <Sunset size={12} />
                             )}
                             <span>
-                              {shift.assignments
-                                .map((a) =>
-                                  findMember(a.memberId)
-                                    ?.name.split(" ")
-                                    .slice(-2)
-                                    .join(" "),
-                                )
-                                .join(", ") || "Chưa phân công"}
+                              {shift.cancelled
+                                ? `Ca ${shift.period === "am" ? "sáng" : "chiều"} · Đã hủy`
+                                : shift.assignments
+                                    .map((a) =>
+                                      findMember(a.memberId)
+                                        ?.name.split(" ")
+                                        .slice(-2)
+                                        .join(" "),
+                                    )
+                                    .join(", ") || "Chưa phân công"}
                             </span>
-                            {shift.assignments.length < 2 ? <i /> : null}
+                            {!shift.cancelled &&
+                            shift.assignments.length < 2 ? (
+                              <i />
+                            ) : null}
                           </button>
                         ))}
                       </div>

@@ -3943,6 +3943,12 @@ td {
 .duty-register-hint {
   padding: 0 24px 16px;
 }
+.calendar-shift.cancelled {
+  background: #edf0eb;
+  color: #7e877a;
+  border: 1px dashed #c7cec2;
+  opacity: 0.8;
+}
 @media (max-width: 640px) {
   .availability-toolbar {
     flex-direction: column;

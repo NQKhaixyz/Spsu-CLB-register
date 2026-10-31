@@ -236,10 +236,41 @@ export function applyAction(
     check(s.shifts.length, "Lịch không có ca trực.");
     s.published = true;
     note(`Công bố lịch trực ${s.month}`);
+  } else if (action === "cancelShift" || action === "restoreShift") {
+    const schedule = club.schedules.find((s) => s.month === data.month),
+      shift = schedule?.shifts.find((t) => t.id === data.shiftId);
+    check(shift, "Không tìm thấy ca trực.");
+    if (action === "cancelShift") {
+      check(!shift.cancelled, "Ca này đã hủy.");
+      shift.cancellationSnapshot = structuredClone(shift.assignments);
+      shift.cancelled = true;
+      shift.cancelReason = str(data.reason, 500) || "BCS hủy ca trực";
+      shift.cancelledAt = new Date().toISOString();
+      for (const assignment of shift.assignments) {
+        assignment.result = "cancelled";
+        assignment.late = false;
+      }
+      note(`Hủy cả ca ${shift.id}: ${shift.cancelReason}`);
+    } else {
+      check(
+        shift.cancelled && shift.cancellationSnapshot,
+        "Ca này chưa bị hủy hoặc không có dữ liệu để khôi phục.",
+      );
+      shift.assignments = structuredClone(shift.cancellationSnapshot);
+      delete shift.cancelled;
+      delete shift.cancelReason;
+      delete shift.cancelledAt;
+      delete shift.cancellationSnapshot;
+      note(`Khôi phục cả ca ${shift.id}`);
+    }
   } else if (action === "shift") {
     const s = club.schedules.find((s) => s.month === data.month);
     const shift = s?.shifts.find((s) => s.id === data.shiftId);
     check(s && shift, "Không tìm thấy ca trực.");
+    check(
+      !shift.cancelled,
+      "Ca đã hủy. Khôi phục ca trước khi sửa phân công hoặc kết quả.",
+    );
     const position = Number(data.position);
     check(
       Number.isInteger(position) && position >= 0 && position < 2,

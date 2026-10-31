@@ -37,14 +37,17 @@ function view(
       .filter((s) => s.published)
       .map((s) => ({
         ...s,
-        shifts: s.shifts.map((t) => ({
-          ...t,
-          assignments: t.assignments.map((a) =>
-            a.memberId === me?.id
-              ? a
-              : { memberId: a.memberId, result: "unverified" },
-          ),
-        })),
+        shifts: s.shifts.map((t) => {
+          const { cancellationSnapshot, ...safeShift } = t;
+          return {
+            ...safeShift,
+            assignments: t.assignments.map((a) =>
+              a.memberId === me?.id
+                ? a
+                : { memberId: a.memberId, result: "unverified" },
+            ),
+          };
+        }),
       }));
     club.logs = [];
     club.ownerId = "";
