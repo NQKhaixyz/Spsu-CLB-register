@@ -49,6 +49,7 @@ function view(
     club.logs = [];
     club.ownerId = "";
     delete club.availabilityDataset;
+    delete club.demoArchive;
   }
   return {
     club,

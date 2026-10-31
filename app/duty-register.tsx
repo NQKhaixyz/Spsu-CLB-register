@@ -1,18 +1,27 @@
 "use client";
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { dateLabel, dutyNames, type Member, type Schedule } from "../lib/club";
+import {
+  dateLabel,
+  dutyNames,
+  latePenaltyFor,
+  type Member,
+  type Schedule,
+  type Rule,
+} from "../lib/club";
 import { Button, PanelHead } from "./ui";
 export default function DutyRegister({
   schedule,
   members,
   busy,
   onUpdate,
+  rule,
 }: {
   schedule: Schedule;
   members: Member[];
   busy: boolean;
   onUpdate: (data: Record<string, unknown>) => Promise<boolean>;
+  rule: Rule;
 }) {
   const [search, setSearch] = useState(""),
     [page, setPage] = useState(0);
@@ -35,7 +44,7 @@ export default function DutyRegister({
     <section className="panel duty-register">
       <PanelHead
         title="Theo dõi trực và đến muộn"
-        description="BCS ghi nhận thủ công. Không tích Đến muộn nghĩa là không đến muộn; ô này không tự cộng/trừ điểm."
+        description={`BCS tích Đến muộn thì trừ ${rule.D ?? 0} điểm/lượt. Nếu lý do hợp lệ, xem ghi chú và để ô trống.`}
       />
       <div className="availability-toolbar">
         <input
@@ -63,6 +72,7 @@ export default function DutyRegister({
               <th>GHI CHÚ</th>
               <th>KẾT QUẢ</th>
               <th>ĐẾN MUỘN</th>
+              <th>TRỪ ĐI MUỘN</th>
             </tr>
           </thead>
           <tbody>
@@ -152,6 +162,11 @@ export default function DutyRegister({
                           onUpdate({ ...data, late: e.target.checked })
                         }
                       />
+                    </td>
+                    <td className="center">
+                      {latePenaltyFor(a, rule) > 0
+                        ? `−${latePenaltyFor(a, rule)}`
+                        : "0"}
                     </td>
                   </tr>
                 );

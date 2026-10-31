@@ -108,6 +108,13 @@ export type Club = {
   days: number[];
   availabilityVersion: string;
   availabilityDataset?: AvailabilityDataset;
+  officialSince?: string;
+  demoArchive?: {
+    archivedAt: string;
+    members: Member[];
+    weeks: Week[];
+    schedules: Schedule[];
+  };
   logs: { at: string; actor: string; text: string }[];
 };
 export type View = {
@@ -285,6 +292,13 @@ export function closeWeek(week: Week) {
   }
   week.closed = true;
 }
+export const isChargeableLate = (a: Assignment) =>
+  !!a.late && !["unexcused", "excused", "cancelled"].includes(a.result);
+export const latePenaltyFor = (a: Assignment, rule: Rule) =>
+  isChargeableLate(a) ? (rule.D ?? 0) : 0;
+export const dutyPointsFor = (a: Assignment, rule: Rule) =>
+  (a.result === "completed" ? rule.A : a.result === "unexcused" ? -rule.B : 0) -
+  latePenaltyFor(a, rule);
 export function scoreFor(club: Club, memberId: string, month: string) {
   const rule = rulesFor(club, month);
   const duties = club.schedules
@@ -305,6 +319,8 @@ export function scoreFor(club: Club, memberId: string, month: string) {
     .filter((x) => x.e);
   const completed = duties.filter((a) => a.result === "completed").length;
   const dutyMissed = duties.filter((a) => a.result === "unexcused").length;
+  const lateCount = duties.filter(isChargeableLate).length;
+  const lateDeduction = duties.reduce((n, a) => n + latePenaltyFor(a, rule), 0);
   const meetingMissed = entries.filter(
     ({ closed, e }) => closed && e?.absent && !e.excused,
   ).length;
@@ -318,7 +334,13 @@ export function scoreFor(club: Club, memberId: string, month: string) {
     meetingMissed,
     attended,
     passed,
-    points: completed * rule.A - dutyMissed * rule.B - meetingMissed * rule.C,
+    lateCount,
+    lateDeduction,
+    points:
+      completed * rule.A -
+      dutyMissed * rule.B -
+      meetingMissed * rule.C -
+      lateDeduction,
   };
 }
 export function makeSchedule(club: Club, month: string): Schedule {

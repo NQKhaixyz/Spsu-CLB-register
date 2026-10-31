@@ -5,6 +5,7 @@ import {
   demoClub,
   makeSchedule,
   newEntry,
+  rulesFor,
   syncWeeks,
   today,
   uid,
@@ -308,8 +309,9 @@ export function applyAction(
         "Kết quả không hợp lệ.",
       );
       a.result = data.result as DutyResult;
-      if (["unexcused", "excused", "cancelled"].includes(a.result))
+      if (["unexcused", "excused", "cancelled"].includes(a.result)) {
         a.late = false;
+      }
       note(`Xác minh ca ${shift.id}: ${data.result}`);
     }
     if (data.late !== undefined) {
@@ -627,15 +629,75 @@ export function applyAction(
         r.month >= today().slice(0, 7),
         "Chỉ đổi hệ số từ tháng hiện tại trở đi.",
       );
-      for (const key of ["A", "B", "C"])
+      const D = r.D ?? rulesFor(club, r.month).D ?? 0;
+      for (const key of ["A", "B", "C", "D"])
         check(
-          Number.isFinite(r[key]) && r[key] >= 0 && r[key] <= 100000,
+          Number.isFinite(key === "D" ? D : r[key]) &&
+            (key === "D" ? D : r[key]) >= 0 &&
+            (key === "D" ? D : r[key]) <= 100000,
           "Hệ số điểm phải là số không âm.",
         );
       club.rules = club.rules.filter((rule) => rule.month !== r.month);
-      club.rules.push({ month: r.month, A: r.A, B: r.B, C: r.C, D: 0 });
+      club.rules.push({ month: r.month, A: r.A, B: r.B, C: r.C, D });
     }
     note("Cập nhật cấu hình CLB");
+  } else if (action === "activateOfficialRoster") {
+    const ids = new Set(
+      Object.values(club.availabilityDataset?.memberLinks ?? {}),
+    );
+    check(ids.size > 0, "Chưa có danh sách được ghép từ file lịch rảnh.");
+    check(
+      [...ids].every((id) => club.members.some((m) => m.id === id)),
+      "Có hồ sơ trong file chưa được lưu.",
+    );
+    const penalty = Number(data.latePenalty);
+    check(
+      Number.isFinite(penalty) && penalty >= 0 && penalty <= 100000,
+      "Mức trừ đi muộn không hợp lệ.",
+    );
+    if (club.demo) {
+      const sampleIds = new Set(
+        club.members
+          .filter(
+            (m) => m.id.startsWith("demo-") && !ids.has(m.id) && !m.userId,
+          )
+          .map((m) => m.id),
+      );
+      const sampleSchedules = club.schedules.filter(
+        (s) =>
+          !s.sourceFilename &&
+          s.shifts.some((t) =>
+            t.assignments.some((a) => sampleIds.has(a.memberId)),
+          ),
+      );
+      club.demoArchive = {
+        archivedAt: new Date().toISOString(),
+        members: club.members.filter((m) => sampleIds.has(m.id)),
+        weeks: club.weeks,
+        schedules: sampleSchedules,
+      };
+      club.members = club.members.filter((m) => !sampleIds.has(m.id));
+      club.weeks = [];
+      club.schedules = club.schedules.filter(
+        (s) => !sampleSchedules.includes(s),
+      );
+      club.demo = false;
+      syncWeeks(club);
+    }
+    club.officialSince ??= new Date().toISOString();
+    const months = new Set([
+      today().slice(0, 7),
+      club.availabilityDataset?.settings?.startDate.slice(0, 7) ??
+        today().slice(0, 7),
+    ]);
+    for (const month of months) {
+      const current = rulesFor(club, month);
+      club.rules = club.rules.filter((r) => r.month !== month);
+      club.rules.push({ ...current, month, D: penalty });
+    }
+    note(
+      `Đưa ${ids.size} thành viên từ file vào hệ thống chính thức; mức trừ đi muộn D=${penalty}`,
+    );
   } else if (action === "demo") {
     check(
       !club.demo &&

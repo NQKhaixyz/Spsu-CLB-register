@@ -6,6 +6,8 @@ import {
   reportMembers,
   rulesFor,
   scoreFor,
+  dutyPointsFor,
+  latePenaltyFor,
   statusNames,
   type Club,
   type AvailabilityDetail,
@@ -108,6 +110,8 @@ export async function makeReport(club: Club, month: string) {
       "Họp vắng không phép",
       "Qua quy chế",
       "Tổng điểm",
+      "Lượt đi muộn trừ điểm",
+      "Điểm trừ đi muộn",
     ],
     participants.map((m, i) => {
       const s = scoreFor(club, m.id, month);
@@ -121,6 +125,8 @@ export async function makeReport(club: Club, month: string) {
         s.meetingMissed,
         s.passed,
         s.points,
+        s.lateCount,
+        s.lateDeduction,
       ];
     }),
   );
@@ -171,6 +177,7 @@ export async function makeReport(club: Club, month: string) {
       "Tuần học",
       "Ghi chú",
       "Đến muộn",
+      "Điểm trừ đi muộn",
     ],
     schedules.flatMap((s) =>
       s.shifts.flatMap((t) =>
@@ -181,15 +188,12 @@ export async function makeReport(club: Club, month: string) {
           member(a.originalId ?? a.memberId)?.name ?? "",
           member(a.memberId)?.name ?? "",
           dutyNames[a.result],
-          a.result === "completed"
-            ? rulesFor(club, month).A
-            : a.result === "unexcused"
-              ? -rulesFor(club, month).B
-              : 0,
+          dutyPointsFor(a, rulesFor(club, month)),
           t.startTime ? `${t.startTime}–${t.endTime}` : "",
           t.academicWeek ?? "",
           [a.availabilityNote, a.note].filter(Boolean).join(" · "),
           a.late ? "Có" : "Không",
+          latePenaltyFor(a, rulesFor(club, month)),
         ]),
       ),
     ),
@@ -202,10 +206,10 @@ export async function makeReport(club: Club, month: string) {
       ["A", rule.A, "Cộng cho mỗi ca đã trực và được xác minh"],
       ["B", rule.B, "Trừ cho mỗi ca trực vắng không phép"],
       ["C", rule.C, "Trừ cho mỗi buổi họp vắng không phép đã chốt"],
-      ["D", 0, "Dự phòng, chưa áp dụng"],
+      ["D", rule.D ?? 0, "Trừ mỗi lượt BCS tích Đến muộn trên lịch đã công bố"],
       [
         "Công thức",
-        "A × trực đủ − B × vắng trực − C × vắng họp",
+        "A × trực đủ − B × vắng trực − C × vắng họp − D × đi muộn",
         "Quy chế không cộng/trừ điểm",
       ],
       [

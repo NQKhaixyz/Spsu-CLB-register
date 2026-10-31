@@ -87,11 +87,15 @@ export default function AvailabilityPage({
   onImport,
   busy,
   onActivate,
+  official,
+  onOfficial,
 }: {
   dataset?: AvailabilityDataset;
   onImport: () => void;
   busy: boolean;
   onActivate: (data: Record<string, unknown>) => Promise<boolean>;
+  official: boolean;
+  onOfficial: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [day, setDay] = useState("all");
@@ -170,6 +174,33 @@ export default function AvailabilityPage({
                 : "Đặt mốc tuần học và giờ ca bên dưới để xếp lịch. Người chưa có MSSV được tạo hồ sơ theo tên, chờ BCS bổ sung MSSV trước khi cấp tài khoản."}
             </p>
           </div>
+          {dataset.memberLinks ? (
+            <div
+              className={`notice ${official ? "green" : "neutral"} availability-notice`}
+            >
+              <strong>
+                {official
+                  ? `${Object.keys(dataset.memberLinks).length} người đã được lưu trong danh sách chính thức`
+                  : `${Object.keys(dataset.memberLinks).length} hồ sơ từ file đã được lưu`}
+              </strong>
+              {!official ? (
+                <>
+                  <p>
+                    Chuyển sang vận hành chính thức sẽ giữ danh sách thật và
+                    lịch trực từ file, lưu riêng phần dữ liệu mẫu.
+                  </p>
+                  <Button disabled={busy} onClick={onOfficial}>
+                    Dùng danh sách này làm chính thức
+                  </Button>
+                </>
+              ) : (
+                <p>
+                  BCS bổ sung MSSV trong mục Thành viên trước khi cấp tài khoản
+                  cho người chưa có MSSV.
+                </p>
+              )}
+            </div>
+          ) : null}
           <section className="panel availability-settings">
             <PanelHead
               title="Áp dụng và xếp lịch nháp"

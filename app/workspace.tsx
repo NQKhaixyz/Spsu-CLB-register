@@ -1761,7 +1761,11 @@ export default function Workspace() {
                                                   Đến muộn{" "}
                                                   <small>
                                                     Không tích = không đến muộn.
-                                                    Không tự trừ điểm.
+                                                    Tích ô sẽ trừ{" "}
+                                                    {rulesFor(club, month).D ??
+                                                      0}{" "}
+                                                    điểm. Lý do hợp lệ thì để
+                                                    trống.
                                                   </small>
                                                 </label>
                                               ) : null}
@@ -1903,6 +1907,7 @@ export default function Workspace() {
                 onUpdate={(data) =>
                   act("shift", data, "Đã lưu kết quả ca trực", false)
                 }
+                rule={rulesFor(club, month)}
               />
             ) : null}
           </>
@@ -1952,6 +1957,16 @@ export default function Workspace() {
               {liveMembers.length} thành viên đang hoạt động · Quản lý hồ sơ và
               lịch rảnh tại đây.
             </p>
+            {!club.demo && club.officialSince ? (
+              <Badge status="attending">
+                Danh sách chính thức ·{" "}
+                {
+                  Object.keys(club.availabilityDataset?.memberLinks ?? {})
+                    .length
+                }{" "}
+                người từ file lịch rảnh
+              </Badge>
+            ) : null}
           </div>
           <div className="heading-actions">
             <Button variant="secondary" onClick={() => importDialog("members")}>
@@ -2125,7 +2140,7 @@ export default function Workspace() {
           <Stat
             title="Trực chưa xác minh"
             value={waiting}
-            description="Chưa tính cộng hoặc trừ điểm"
+            description="Chưa tính A/B; đi muộn do BCS tích được tính riêng"
             icon={Clock3}
             color="rose"
           />
@@ -2135,10 +2150,11 @@ export default function Workspace() {
             <Sparkles size={18} /> Công thức điểm tháng
           </span>
           <strong>
-            <i>A</i> × trực đủ − <i>B</i> × vắng trực − <i>C</i> × vắng họp
+            <i>A</i> × trực đủ − <i>B</i> × vắng trực − <i>C</i> × vắng họp −{" "}
+            <i>D</i> × đi muộn
           </strong>
           <span>
-            A = {rule.A} · B = {rule.B} · C = {rule.C}
+            A = {rule.A} · B = {rule.B} · C = {rule.C} · D = {rule.D ?? 0}
           </span>
           <button className="text-button" onClick={() => go("settings")}>
             Điều chỉnh <Settings2 size={14} />
@@ -2159,6 +2175,8 @@ export default function Workspace() {
                   <th className="center">VẮNG TRỰC *</th>
                   <th className="center">VẮNG HỌP *</th>
                   <th className="center">QUA QUY CHẾ</th>
+                  <th className="center">ĐI MUỘN</th>
+                  <th className="center">TRỪ ĐI MUỘN</th>
                   <th className="center">ĐIỂM THÁNG</th>
                 </tr>
               </thead>
@@ -2176,6 +2194,10 @@ export default function Workspace() {
                     <td className="center">{s.dutyMissed}</td>
                     <td className="center">{s.meetingMissed}</td>
                     <td className="center">{s.passed}</td>
+                    <td className="center">{s.lateCount}</td>
+                    <td className="center">
+                      {s.lateDeduction > 0 ? `−${s.lateDeduction}` : "0"}
+                    </td>
                     <td className="center">
                       <span
                         className={`score ${s.points < 0 ? "negative" : ""}`}
@@ -2270,7 +2292,7 @@ export default function Workspace() {
           <section className="panel settings-card">
             <PanelHead
               title="Hệ số điểm"
-              description="A, B, C có thể thay đổi. D được để dự phòng, chưa áp dụng."
+              description="A cộng trực đủ; B/C trừ vắng không phép; D trừ mỗi lượt BCS tích đi muộn."
             />
             <form
               key={month}
@@ -2284,6 +2306,7 @@ export default function Workspace() {
                       A: Number(f.A),
                       B: Number(f.B),
                       C: Number(f.C),
+                      D: Number(f.D),
                     },
                   },
                   "Đã lưu hệ số điểm",
@@ -2305,6 +2328,7 @@ export default function Workspace() {
                   ["A", "Cộng mỗi ca trực đủ"],
                   ["B", "Trừ mỗi ca trực vắng không phép"],
                   ["C", "Trừ mỗi buổi họp vắng không phép"],
+                  ["D", "Trừ mỗi lượt đi muộn"],
                 ].map(([key, label]) => (
                   <Field key={key} label={`${key} · ${label}`}>
                     <input
@@ -2313,7 +2337,7 @@ export default function Workspace() {
                       min={0}
                       max={100000}
                       step="0.5"
-                      defaultValue={rule[key as "A" | "B" | "C"]}
+                      defaultValue={rule[key as "A" | "B" | "C" | "D"] ?? 0}
                       required
                     />
                   </Field>
@@ -2625,9 +2649,13 @@ export default function Workspace() {
                 {mine.dutyMissed} lượt vắng trực không phép ·{" "}
                 {mine.meetingMissed} lượt vắng họp không phép
               </p>
+              <p>
+                {mine.lateCount} lượt đi muộn · trừ {mine.lateDeduction} điểm
+              </p>
             </div>
             <p className="hint">
-              Điểm được tính theo ca trực đã xác minh và buổi họp đã chốt.
+              Trực đủ/vắng trực tính khi xác minh; họp tính khi chốt. Đi muộn
+              tính theo ô BCS tích trên lịch đã công bố.
             </p>
           </section>
         </div>
@@ -2978,6 +3006,15 @@ export default function Workspace() {
                 }
                 return false;
               }}
+              official={!club.demo}
+              onOfficial={() =>
+                act(
+                  "activateOfficialRoster",
+                  { latePenalty: 5 },
+                  "Đã chuyển danh sách sang chính thức và đặt mức trừ đi muộn 5 điểm",
+                  false,
+                )
+              }
             />
           ) : activeTab === "members" ? (
             members()

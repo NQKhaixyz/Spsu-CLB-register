@@ -5,6 +5,7 @@ import {
   addDays,
   closeWeek,
   createClub,
+  demoClub,
   makeSchedule,
   newEntry,
   rulesFor,
@@ -611,9 +612,9 @@ test("Activating detailed availability creates pending MSSV profiles, is repeata
   assert.ok(c.members.some((x) => x.id === m.id));
   assert.ok(c.availabilityDataset?.settings);
 });
-test("Late checkbox is manual, does not change points and is exported with notes", async () => {
+test("Late checkbox deducts D and is exported with notes and the net duty score", async () => {
   const { c, m } = detailedFixture();
-  c.rules = [{ month: "2000-01", A: 10, B: 15, C: 5, D: 0 }];
+  c.rules = [{ month: "2000-01", A: 10, B: 15, C: 5, D: 5 }];
   c.schedules = [makeSchedule(c, "2026-11")];
   const s = c.schedules[0],
     shift = s.shifts.find((s) => s.date === "2026-11-09" && s.period === "pm")!;
@@ -633,7 +634,9 @@ test("Late checkbox is manual, does not change points and is exported with notes
     late: true,
     note: "Có ca học tan lúc 14:30",
   });
-  assert.equal(scoreFor(c, m.id, s.month).points, before);
+  assert.equal(scoreFor(c, m.id, s.month).points, before - 5);
+  assert.equal(scoreFor(c, m.id, s.month).lateCount, 1);
+  assert.equal(scoreFor(c, m.id, s.month).lateDeduction, 5);
   assert.throws(
     () => applyAction(c, memberIdentity, "shift", { ...data, late: false }),
     /BCS/,
@@ -649,6 +652,100 @@ test("Late checkbox is manual, does not change points and is exported with notes
     .find((r) => r.getCell(11).value === "Có")!;
   assert.ok(first);
   assert.match(first.getCell(10).text, /14:30/);
+  assert.equal(first.getCell(7).value, 5);
+  assert.equal(first.getCell(12).value, 5);
   applyAction(c, adminIdentity, "shift", { ...data, late: false });
   assert.equal(shift.assignments[position].late, false);
+  assert.equal(scoreFor(c, m.id, s.month).points, before);
+});
+
+test("Manual late deduction works before result verification; notes do not automatically exempt it", () => {
+  const { c, m } = detailedFixture();
+  c.rules = [{ month: "2000-01", A: 10, B: 15, C: 5, D: 5 }];
+  c.schedules = [makeSchedule(c, "2026-11")];
+  const s = c.schedules[0];
+  s.published = true;
+  const shift = s.shifts.find((t) =>
+      t.assignments.some((a) => a.memberId === m.id),
+    )!,
+    position = shift.assignments.findIndex((a) => a.memberId === m.id),
+    data = { month: s.month, shiftId: shift.id, position };
+  applyAction(c, adminIdentity, "shift", {
+    ...data,
+    late: true,
+    note: "Có ca học tan lúc 14:30",
+  });
+  assert.equal(scoreFor(c, m.id, s.month).points, -5);
+  applyAction(c, adminIdentity, "settings", {
+    rule: { month: s.month, A: 10, B: 15, C: 5, D: 2.5 },
+  });
+  assert.equal(scoreFor(c, m.id, s.month).points, -2.5);
+  applyAction(c, adminIdentity, "settings", {
+    rule: { month: s.month, A: 10, B: 15, C: 5 },
+  });
+  assert.equal(scoreFor(c, m.id, s.month).points, -2.5);
+  applyAction(c, adminIdentity, "shift", { ...data, result: "unexcused" });
+  assert.equal(shift.assignments[position].late, false);
+  assert.equal(scoreFor(c, m.id, s.month).lateDeduction, 0);
+  assert.equal(scoreFor(c, m.id, s.month).points, -15);
+});
+
+test("Official roster promotion archives sample data and preserves real members, accounts and draft assignments", () => {
+  const c = fixture();
+  Object.assign(c, demoClub(adminIdentity.userId, c.members[0]));
+  c.name = "CLB chính thức";
+  applyAction(c, memberIdentity, "profile", {
+    name: "Thành viên thật",
+    studentId: "REAL001",
+  });
+  applyAction(c, adminIdentity, "member", {
+    name: "Người nhập thủ công",
+    studentId: "REAL002",
+  });
+  applyAction(c, adminIdentity, "importAvailabilityDetails", {
+    filename: "real.xlsx",
+    rows: [
+      {
+        sourceRow: 2,
+        name: "Người từ file",
+        day: "Thứ 2",
+        period: "Cả ngày",
+        weeks: "11-18",
+        note: "",
+      },
+    ],
+  });
+  applyAction(c, adminIdentity, "activateAvailabilityDetails", {
+    ...detailedSettings,
+    month: "2026-11",
+  });
+  const sourceId = c.availabilityDataset!.memberLinks!["người từ file"],
+    draft = JSON.stringify(c.schedules.find((s) => s.month === "2026-11")),
+    oldWeeks = JSON.stringify(c.weeks);
+  assert.throws(
+    () =>
+      applyAction(c, memberIdentity, "activateOfficialRoster", {
+        latePenalty: 5,
+      }),
+    /BCS/,
+  );
+  applyAction(c, adminIdentity, "activateOfficialRoster", { latePenalty: 5 });
+  assert.equal(c.demo, false);
+  assert.ok(c.officialSince);
+  assert.equal(c.name, "CLB chính thức");
+  assert.equal(c.demoArchive?.members.length, 24);
+  assert.equal(JSON.stringify(c.demoArchive?.weeks), oldWeeks);
+  assert.ok(c.members.every((m) => !m.id.startsWith("demo-")));
+  assert.ok(c.members.some((m) => m.id === sourceId));
+  assert.ok(c.members.some((m) => m.userId === memberIdentity.userId));
+  assert.ok(c.members.some((m) => m.studentId === "REAL002"));
+  assert.equal(
+    JSON.stringify(c.schedules.find((s) => s.month === "2026-11")),
+    draft,
+  );
+  assert.equal(rulesFor(c, "2026-11").D, 5);
+  assert.equal(rulesFor(c, "2026-11").A, 10);
+  const weeks = JSON.stringify(c.weeks);
+  applyAction(c, adminIdentity, "activateOfficialRoster", { latePenalty: 5 });
+  assert.equal(JSON.stringify(c.weeks), weeks);
 });
