@@ -1,5 +1,7 @@
 "use client";
 import Login from "./login";
+import { GardenHero } from "../components/garden/scene";
+import { GardenClock } from "../components/garden/atmosphere";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
 import { activeAvailabilityDatasetFor, availabilityForDuty } from "../lib/availability";
@@ -351,9 +353,7 @@ export default function Workspace() {
     return (
       <div className="welcome setup">
         <Brand />
-        <span className="setup-icon">
-          <Leaf size={34} />
-        </span>
+        <div className="setup-garden-space" aria-hidden="true" />
         <span className="eyebrow">BẮT ĐẦU MỘT NHỊP MỚI</span>
         <h1>Hoàn tất hồ sơ của bạn.</h1>
         <p>Bổ sung MSSV để bắt đầu. Lịch trực đã được gắn với hồ sơ của bạn.</p>
@@ -1392,6 +1392,7 @@ export default function Workspace() {
   function overview() {
     return (
       <>
+        <GardenHero name={me!.name.split(" ").at(-1)!} onAction={() => go("duties")} />
         <div className="page-heading">
           <div>
             <span className="eyebrow">MỘT TUẦN MỚI, CÙNG MỘT NHỊP</span>
@@ -2542,6 +2543,7 @@ export default function Workspace() {
       .sort((a, b) => a.id.localeCompare(b.id));
     return (
       <>
+        <GardenHero name={me!.name.split(" ").at(-1)!} onAction={() => document.getElementById("personal-registration")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" })} actionLabel="Đăng ký họp tuần này" />
         <div className="page-heading">
           <div>
             <span className="eyebrow">MỖI THÀNH VIÊN, MỘT NHỊP CHUNG</span>
@@ -2553,7 +2555,7 @@ export default function Workspace() {
           </div>
           <Badge status="neutral">MSSV {me!.studentId}</Badge>
         </div>
-        <div className="personal-top">
+        <div className="personal-top" id="personal-registration">
           {meetingCard(true)}
           <section className="panel registration-panel">
             <PanelHead
@@ -2961,6 +2963,7 @@ export default function Workspace() {
             <strong>{titles[activeTab]}</strong>
           </div>
           <div className="topbar-right">
+            <GardenClock />
             <span className="today-label">{dateLabel(today(), true)}</span>
             <button
               className="icon-button"

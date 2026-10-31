@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import "./club.css";
+import "./garden.css";
+import { AtmosphereProvider, ClubSurface } from "../components/garden/atmosphere";
+import { GardenBackdrop } from "../components/garden/scene";
 
 export const metadata: Metadata = {
   title: "Nhịp CLB · Họp & lịch trực",
@@ -18,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased"><AtmosphereProvider><GardenBackdrop /><ClubSurface>{children}</ClubSurface></AtmosphereProvider></body>
     </html>
   );
 }

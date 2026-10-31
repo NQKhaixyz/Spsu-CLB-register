@@ -2,15 +2,13 @@
 import { useState, type FormEvent } from "react";
 import {
   ArrowRight,
-  CalendarCheck2,
-  HeartHandshake,
   KeyRound,
   Leaf,
   LoaderCircle,
   ShieldCheck,
-  Users,
 } from "lucide-react";
 import { Brand, Field } from "./ui";
+import { GardenClock } from "../components/garden/atmosphere";
 
 export default function Login({
   onSuccess,
@@ -50,36 +48,21 @@ export default function Login({
   return (
     <main className="native-login">
       <section className="login-story">
-        <Brand />
+        <div className="login-story-top"><Brand /><GardenClock /></div>
         <div className="login-story-main">
-          <span className="eyebrow">MỖI THÀNH VIÊN, MỘT NHỊP CHUNG</span>
+          <span className="garden-kicker"><span /> MỖI THÀNH VIÊN, MỘT NHỊP CHUNG</span>
           <h1>
-            Cùng nhau giữ nhịp.
+            Một góc bình yên.
             <br />
-            Cùng nhau tiến lên<span>.</span>
+            Một nhịp <em>kết nối.</em>
           </h1>
           <p>
-            Một không gian cho những buổi họp,
-            <br />
-            những ca trực và những đóng góp của bạn.
+            Hẹn nhau qua từng buổi họp, gắn kết qua từng ca trực.
           </p>
-          <div className="login-illustration" aria-hidden="true">
-            <div className="login-orbit" />
-            <div className="login-orbit two" />
-            <div className="login-heart">
-              <HeartHandshake size={72} strokeWidth={1.3} />
-            </div>
-            <span className="login-float one">
-              <CalendarCheck2 size={23} />
-            </span>
-            <span className="login-float two">
-              <Users size={23} />
-            </span>
-            <span className="login-flower">✦</span>
-          </div>
+          <div className="login-garden-space" aria-hidden="true" />
         </div>
         <span className="login-story-footer">
-          <Leaf size={15} /> nhịp. · Kết nối qua từng hoạt động
+          <Leaf size={15} /> Một chút bình yên, mỗi lần ghé lại.
         </span>
       </section>
       <section className="login-form-side">
