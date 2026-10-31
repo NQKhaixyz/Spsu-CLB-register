@@ -320,7 +320,12 @@ export async function setAccountPassword(
           .bind(target.userId)
           .first<Account>()
       : null;
-    const loginName = existing?.login ?? normalizeLogin(target.studentId);
+    if (existing && data.createOnly)
+      throw new AuthError("Thành viên đã có tài khoản. Không tạo lại mật khẩu ban đầu.", 409);
+    const provisional = target.needsStudentId && !target.studentId;
+    if (!existing && provisional && !data.login)
+      throw new AuthError("Nhập tên đăng nhập để cấp tài khoản khi chưa có MSSV.");
+    const loginName = existing?.login ?? normalizeLogin(provisional ? data.login : target.studentId);
     if (!existing) {
       const collision = await db()
         .prepare("SELECT id FROM auth_accounts WHERE login=?")
@@ -352,6 +357,7 @@ export async function setAccountPassword(
     const userId = target.userId ?? `native:${uid()}`;
     const accountId = uid();
     target.userId = userId;
+    target.loginName = loginName;
     syncWeeks(club);
     club.logs.unshift({
       at: new Date().toISOString(),
@@ -387,6 +393,27 @@ export async function setAccountPassword(
         409,
       );
     }
+  }
+  throw new AuthError("Có người đang cập nhật. Vui lòng thử lại.", 409);
+}
+
+export async function updateOwnProfile(request: Request, data: Record<string, unknown>) {
+  const user = await getNativeUser(request);
+  if (!user) throw new AuthError("Vui lòng đăng nhập.", 401);
+  const studentId = normalizeLogin(data.studentId);
+  for (let tries = 0; tries < 5; tries++) {
+    const { club, revision } = await readState("", false);
+    const me = club.members.find((m) => m.userId === user.userId);
+    if (!me?.active) throw new AuthError("Tài khoản đã ngừng hoạt động.", 403);
+    const collision = await db().prepare("SELECT id FROM auth_accounts WHERE login=? AND id<>?").bind(studentId, user.accountId).first<{id:string}>();
+    if (collision) throw new AuthError("MSSV trùng tên đăng nhập của người khác. Vui lòng kiểm tra lại.", 409);
+    applyAction(club, user, "profile", data);
+    const payload = JSON.stringify(club);
+    const result = await db().batch([
+      db().prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=?").bind(payload, revision),
+      db().prepare("UPDATE auth_accounts SET display_name=?,email=? WHERE id=? AND EXISTS(SELECT 1 FROM club_state WHERE id='main' AND revision=? AND payload=?)").bind(me.name, me.email ?? "", user.accountId, revision+1, payload),
+    ]);
+    if (result[0].meta.changes) return { club, revision: revision+1 };
   }
   throw new AuthError("Có người đang cập nhật. Vui lòng thử lại.", 409);
 }

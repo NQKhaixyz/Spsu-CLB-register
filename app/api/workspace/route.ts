@@ -1,4 +1,4 @@
-import { getNativeUser } from "../../../lib/native-auth";
+import { getNativeUser, updateOwnProfile } from "../../../lib/native-auth";
 import { applyAction } from "../../../lib/actions";
 import { mutate, ClubNotReadyError } from "../../../lib/store";
 import { workspaceView as view } from "../../../lib/workspace-view";
@@ -34,6 +34,10 @@ export async function POST(request: Request) {
       data?: Record<string, unknown>;
     };
     const allowed = false;
+    if (action === "profile") {
+      const { club, revision } = await updateOwnProfile(request, data);
+      return json(view(club, user, revision));
+    }
     if (action === "purgeTestData") {
       const { club, revision } = await purgeTestData(user, data);
       return json(view(club, user, revision));

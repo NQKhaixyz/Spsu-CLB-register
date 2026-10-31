@@ -23,6 +23,7 @@ export type Member = {
   availability: string[];
   extraDuties: boolean;
   needsStudentId?: boolean;
+  loginName?: string;
 };
 export type Entry = {
   memberId: string;

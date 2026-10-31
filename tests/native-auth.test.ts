@@ -8,6 +8,7 @@ import {
   revokeAccountsByUserIds,
   sessionCookie,
   setAccountPassword,
+  updateOwnProfile,
 } from "../lib/native-auth";
 import { applyAction } from "../lib/actions";
 import { mutate, readState } from "../lib/store";
@@ -76,6 +77,61 @@ beforeEach(() => {
   failQuery = undefined;
 });
 afterEach(() => sqlite.close());
+
+test("A named account for a pending Excel member preserves roster ID and assignments without inventing an MSSV", async () => {
+  const {req,target,token}=await pendingAccount();
+  const before=await readState("",false);
+  const pending=before.club.members.find((m)=>m.id===target.id)!;
+  assert.equal(pending.studentId,"");
+  assert.equal(pending.needsStudentId,true);
+  assert.equal(pending.loginName,"lethutrang");
+  await assert.rejects(()=>setAccountPassword(req,{memberId:target.id,login:"different",password:"ShouldNotReset!2026",createOnly:true}),/đã có tài khoản/);
+  assert.deepEqual(await readState("",false),before);
+  const changed=await updateOwnProfile(request(token),{name:"Lê Thu Trang",studentId:"20269999",email:"trang@example.invalid",memberId:before.club.members[0].id,role:"admin",active:false,joined:"1900-01-01"});
+  const me=changed.club.members.find((m)=>m.id===target.id)!;
+  assert.equal(me.userId,pending.userId);
+  assert.equal(me.role,"member");assert.equal(me.active,true);assert.equal(me.joined,pending.joined);
+  assert.equal(me.studentId,"20269999");assert.equal(me.needsStudentId,false);
+  assert.equal(changed.club.members.length,before.club.members.length);
+  assert.deepEqual(changed.club.schedules,before.club.schedules);
+  const account=sqlite.prepare("SELECT * FROM auth_accounts WHERE user_id=?").get(me.userId!)!;
+  assert.equal(account.display_name,me.name);assert.equal(account.email,me.email);
+  assert.equal(account.login,"lethutrang");
+  const byMssv=await login(request(),{login:"20269999",password:"InitialMember!2026"});
+  assert.equal((await getNativeUser(request(byMssv)))?.userId,pending.userId);
+  assert.equal((await getNativeUser(request(token)))?.userId,pending.userId);
+});
+
+test("Self profile edits reject duplicate or reserved MSSVs and invalid email without changing other people",async()=>{
+  const {token}=await pendingAccount();
+  const before=await readState("",false);
+  const owner=before.club.members.find((m)=>m.userId===before.club.ownerId)!;
+  for(const data of [
+    {name:"Lê Thu Trang",studentId:owner.studentId},
+    {name:"Lê Thu Trang",studentId:"admin"},
+    {name:"Lê Thu Trang",studentId:"20269999",email:"invalid"},
+  ]) await assert.rejects(()=>updateOwnProfile(request(token),data));
+  assert.deepEqual(await readState("",false),before);
+});
+
+test("Self profile update rolls back on account-write failure and retries concurrent club changes",async()=>{
+  const {token,target}=await pendingAccount();
+  const before=await readState("",false);
+  failQuery=/^UPDATE auth_accounts SET display_name/;
+  await assert.rejects(()=>updateOwnProfile(request(token),{name:"Trang mới",studentId:"20269999"}));
+  assert.deepEqual(await readState("",false),before);
+  failQuery=undefined;
+  beforeBatch=(queries)=>{
+    if(!queries.some((q)=>q.startsWith("UPDATE auth_accounts SET display_name")))return;
+    beforeBatch=undefined;
+    const row=sqlite.prepare("SELECT payload,revision FROM club_state WHERE id='main'").get()!;
+    const c=JSON.parse(String(row.payload));c.name="BCS thay đổi đồng thời";
+    sqlite.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main'").run(JSON.stringify(c));
+  };
+  const changed=await updateOwnProfile(request(token),{name:"Trang mới",studentId:"20269999"});
+  assert.equal(changed.club.name,"BCS thay đổi đồng thời");
+  assert.equal(changed.club.members.find((m)=>m.id===target.id)!.studentId,"20269999");
+});
 const request = (token = "") =>
   new Request("http://127.0.0.1/api/auth", {
     headers: {
@@ -83,6 +139,20 @@ const request = (token = "") =>
       "cf-connecting-ip": "native-unit-test",
     },
   });
+
+async function pendingAccount() {
+  const { req, admin, target } = await addMember("STAGING001", "Lê Thu Trang");
+  await mutate(admin.userId, (c) => {
+    const member = c.members.find((m) => m.id === target.id)!;
+    member.studentId = "";
+    member.needsStudentId = true;
+    c.schedules = [{month:"2026-11",published:true,sourceFilename:"Lịch rảnh chi tiết.xlsx",shifts:[{id:"2026-11-09-am",date:"2026-11-09",period:"am",assignments:[{memberId:member.id,result:"unverified",late:false}]}]}];
+  });
+  const result = await setAccountPassword(req, {memberId:target.id,login:"lethutrang",password:"InitialMember!2026",createOnly:true});
+  assert.equal(result.login,"lethutrang");
+  const token = await login(request(),{login:result.login,password:"InitialMember!2026"});
+  return {req,admin,target,token};
+}
 async function adminContext() {
   const token = await login(request(), { login: "admin", password: "LocalAdmin!2026" });
   const req = request(token);

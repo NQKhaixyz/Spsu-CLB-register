@@ -222,7 +222,9 @@ export default function Workspace() {
     setModal({
       title: member ? `Cấp mật khẩu · ${member.name}` : "Đổi mật khẩu",
       description: member
-        ? "Thành viên đăng nhập bằng MSSV/tên đăng nhập được cấp, không cần tài khoản OpenAI."
+        ? member.loginName
+          ? `Tên đăng nhập: ${member.loginName}. Thành viên cũng có thể dùng MSSV sau khi bổ sung hồ sơ.`
+          : "Thành viên đăng nhập bằng MSSV/tên đăng nhập được cấp, không cần tài khoản OpenAI."
         : "Mật khẩu mới cần ít nhất 8 ký tự.",
       content: (
         <form
@@ -238,6 +240,11 @@ export default function Workspace() {
             });
           }}
         >
+          {member?.needsStudentId && !member.loginName ? (
+            <Field label="Tên đăng nhập được cấp">
+              <input name="login" required minLength={3} maxLength={30} pattern="[a-zA-Z0-9._-]+" placeholder="Ví dụ: lethutrang" autoComplete="username" />
+            </Field>
+          ) : null}
           {!member ? (
             <Field label="Mật khẩu hiện tại">
               <input
@@ -273,6 +280,20 @@ export default function Workspace() {
             onCancel={closeModal}
             busy={busy}
           />
+        </form>
+      ),
+    });
+  }
+  function ownProfileDialog() {
+    setModal({
+      title: "Hồ sơ của tôi",
+      description: "Cập nhật thông tin cá nhân. Tên đăng nhập được cấp vẫn sử dụng được sau khi bổ sung MSSV.",
+      content: (
+        <form onSubmit={(e) => act("profile", getForm(e), "Đã cập nhật hồ sơ")}>
+          <Field label="Họ và tên"><input name="name" defaultValue={view?.me?.name} required minLength={2} maxLength={100} /></Field>
+          <Field label="Mã số sinh viên"><input name="studentId" defaultValue={view?.me?.studentId} required minLength={3} maxLength={30} /></Field>
+          <Field label="Email liên hệ (không bắt buộc)"><input name="email" type="email" defaultValue={view?.me?.email} maxLength={200} /></Field>
+          <FormFooter onCancel={closeModal} busy={busy} />
         </form>
       ),
     });
@@ -326,7 +347,7 @@ export default function Workspace() {
       </div>
     );
   const { club, me, isAdmin } = view;
-  if (view.setup)
+  if (view.setup || (me?.active && me.needsStudentId && !isAdmin))
     return (
       <div className="welcome setup">
         <Brand />
@@ -334,8 +355,8 @@ export default function Workspace() {
           <Leaf size={34} />
         </span>
         <span className="eyebrow">BẮT ĐẦU MỘT NHỊP MỚI</span>
-        <h1>Rất vui được gặp bạn.</h1>
-        <p>Hoàn tất hồ sơ để bắt đầu sử dụng không gian CLB.</p>
+        <h1>Hoàn tất hồ sơ của bạn.</h1>
+        <p>Bổ sung MSSV để bắt đầu. Lịch trực đã được gắn với hồ sơ của bạn.</p>
         <form
           onSubmit={(e) => {
             const f = getForm(e);
@@ -346,7 +367,7 @@ export default function Workspace() {
             <input
               name="name"
               defaultValue={
-                view.identity.name.includes("@") ? "" : view.identity.name
+                me?.name ?? (view.identity.name.includes("@") ? "" : view.identity.name)
               }
               placeholder="Nguyễn Minh Anh"
               required
@@ -357,20 +378,25 @@ export default function Workspace() {
           <Field label="Mã số sinh viên">
             <input
               name="studentId"
+              defaultValue={me?.studentId}
               placeholder="Nhập MSSV của bạn"
               required
               minLength={3}
               maxLength={30}
             />
           </Field>
+          <Field label="Email liên hệ (không bắt buộc)">
+            <input name="email" type="email" defaultValue={me?.email} maxLength={200} placeholder="Nhập email liên hệ nếu có" />
+          </Field>
           <div className="identity-note">
             <ShieldCheck size={16} />
-            <span>Tài khoản đã xác thực: {view.identity.email}</span>
+            <span>Tên đăng nhập được cấp: {me?.loginName || me?.studentId || view.identity.email}</span>
           </div>
           <Button type="submit" disabled={busy}>
             Vào không gian CLB <ArrowRight size={16} />
           </Button>
         </form>
+        <Button variant="secondary" onClick={logoutAccount}>Đăng xuất</Button>
         {toast ? (
           <div className={`toast ${toast.error ? "error" : ""}`} role="alert">
             {toast.text}
@@ -2123,10 +2149,9 @@ export default function Workspace() {
                       <button
                         className="text-button member-password-action"
                         onClick={() => passwordDialog(m)}
-                        disabled={m.needsStudentId}
                         title={
                           m.needsStudentId
-                            ? "Bổ sung MSSV trước khi cấp tài khoản"
+                            ? "Cấp tên đăng nhập và mật khẩu để thành viên tự bổ sung MSSV"
                             : undefined
                         }
                       >
@@ -2848,6 +2873,10 @@ export default function Workspace() {
           </div>
         </div>
         <div className="sidebar-bottom">
+          <button onClick={ownProfileDialog}>
+            <UserRound size={18} />
+            <span>Hồ sơ của tôi</span>
+          </button>
           <button onClick={() => passwordDialog()}>
             <ShieldCheck size={18} />
             <span>Đổi mật khẩu</span>

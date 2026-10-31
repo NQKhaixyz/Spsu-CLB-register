@@ -59,6 +59,8 @@ export function applyAction(
     check(!me || me.active, "Tài khoản đã ngừng hoạt động.");
     const name = str(data.name, 100),
       studentId = str(data.studentId, 30);
+    const email = data.email === undefined ? (me?.email ?? identity.email) : str(data.email, 200);
+    check(!email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "Email liên hệ chưa hợp lệ.");
     checkStudentId(studentId);
     check(
       name.length >= 2 && /^[a-zA-Z0-9._-]{3,30}$/.test(studentId),
@@ -76,12 +78,14 @@ export function applyAction(
     } else if (me) {
       me.name = name;
       me.studentId = studentId;
+      me.email = email;
+      me.needsStudentId = false;
     } else {
       me = {
         id: uid(),
         name,
         studentId,
-        email: identity.email,
+        email,
         userId: identity.userId,
         role: identity.userId === club.ownerId ? "admin" : "member",
         active: true,
@@ -97,6 +101,7 @@ export function applyAction(
   }
   check(me?.active, "Tài khoản chưa có hồ sơ hoặc đã ngừng hoạt động.");
   if (action === "register") {
+    check(!me.needsStudentId, "Vui lòng bổ sung MSSV trong hồ sơ trước khi đăng ký họp.");
     const w = club.weeks.find((w) => w.id === weekId());
     check(
       w && !w.closed && !w.cancelled,
