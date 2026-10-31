@@ -17,6 +17,7 @@ import {
   type AvailabilityDetail,
 } from "./club";
 import {
+  activeAvailabilityDatasetFor,
   availabilityForDuty,
   clockMinutes,
   personKey,
@@ -32,6 +33,8 @@ const str = (value: unknown, max = 500) =>
   String(value ?? "")
     .trim()
     .slice(0, max);
+const checkStudentId = (studentId: string) =>
+  check(!["admin", "member"].includes(studentId.toLowerCase()), "MSSV trùng tên đăng nhập dành riêng. Vui lòng nhập MSSV khác.");
 const validDate = (date: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(date) &&
   !Number.isNaN(Date.parse(date)) &&
@@ -56,6 +59,7 @@ export function applyAction(
     check(!me || me.active, "Tài khoản đã ngừng hoạt động.");
     const name = str(data.name, 100),
       studentId = str(data.studentId, 30);
+    checkStudentId(studentId);
     check(
       name.length >= 2 && /^[a-zA-Z0-9._-]{3,30}$/.test(studentId),
       "Nhập họ tên và MSSV hợp lệ (3–30 ký tự).",
@@ -100,6 +104,10 @@ export function applyAction(
     );
     const e = w.entries.find((e) => e.memberId === me.id);
     check(e, "Bạn chưa có trong danh sách tuần này.");
+    check(
+      !e.attendanceVerified,
+      "Kết quả đã được BCS ghi nhận. Liên hệ BCS nếu cần điều chỉnh.",
+    );
     if (data.status === "attending") {
       check(
         e.status === "unregistered" || e.status === "attending",
@@ -109,6 +117,8 @@ export function applyAction(
       e.absent = false;
       e.excused = false;
       e.reason = "";
+      delete e.request;
+      delete e.decision;
     } else if (data.status === "absent") {
       check(e.status !== "pending", "Hãy rút yêu cầu đang chờ trước.");
       const reason = str(data.reason);
@@ -118,6 +128,8 @@ export function applyAction(
       e.excused = true;
       e.absent = true;
       e.passed = false;
+      delete e.request;
+      delete e.decision;
     } else if (data.status === "pending") {
       check(e.status === "absent", "Chỉ gửi yêu cầu khi đang đăng ký vắng.");
       const request = str(data.reason);
@@ -129,6 +141,7 @@ export function applyAction(
     } else if (data.status === "withdraw") {
       check(e.status === "pending", "Yêu cầu đã được xử lý.");
       e.status = "absent";
+      e.absent = true;
       e.decision = "Thành viên rút yêu cầu";
     } else throw new Error("Lựa chọn không hợp lệ.");
     note(`Đăng ký họp: ${e.status}`);
@@ -152,12 +165,22 @@ export function applyAction(
   };
   if (action === "meeting") {
     const w = getWeek();
-    check(!w.closed, "Tuần đã chốt, không đổi lịch họp.");
     const date = str(data.meetingDate, 10);
     check(
       !date || (validDate(date) && date >= w.id && date <= addDays(w.id, 6)),
       "Ngày họp phải nằm trong tuần đang chọn.",
     );
+    if (w.closed) {
+      check(
+        !w.meetingDate && date,
+        "Tuần đã chốt, chỉ được bổ sung ngày họp còn thiếu.",
+      );
+      const reason = str(data.note);
+      check(reason.length >= 3, "Cần ghi lý do bổ sung ngày họp đã chốt.");
+      w.meetingDate = date;
+      note(`Bổ sung ngày họp tuần ${w.id}: ${date}; ${reason}`);
+      return;
+    }
     check(/^([01]\d|2[0-3]):[0-5]\d$/.test(data.time), "Giờ họp không hợp lệ.");
     Object.assign(w, {
       meetingDate: date,
@@ -205,7 +228,7 @@ export function applyAction(
     }
     if (typeof data.absent === "boolean") {
       e.absent = data.absent;
-      if (!data.absent) e.status = "attending";
+      e.status = data.absent ? "absent" : "attending";
     }
     if (typeof data.excused === "boolean") e.excused = data.excused;
     if (typeof data.passed === "boolean") {
@@ -216,6 +239,13 @@ export function applyAction(
       e.passed = data.passed;
     }
     if (e.absent) e.passed = false;
+    if (
+      data.status !== undefined ||
+      typeof data.absent === "boolean" ||
+      typeof data.excused === "boolean" ||
+      typeof data.passed === "boolean"
+    )
+      e.attendanceVerified = true;
     note(
       `Cập nhật điểm danh ${getMember().name}${data.note ? `: ${str(data.note)}` : ""}`,
     );
@@ -373,6 +403,8 @@ export function applyAction(
     if (!m) {
       const studentId = str(data.studentId, 30),
         name = str(data.name, 100);
+      checkStudentId(studentId);
+      check(!club.members.some((existing) => existing.needsStudentId && personKey(existing.name) === personKey(name)), "Tên này đã có hồ sơ chờ MSSV. Hãy bổ sung MSSV tại hồ sơ hiện có.");
       check(
         name.length > 1 && /^[a-zA-Z0-9._-]{3,30}$/.test(studentId),
         "Nhập MSSV và họ tên hợp lệ.",
@@ -401,6 +433,7 @@ export function applyAction(
         str(data.studentId, 30) !== m.studentId
       ) {
         const studentId = str(data.studentId, 30);
+        checkStudentId(studentId);
         check(
           /^[a-zA-Z0-9._-]{3,30}$/.test(studentId),
           "MSSV cần có 3–30 ký tự hợp lệ.",
@@ -527,6 +560,7 @@ export function applyAction(
     }
     dataset.settings = settings;
     dataset.memberLinks = links;
+    club.activeAvailabilityDataset = structuredClone(dataset);
     club.availabilityVersion = new Date().toISOString();
     syncWeeks(club);
     const draft = makeSchedule(club, data.month);
@@ -568,6 +602,9 @@ export function applyAction(
         };
       },
     );
+    const activeDataset = activeAvailabilityDatasetFor(club);
+    if (activeDataset && !club.activeAvailabilityDataset)
+      club.activeAvailabilityDataset = structuredClone(activeDataset);
     club.availabilityDataset = {
       filename: str(data.filename, 200) || "Lịch rảnh chi tiết.xlsx",
       importedAt: new Date().toISOString(),
@@ -590,6 +627,7 @@ export function applyAction(
     for (const row of data.rows) {
       const studentId = str(row.studentId, 30),
         name = str(row.name, 100);
+      checkStudentId(studentId);
       check(
         /^[a-zA-Z0-9._-]{3,30}$/.test(studentId) && name.length > 1,
         `Dòng MSSV ${studentId || "trống"} thiếu dữ liệu hợp lệ.`,
@@ -603,6 +641,7 @@ export function applyAction(
         (m) => m.studentId.toLowerCase() === studentId.toLowerCase(),
       );
       if (!m) {
+        check(!club.members.some((existing) => existing.needsStudentId && personKey(existing.name) === personKey(name)), `Hồ sơ ${name} đang chờ MSSV. Hãy bổ sung MSSV trong danh sách thành viên trước khi nhập file để giữ lịch trực hiện có.`);
         m = {
           id: uid(),
           studentId,
@@ -630,8 +669,14 @@ export function applyAction(
         m.extraDuties = !!row.extraDuties;
       }
     }
-    if (data.kind === "availability")
+    if (data.kind === "availability") {
+      delete club.activeAvailabilityDataset;
+      if (club.availabilityDataset) {
+        delete club.availabilityDataset.settings;
+        delete club.availabilityDataset.memberLinks;
+      }
       club.availabilityVersion = new Date().toISOString();
+    }
     syncWeeks(club);
     note(
       `Nhập ${data.rows.length} dòng ${data.kind === "availability" ? "lịch rảnh" : "thành viên"}`,
@@ -673,8 +718,9 @@ export function applyAction(
     }
     note("Cập nhật cấu hình CLB");
   } else if (action === "activateOfficialRoster") {
+    const dataset = activeAvailabilityDatasetFor(club);
     const ids = new Set(
-      Object.values(club.availabilityDataset?.memberLinks ?? {}),
+      Object.values(dataset?.memberLinks ?? {}),
     );
     check(ids.size > 0, "Chưa có danh sách được ghép từ file lịch rảnh.");
     check(
@@ -718,7 +764,7 @@ export function applyAction(
     club.officialSince ??= new Date().toISOString();
     const months = new Set([
       today().slice(0, 7),
-      club.availabilityDataset?.settings?.startDate.slice(0, 7) ??
+      dataset?.settings?.startDate.slice(0, 7) ??
         today().slice(0, 7),
     ]);
     for (const month of months) {
@@ -748,7 +794,7 @@ export function applyAction(
     check(data.confirm === "BAT DAU", "Chưa xác nhận bắt đầu dữ liệu thật.");
     const real = createClub(club.ownerId);
     const linkedIds = new Set(
-      Object.values(club.availabilityDataset?.memberLinks ?? {}),
+      Object.values(activeAvailabilityDatasetFor(club)?.memberLinks ?? {}),
     );
     real.members = [
       { ...me, joined: today(), availability: [] },
@@ -758,6 +804,8 @@ export function applyAction(
     ];
     if (club.availabilityDataset)
       real.availabilityDataset = club.availabilityDataset;
+    if (club.activeAvailabilityDataset)
+      real.activeAvailabilityDataset = club.activeAvailabilityDataset;
     Object.assign(club, real);
     syncWeeks(club);
     note("Bắt đầu dữ liệu thật");

@@ -15,6 +15,10 @@ const plain = (value: string) =>
     .replace(/đ/g, "d")
     .toLowerCase()
     .trim();
+export function activeAvailabilityDatasetFor(club: Club) {
+  const dataset = club.activeAvailabilityDataset ?? club.availabilityDataset;
+  return dataset?.settings && dataset.memberLinks ? dataset : undefined;
+}
 export function academicWeekFor(date: string, settings: AvailabilitySettings) {
   return (
     settings.anchorWeek +
@@ -117,7 +121,7 @@ export function validateDetailRows(
   }
 }
 export function createDutyAvailability(club: Club) {
-  const dataset = club.availabilityDataset,
+  const dataset = activeAvailabilityDatasetFor(club),
     settings = dataset?.settings;
   const maxWeek =
     dataset && settings

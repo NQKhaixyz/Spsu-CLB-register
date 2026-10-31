@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { applyAction, type Identity } from "./actions";
 import { mutate, readState } from "./store";
-import { syncWeeks, today, uid, type Club, type Member } from "./club";
+import { syncWeeks, today, uid } from "./club";
+import { personKey } from "./availability";
 import {
   AuthError,
   hashPassword,
@@ -58,7 +59,10 @@ export async function getNativeUser(
   if (!account) return null;
   const { club } = await readState("", false);
   const member = club.members.find((m) => m.userId === account.user_id);
-  if (!member?.active) {
+  if (
+    !member?.active ||
+    (club.testAccountsDisabled && account.user_id === "native:test-member")
+  ) {
     await db()
       .prepare("DELETE FROM auth_sessions WHERE account_id=?")
       .bind(account.id)
@@ -92,38 +96,48 @@ async function attempt(
   category: string,
   limit: number,
   seconds = 900,
+  mode: "record" | "check" = "record",
 ) {
   const ip = request.headers.get("cf-connecting-ip") ?? "local";
   const key = await tokenHash(`${category}:${ip}`),
     now = Date.now(),
     reset = now + seconds * 1000;
-  await db()
-    .prepare(
-      "INSERT INTO auth_attempts(key,count,reset_at) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN reset_at<=? THEN 1 ELSE count+1 END, reset_at=CASE WHEN reset_at<=? THEN ? ELSE reset_at END",
-    )
-    .bind(key, reset, now, now, reset)
-    .run();
+  if (mode === "record")
+    await db()
+      .prepare(
+        "INSERT INTO auth_attempts(key,count,reset_at) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN reset_at<=? THEN 1 ELSE count+1 END, reset_at=CASE WHEN reset_at<=? THEN ? ELSE reset_at END",
+      )
+      .bind(key, reset, now, now, reset)
+      .run();
   const row = await db()
-    .prepare("SELECT count FROM auth_attempts WHERE key=?")
+    .prepare("SELECT count,reset_at FROM auth_attempts WHERE key=?")
     .bind(key)
-    .first<{ count: number }>();
-  if ((row?.count ?? 0) > limit)
+    .first<{ count: number; reset_at: number }>();
+  const count = row && row.reset_at > now ? row.count : 0;
+  if (mode === "check" ? count >= limit : count > limit)
     throw new AuthError(
       "Bạn thử quá nhiều lần. Vui lòng chờ ít phút rồi thử lại.",
       429,
     );
 }
 async function bootstrapAccounts() {
+  const { club: current } = await readState("native-club-owner", true);
   const existing = await db()
     .prepare(
       "SELECT login FROM auth_accounts WHERE login IN ('admin','member')",
     )
     .all<{ login: string }>();
-  const needed = ["admin", "member"].filter(
+  const candidates: ("admin" | "member")[] = current.testAccountsDisabled
+    ? ["admin"]
+    : ["admin", "member"];
+  const needed = candidates.filter(
     (login) => !existing.results.some((a) => a.login === login),
   );
   if (!needed.length) return;
-  if (!env.INITIAL_ADMIN_PASSWORD || !env.INITIAL_MEMBER_PASSWORD)
+  if (
+    (needed.includes("admin") && !env.INITIAL_ADMIN_PASSWORD) ||
+    (needed.includes("member") && !env.INITIAL_MEMBER_PASSWORD)
+  )
     throw new AuthError(
       "Tài khoản ban đầu chưa được cấu hình. Liên hệ BCS.",
       503,
@@ -131,7 +145,8 @@ async function bootstrapAccounts() {
   const { club } = await mutate(
     "native-club-owner",
     (c) => {
-      for (const role of ["admin", "member"] as const) {
+      for (const role of needed) {
+        if (role === "member" && c.testAccountsDisabled) continue;
         const userId = role === "admin" ? c.ownerId : "native:test-member";
         if (!c.members.some((m) => m.userId === userId)) {
           const prefix = role === "admin" ? "ADMIN" : "TEST";
@@ -162,6 +177,7 @@ async function bootstrapAccounts() {
     true,
   );
   for (const login of needed) {
+    if (login === "member" && club.testAccountsDisabled) continue;
     const userId = login === "admin" ? club.ownerId : "native:test-member";
     const m = club.members.find((m) => m.userId === userId)!;
     const hash = await hashPassword(
@@ -173,18 +189,18 @@ async function bootstrapAccounts() {
     );
     await db()
       .prepare(
-        "INSERT OR IGNORE INTO auth_accounts(id,login,user_id,display_name,email,password_hash) VALUES (?,?,?,?,?,?)",
+        "INSERT OR IGNORE INTO auth_accounts(id,login,user_id,display_name,email,password_hash) SELECT ?,?,?,?,?,? WHERE ?='admin' OR EXISTS(SELECT 1 FROM club_state WHERE id='main' AND COALESCE(json_extract(payload,'$.testAccountsDisabled'),0)=0)",
       )
-      .bind(uid(), login, userId, m.name, m.email ?? "", hash)
+      .bind(uid(), login, userId, m.name, m.email ?? "", hash, login)
       .run();
   }
 }
 export async function login(request: Request, data: Record<string, unknown>) {
-  await attempt(request, "login", 30);
+  await attempt(request, "login", 30, 900, "check");
   await bootstrapAccounts();
   const name = normalizeLogin(data.login);
   const password = validatePassword(data.password);
-  await attempt(request, `login:${name}`, 12);
+  await attempt(request, `login:${name}`, 12, 900, "check");
   let account = await db()
     .prepare("SELECT * FROM auth_accounts WHERE login=?")
     .bind(name)
@@ -204,11 +220,17 @@ export async function login(request: Request, data: Record<string, unknown>) {
     account?.password_hash ??
       "100000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000",
   );
-  if (!account || !valid)
+  if (!account || !valid) {
+    await attempt(request, "login", 30);
+    await attempt(request, `login:${name}`, 12);
     throw new AuthError("Tên đăng nhập hoặc mật khẩu chưa đúng.", 401);
+  }
   const { club } = await readState("", false);
   const m = club.members.find((m) => m.userId === account.user_id);
-  if (!m?.active)
+  if (
+    !m?.active ||
+    (club.testAccountsDisabled && account.user_id === "native:test-member")
+  )
     throw new AuthError("Tài khoản đã tạm dừng. Liên hệ BCS để mở lại.", 403);
   return issueSession(account.id);
 }
@@ -233,6 +255,15 @@ export async function register(
     if (club.members.some((m) => m.studentId.toLowerCase() === studentId))
       throw new AuthError(
         "MSSV đã có trong danh sách. Nhờ BCS cấp mật khẩu hoặc dùng tài khoản đã có.",
+        409,
+      );
+    if (
+      club.members.some(
+        (m) => m.needsStudentId && personKey(m.name) === personKey(name),
+      )
+    )
+      throw new AuthError(
+        "Tên đã có trong danh sách nhập từ file và đang chờ MSSV. Nhờ BCS bổ sung MSSV và cấp mật khẩu để giữ đúng lịch trực, lịch sử của bạn.",
         409,
       );
     applyAction(club, { userId, displayName: name, email: "" }, "profile", {
@@ -273,56 +304,83 @@ export async function setAccountPassword(
 ) {
   const user = await getNativeUser(request);
   if (!user) throw new AuthError("Vui lòng đăng nhập.", 401);
-  const password = validatePassword(data.password),
-    hash = await hashPassword(password);
-  const { club } = await readState("", false),
-    me = club.members.find((m) => m.userId === user.userId);
-  if (!me?.active || me.role !== "admin")
-    throw new AuthError("Chỉ BCS được cấp mật khẩu.", 403);
-  const target = club.members.find((m) => m.id === data.memberId);
-  if (!target) throw new AuthError("Không tìm thấy thành viên.", 404);
-  const existing = target.userId
-    ? await db()
-        .prepare("SELECT * FROM auth_accounts WHERE user_id=?")
-        .bind(target.userId)
-        .first<Account>()
-    : null;
-  const loginName = existing?.login ?? normalizeLogin(target.studentId);
-  const userId = target.userId ?? `native:${uid()}`;
-  if (existing) {
-    await db().batch([
-      db()
-        .prepare("UPDATE auth_accounts SET password_hash=? WHERE id=?")
-        .bind(hash, existing.id),
-      db()
-        .prepare("DELETE FROM auth_sessions WHERE account_id=?")
-        .bind(existing.id),
-    ]);
-  } else {
+  let hash: string | undefined;
+  for (let tries = 0; tries < 5; tries++) {
+    const { club, revision } = await readState("", false);
+    const me = club.members.find((m) => m.userId === user.userId);
+    if (!me?.active || me.role !== "admin")
+      throw new AuthError("Chỉ BCS được cấp mật khẩu.", 403);
+    const target = club.members.find((m) => m.id === data.memberId);
+    if (!target) throw new AuthError("Không tìm thấy thành viên.", 404);
+    if (club.testAccountsDisabled && target.userId === "native:test-member")
+      throw new AuthError("Tài khoản thử nghiệm đã được ngừng sử dụng.", 403);
+    const existing = target.userId
+      ? await db()
+          .prepare("SELECT * FROM auth_accounts WHERE user_id=?")
+          .bind(target.userId)
+          .first<Account>()
+      : null;
+    const loginName = existing?.login ?? normalizeLogin(target.studentId);
+    if (!existing) {
+      const collision = await db()
+        .prepare("SELECT id FROM auth_accounts WHERE login=?")
+        .bind(loginName)
+        .first<{ id: string }>();
+      if (["admin", "member"].includes(loginName) || collision)
+        throw new AuthError(
+          "MSSV trùng tên đăng nhập đã có hoặc tên dành riêng. Nhờ BCS sửa MSSV trước khi cấp tài khoản.",
+          409,
+        );
+    }
+    hash ??= await hashPassword(validatePassword(data.password));
+    if (existing) {
+      const result = await db().batch([
+        db()
+          .prepare(
+            "UPDATE auth_accounts SET password_hash=? WHERE id=? AND EXISTS(SELECT 1 FROM club_state WHERE id='main' AND revision=?)",
+          )
+          .bind(hash, existing.id, revision),
+        db()
+          .prepare(
+            "DELETE FROM auth_sessions WHERE account_id=? AND EXISTS(SELECT 1 FROM club_state WHERE id='main' AND revision=?)",
+          )
+          .bind(existing.id, revision),
+      ]);
+      if (result[0].meta.changes) return { login: loginName };
+      continue;
+    }
+    const userId = target.userId ?? `native:${uid()}`;
     const accountId = uid();
-    const result = await mutate(user.userId, (c) => {
-      const m = c.members.find((m) => m.id === target.id)!;
-      m.userId = userId;
-      c.logs.unshift({
-        at: new Date().toISOString(),
-        actor: me.name,
-        text: `Cấp tài khoản cho ${m.name}`,
-      });
+    target.userId = userId;
+    syncWeeks(club);
+    club.logs.unshift({
+      at: new Date().toISOString(),
+      actor: me.name,
+      text: `Cấp tài khoản cho ${target.name}`,
     });
+    club.logs = club.logs.slice(0, 2000);
     try {
-      await db()
-        .prepare(
-          "INSERT INTO auth_accounts(id,login,user_id,display_name,email,password_hash) VALUES (?,?,?,?,?,?)",
-        )
-        .bind(
-          accountId,
-          loginName,
-          userId,
-          target.name,
-          target.email ?? "",
-          hash,
-        )
-        .run();
+      const result = await db().batch([
+        db()
+          .prepare(
+            "INSERT INTO auth_accounts(id,login,user_id,display_name,email,password_hash) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM club_state WHERE id='main' AND revision=?)",
+          )
+          .bind(
+            accountId,
+            loginName,
+            userId,
+            target.name,
+            target.email ?? "",
+            hash,
+            revision,
+          ),
+        db()
+          .prepare(
+            "UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=? AND EXISTS(SELECT 1 FROM auth_accounts WHERE id=?)",
+          )
+          .bind(JSON.stringify(club), revision, accountId),
+      ]);
+      if (result[1].meta.changes) return { login: loginName };
     } catch {
       throw new AuthError(
         "Tên đăng nhập đã tồn tại. Liên hệ chủ quản trị.",
@@ -330,7 +388,20 @@ export async function setAccountPassword(
       );
     }
   }
-  return { login: loginName };
+  throw new AuthError("Có người đang cập nhật. Vui lòng thử lại.", 409);
+}
+
+export async function revokeAccountsByUserIds(userIds: string[]) {
+  for (const userId of new Set(userIds)) {
+    await db().batch([
+      db()
+        .prepare(
+          "DELETE FROM auth_sessions WHERE account_id IN (SELECT id FROM auth_accounts WHERE user_id=?)",
+        )
+        .bind(userId),
+      db().prepare("DELETE FROM auth_accounts WHERE user_id=?").bind(userId),
+    ]);
+  }
 }
 export async function changeOwnPassword(
   request: Request,

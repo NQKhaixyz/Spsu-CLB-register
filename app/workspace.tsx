@@ -2,7 +2,7 @@
 import Login from "./login";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
-import { availabilityForDuty } from "../lib/availability";
+import { activeAvailabilityDatasetFor, availabilityForDuty } from "../lib/availability";
 import {
   useCallback,
   useEffect,
@@ -408,10 +408,11 @@ export default function Workspace() {
   const schedule = club.schedules.find((s) => s.month === month);
   const liveMembers = club.members.filter((m) => m.active);
   const ownEntry = currentWeek.entries.find((e) => e.memberId === me!.id);
+  const activeDataset = activeAvailabilityDatasetFor(club);
 
   function editMeeting() {
     setModal({
-      title: "Lịch họp tuần này",
+      title: week.closed ? "Bổ sung ngày họp" : "Lịch họp tuần này",
       description:
         "Tuần tự mở từ thứ Hai đến Chủ nhật. Ngày họp quyết định tháng thống kê.",
       content: (
@@ -433,6 +434,7 @@ export default function Workspace() {
                 min={week.id}
                 max={addDays(week.id, 6)}
                 defaultValue={week.meetingDate}
+                required={week.closed}
               />
             </Field>
             <Field label="Giờ họp">
@@ -441,6 +443,7 @@ export default function Workspace() {
                 type="time"
                 defaultValue={week.time}
                 required
+                disabled={week.closed}
               />
             </Field>
           </div>
@@ -448,6 +451,7 @@ export default function Workspace() {
             <input
               name="location"
               defaultValue={week.location}
+              disabled={week.closed}
               placeholder="Phòng C1.203"
             />
           </Field>
@@ -456,9 +460,15 @@ export default function Workspace() {
               name="cancelled"
               type="checkbox"
               defaultChecked={week.cancelled}
+              disabled={week.closed}
             />{" "}
             Tuần này không tổ chức họp
           </label>
+          {week.closed ? (
+            <Field label="Lý do bổ sung ngày họp">
+              <textarea name="note" required minLength={3} placeholder="Ghi lý do để lưu vào nhật ký" />
+            </Field>
+          ) : null}
           <FormFooter busy={busy} onCancel={closeModal} />
         </form>
       ),
@@ -1046,8 +1056,8 @@ export default function Workspace() {
             </span>
           </div>
           {isAdmin && !personal ? (
-            <Button variant="light" onClick={editMeeting} disabled={w.closed}>
-              Đặt lịch họp <ArrowUpRightIcon />
+            <Button variant="light" onClick={editMeeting} disabled={w.closed && !!w.meetingDate}>
+              {w.closed ? "Bổ sung ngày họp" : "Đặt lịch họp"} <ArrowUpRightIcon />
             </Button>
           ) : null}
         </div>
@@ -1486,8 +1496,8 @@ export default function Workspace() {
       cancelledCount = visibleShifts.length - activeShifts.length;
     const seats = activeShifts.flatMap((t) => t.assignments).length;
     const shortage = activeShifts.length * 2 - seats;
-    const linkedIds = club.availabilityDataset?.settings
-      ? new Set(Object.values(club.availabilityDataset.memberLinks ?? {}))
+    const linkedIds = activeDataset
+      ? new Set(Object.values(activeDataset.memberLinks ?? {}))
       : null;
     const counts = liveMembers
       .filter((m) => !linkedIds || linkedIds.has(m.id))
@@ -1537,13 +1547,13 @@ export default function Workspace() {
                   : "Hãy nhập lịch rảnh để bắt đầu."}
               </p>
             </div>
-            {club.availabilityDataset?.settings ? (
+            {activeDataset?.settings ? (
               <p className="hint">
-                Ca sáng {club.availabilityDataset.settings.amStart}–
-                {club.availabilityDataset.settings.amEnd} · Ca chiều{" "}
-                {club.availabilityDataset.settings.pmStart}–
-                {club.availabilityDataset.settings.pmEnd} · Cho phép đến muộn
-                tối đa {club.availabilityDataset.settings.allowedLateMinutes}{" "}
+                Ca sáng {activeDataset.settings.amStart}–
+                {activeDataset.settings.amEnd} · Ca chiều{" "}
+                {activeDataset.settings.pmStart}–
+                {activeDataset.settings.pmEnd} · Cho phép đến muộn
+                tối đa {activeDataset.settings.allowedLateMinutes}{" "}
                 phút khi xếp lịch.
               </p>
             ) : null}
@@ -2018,7 +2028,7 @@ export default function Workspace() {
               <Badge status="attending">
                 Danh sách chính thức ·{" "}
                 {
-                  Object.keys(club.availabilityDataset?.memberLinks ?? {})
+                  Object.keys(activeDataset?.memberLinks ?? {})
                     .length
                 }{" "}
                 người từ file lịch rảnh
@@ -2086,9 +2096,9 @@ export default function Workspace() {
                     </td>
                     <td>
                       {Object.values(
-                        club.availabilityDataset?.memberLinks ?? {},
+                        activeDataset?.memberLinks ?? {},
                       ).includes(m.id)
-                        ? `${club.availabilityDataset?.rows.filter((r) => club.availabilityDataset?.memberLinks?.[r.name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi")] === m.id).length} khung theo tuần học`
+                        ? `${activeDataset?.rows.filter((r) => activeDataset?.memberLinks?.[r.name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi")] === m.id).length} khung theo tuần học`
                         : `${m.availability.length} khung giờ/tuần`}
                     </td>
                     <td>
@@ -2523,13 +2533,13 @@ export default function Workspace() {
           <section className="panel registration-panel">
             <PanelHead
               title={
-                currentWeek.closed ? "Kết quả buổi họp" : "Đăng ký của tôi"
+                currentWeek.closed || ownEntry?.attendanceVerified ? "Kết quả buổi họp" : "Đăng ký của tôi"
               }
             />
             <div className="registration-status">
               {currentWeek.cancelled ? (
                 <Badge status="neutral">Không tổ chức họp</Badge>
-              ) : currentWeek.closed && ownEntry ? (
+              ) : (currentWeek.closed || ownEntry?.attendanceVerified) && ownEntry ? (
                 <>
                   <Badge status={ownEntry.absent ? "absent" : "attending"}>
                     {ownEntry.absent
@@ -2538,7 +2548,7 @@ export default function Workspace() {
                         : "Vắng không phép"
                       : "Có mặt"}
                   </Badge>
-                  <p>Kết quả điểm danh đã chốt bởi BCS hoặc hệ thống.</p>
+                  <p>{currentWeek.closed ? "Kết quả điểm danh đã chốt bởi BCS hoặc hệ thống." : "Kết quả điểm danh đã được BCS ghi nhận."}</p>
                 </>
               ) : (
                 <Badge status={ownEntry?.status ?? "unregistered"} />
@@ -2549,11 +2559,13 @@ export default function Workspace() {
                 <p>Hãy cho BCS biết bạn có tham gia buổi họp tuần này nhé.</p>
               ) : null}
             </div>
-            {currentWeek.closed || currentWeek.cancelled ? (
+            {currentWeek.closed || currentWeek.cancelled || ownEntry?.attendanceVerified || !ownEntry ? (
               <div className="notice neutral">
                 {currentWeek.cancelled
                   ? "Tuần này không tổ chức họp."
-                  : "Tuần đã chốt. Liên hệ BCS nếu cần điều chỉnh."}
+                  : !ownEntry
+                    ? "Bạn không thuộc danh sách buổi họp tuần này. Liên hệ BCS nếu cần bổ sung."
+                    : "Kết quả đã được ghi nhận. Liên hệ BCS nếu cần điều chỉnh."}
               </div>
             ) : (
               <div className="registration-buttons">

@@ -1,4 +1,8 @@
-import { academicWeekFor, createDutyAvailability } from "./availability";
+import {
+  academicWeekFor,
+  activeAvailabilityDatasetFor,
+  createDutyAvailability,
+} from "./availability";
 export type Registration = "unregistered" | "attending" | "absent" | "pending";
 export type DutyResult =
   | "unverified"
@@ -29,6 +33,7 @@ export type Entry = {
   absent?: boolean;
   excused: boolean;
   passed: boolean;
+  attendanceVerified?: boolean;
 };
 export type Week = {
   id: string;
@@ -112,6 +117,9 @@ export type Club = {
   days: number[];
   availabilityVersion: string;
   availabilityDataset?: AvailabilityDataset;
+  activeAvailabilityDataset?: AvailabilityDataset;
+  testAccountsDisabled?: boolean;
+  testDataCleanedAt?: string;
   officialSince?: string;
   demoArchive?: {
     archivedAt: string;
@@ -255,13 +263,37 @@ export function syncWeeks(club: Club, date = today()) {
     changed = true;
   }
   const w = club.weeks.find((w) => w.id === current)!;
-  if (!w.closed)
-    for (const m of club.members.filter((m) => m.active && m.joined <= date))
+  if (!w.closed) {
+    if (w.meetingDate) {
+      const entries = w.entries.filter((e) => {
+        const member = club.members.find((m) => m.id === e.memberId);
+        return (
+          e.status !== "unregistered" ||
+          e.attendanceVerified ||
+          !member ||
+          isMemberOnDate(member, w.meetingDate)
+        );
+      });
+      if (entries.length !== w.entries.length) {
+        w.entries = entries;
+        changed = true;
+      }
+    }
+    for (const m of club.members.filter(
+      (m) =>
+        m.active &&
+        m.joined <= date &&
+        (!w.meetingDate || isMemberOnDate(m, w.meetingDate)),
+    ))
       if (!w.entries.some((e) => e.memberId === m.id)) {
         w.entries.push(newEntry(m.id));
         changed = true;
       }
+  }
   return changed;
+}
+export function isMemberOnDate(member: Member, date: string) {
+  return member.joined <= date && (!member.left || member.left >= date);
 }
 export function reportMembers(club: Club, month: string) {
   const end = monthDays(month).at(-1)!;
@@ -305,6 +337,7 @@ export const dutyPointsFor = (a: Assignment, rule: Rule) =>
   latePenaltyFor(a, rule);
 export function scoreFor(club: Club, memberId: string, month: string) {
   const rule = rulesFor(club, month);
+  const member = club.members.find((m) => m.id === memberId);
   const duties = club.schedules
     .filter((s) => s.month === month && s.published)
     .flatMap((s) =>
@@ -313,7 +346,11 @@ export function scoreFor(club: Club, memberId: string, month: string) {
         .flatMap((t) => t.assignments.filter((a) => a.memberId === memberId)),
     );
   const weeks = club.weeks.filter(
-    (w) => !w.cancelled && w.meetingDate.slice(0, 7) === month,
+    (w) =>
+      !w.cancelled &&
+      w.meetingDate.slice(0, 7) === month &&
+      !!member &&
+      isMemberOnDate(member, w.meetingDate),
   );
   const entries = weeks
     .map((w) => ({
@@ -348,8 +385,9 @@ export function scoreFor(club: Club, memberId: string, month: string) {
   };
 }
 export function makeSchedule(club: Club, month: string): Schedule {
+  const dataset = activeAvailabilityDatasetFor(club);
   const availableFor = createDutyAvailability(club),
-    detailSettings = club.availabilityDataset?.settings;
+    detailSettings = dataset?.settings;
   const members = club.members.filter(
     (m) => m.active && m.joined <= monthDays(month).at(-1)!,
   );
@@ -397,9 +435,58 @@ export function makeSchedule(club: Club, month: string): Schedule {
     (a, b) =>
       available(a).length - available(b).length || a.id.localeCompare(b.id),
   );
+  const assign = (shift: Shift, member: Member) => {
+    shift.assignments.push({
+      memberId: member.id,
+      result: "unverified",
+      late: false,
+      availabilityNote: availableFor(member, shift.date, shift.period).note,
+    });
+    counts.set(member.id, counts.get(member.id)! + 1);
+  };
+  // Give as many eligible members as possible a first shift before filling
+  // second shifts. Reassigning an earlier match avoids stranding a member who
+  // is only free in a slot already taken by someone with other options.
+  const seats = sorted
+    .filter((shift) => !shift.cancelled)
+    .flatMap((shift) => [0, 1].map((position) => ({ shift, position })));
+  const seatsByMember = new Map(
+    members.map((member) => [
+      member.id,
+      seats.filter(({ shift }) =>
+        availableFor(member, shift.date, shift.period).available,
+      ),
+    ]),
+  );
+  const firstAssignments = new Map<(typeof seats)[number], Member>();
+  const placeFirst = (
+    member: Member,
+    visited: Set<(typeof seats)[number]>,
+  ): boolean => {
+    for (const seat of seatsByMember.get(member.id) ?? []) {
+      if (visited.has(seat)) continue;
+      visited.add(seat);
+      const current = firstAssignments.get(seat);
+      if (!current || placeFirst(current, visited)) {
+        firstAssignments.set(seat, member);
+        return true;
+      }
+    }
+    return false;
+  };
+  const firstCandidates = [...members].sort(
+    (a, b) =>
+      seatsByMember.get(a.id)!.length - seatsByMember.get(b.id)!.length ||
+      a.id.localeCompare(b.id),
+  );
+  for (const member of firstCandidates) placeFirst(member, new Set());
+  for (const seat of seats) {
+    const member = firstAssignments.get(seat);
+    if (member) assign(seat.shift, member);
+  }
   for (const shift of sorted) {
     if (shift.cancelled) continue;
-    for (let seat = 0; seat < 2; seat++) {
+    for (let seat = shift.assignments.length; seat < 2; seat++) {
       const candidates = available(shift).filter(
         (m) => !shift.assignments.some((a) => a.memberId === m.id),
       );
@@ -426,15 +513,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
         );
       });
       const m = candidates[0];
-      if (m) {
-        shift.assignments.push({
-          memberId: m.id,
-          result: "unverified",
-          late: false,
-          availabilityNote: availableFor(m, shift.date, shift.period).note,
-        });
-        counts.set(m.id, counts.get(m.id)! + 1);
-      }
+      if (m) assign(shift, m);
     }
   }
   return {
@@ -443,7 +522,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
     shifts,
     availabilityVersion: club.availabilityVersion,
     ...(detailSettings
-      ? { sourceFilename: club.availabilityDataset?.filename }
+      ? { sourceFilename: dataset?.filename }
       : {}),
   };
 }

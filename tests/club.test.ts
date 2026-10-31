@@ -1,5 +1,8 @@
 import test from "node:test";
 import "./password.test";
+import "./member-regressions.test";
+import "./bcs-regressions.test";
+import "./workspace-regressions.test";
 import assert from "node:assert/strict";
 import {
   addDays,
