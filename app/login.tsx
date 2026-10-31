@@ -57,7 +57,7 @@ export default function Login({
           <p>
             {register
               ? "Tạo tài khoản thành viên bằng MSSV và họ tên."
-              : "Sử dụng tài khoản được BCS cung cấp."}
+              : "Sử dụng tài khoản được BĐH cung cấp."}
           </p>
           <form key={String(register)} onSubmit={submit}>
             {register ? (
@@ -124,7 +124,7 @@ export default function Login({
                 type="button"
                 onClick={() =>
                   setError(
-                    "Liên hệ BCS để được cấp lại mật khẩu, sau đó bạn có thể tự đổi trong menu tài khoản.",
+                    "Liên hệ BĐH để được cấp lại mật khẩu, sau đó bạn có thể tự đổi trong menu tài khoản.",
                   )
                 }
               >

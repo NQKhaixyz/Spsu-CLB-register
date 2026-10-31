@@ -22,7 +22,7 @@ import {
 const admin = {
   userId: "bcs-regression-owner",
   email: "bcs@example.invalid",
-  displayName: "BCS kiểm thử",
+  displayName: "BĐH kiểm thử",
 };
 const settings = {
   month: "2026-11",
@@ -251,7 +251,7 @@ test("First-turn matching covers every feasible member before allocating second 
     c.activeAvailabilityDataset = {
       filename: "matching.xlsx",
       importedAt: "2026-10-31T00:00:00Z",
-      importedBy: "BCS",
+      importedBy: "BĐH",
       rows: detailedRows,
       settings: { ...settings, ignoreSourceNotes: true },
       memberLinks: Object.fromEntries(ids.map((id) => [personKey(id), id])),
@@ -303,7 +303,7 @@ test("Both matching stages respect future join dates with weekly and detailed av
       c.activeAvailabilityDataset = {
         filename: "future-join.xlsx",
         importedAt: "2026-10-31T00:00:00Z",
-        importedBy: "BCS",
+        importedBy: "BĐH",
         rows: rows(c.members.map((m) => m.name)),
         settings: { ...settings, ignoreSourceNotes: true },
         memberLinks: Object.fromEntries(

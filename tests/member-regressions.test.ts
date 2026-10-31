@@ -11,7 +11,7 @@ import {
   type Club,
 } from "../lib/club";
 
-const admin = { userId: "member-qa-owner", email: "", displayName: "BCS" };
+const admin = { userId: "member-qa-owner", email: "", displayName: "BĐH" };
 const student = {
   userId: "member-qa-student",
   email: "",
@@ -19,7 +19,7 @@ const student = {
 };
 function fixture() {
   const club = createClub(admin.userId);
-  applyAction(club, admin, "profile", { name: "BCS QA", studentId: "BCS_QA" });
+  applyAction(club, admin, "profile", { name: "BĐH QA", studentId: "BCS_QA" });
   applyAction(club, student, "profile", {
     name: "Thành viên QA",
     studentId: "SV_QA",
@@ -56,7 +56,7 @@ test("Rút yêu cầu trở về vắng có phép với ô Vắng và điểm th
   assert.equal(scoreFor(club, memberId, week.meetingDate.slice(0, 7)).points, 0);
 });
 
-test("BCS xác minh vắng người chưa đăng ký: thành viên không tự xóa khoản trừ", () => {
+test("BĐH xác minh vắng người chưa đăng ký: thành viên không tự xóa khoản trừ", () => {
   const { club, week, memberId, entry } = fixture();
   applyAction(club, admin, "entry", {
     week: week.id,
@@ -70,14 +70,14 @@ test("BCS xác minh vắng người chưa đăng ký: thành viên không tự x
   for (const status of ["attending", "absent", "pending", "withdraw"])
     assert.throws(
       () => applyAction(club, student, "register", { status, reason: "Tự sửa" }),
-      /BCS ghi nhận/,
+      /BĐH ghi nhận/,
     );
   assert.deepEqual(entry, verified);
   applyAction(club, admin, "close", { week: week.id });
   assert.equal(scoreFor(club, memberId, week.meetingDate.slice(0, 7)).points, -5);
 });
 
-test("Người đã đăng ký không thể tự xin phép sau khi BCS xác minh vắng", () => {
+test("Người đã đăng ký không thể tự xin phép sau khi BĐH xác minh vắng", () => {
   const { club, week, memberId, entry } = fixture();
   applyAction(club, student, "register", { status: "attending" });
   applyAction(club, admin, "entry", {
@@ -92,10 +92,10 @@ test("Người đã đăng ký không thể tự xin phép sau khi BCS xác minh
         status: "absent",
         reason: "Lý do gửi sau khi đã điểm danh",
       }),
-    /BCS ghi nhận/,
+    /BĐH ghi nhận/,
   );
   assert.equal(entry.excused, false);
-  // BCS vẫn sửa được kết quả đã xác minh.
+  // BĐH vẫn sửa được kết quả đã xác minh.
   applyAction(club, admin, "entry", {
     week: week.id,
     memberId,
@@ -107,7 +107,7 @@ test("Người đã đăng ký không thể tự xin phép sau khi BCS xác minh
   assert.equal(entry.passed, true);
 });
 
-test("BCS chấm quy chế khóa kết quả có mặt khỏi thay đổi đăng ký của thành viên", () => {
+test("BĐH chấm quy chế khóa kết quả có mặt khỏi thay đổi đăng ký của thành viên", () => {
   const { club, week, memberId, entry } = fixture();
   applyAction(club, student, "register", { status: "attending" });
   applyAction(club, admin, "entry", { week: week.id, memberId, passed: true });
@@ -117,7 +117,7 @@ test("BCS chấm quy chế khóa kết quả có mặt khỏi thay đổi đăng
         status: "absent",
         reason: "Đổi sang vắng sau khi đã chấm",
       }),
-    /BCS ghi nhận/,
+    /BĐH ghi nhận/,
   );
   assert.equal(entry.passed, true);
 });
@@ -126,7 +126,7 @@ test("Đơn vắng mới sau khi được duyệt không hiển thị lời nh�
   const { club, week, memberId, entry } = fixture();
   askToReturn(club);
   applyAction(club, admin, "review", { week: week.id, memberId, approved: true });
-  assert.equal(entry.decision, "BCS chấp thuận");
+  assert.equal(entry.decision, "BĐH chấp thuận");
   applyAction(club, student, "register", {
     status: "absent",
     reason: "Có việc đột xuất mới",
@@ -156,7 +156,7 @@ test("Từ chối yêu cầu giữ vắng có phép; thành viên có thể gử
   assert.equal(entry.excused, true);
   applyAction(club, student, "register", {
     status: "pending",
-    reason: "BCS có thể xem xét lại không?",
+    reason: "BĐH có thể xem xét lại không?",
   });
   assert.equal(entry.status, "pending");
   assert.equal(entry.decision, "");
@@ -188,7 +188,7 @@ test("Tuần tự chốt thiếu ngày được bổ sung có lý do, tính đú
   applyAction(club, admin, "meeting", {
     week: week.id,
     meetingDate: week.id,
-    note: "Bổ sung ngày còn thiếu sau khi đối chiếu BCS",
+    note: "Bổ sung ngày còn thiếu sau khi đối chiếu BĐH",
     cancelled: true,
     time: "12:00",
     location: "Không được thay đổi khi bổ sung ngày",
@@ -199,7 +199,7 @@ test("Tuần tự chốt thiếu ngày được bổ sung có lý do, tính đú
   assert.equal(week.location, "Phòng sinh hoạt CLB");
   assert.equal(scoreFor(club, memberId, month).meetingMissed, 1);
   assert.equal(scoreFor(club, memberId, month).points, -5);
-  assert.match(club.logs[0].text, /Bổ sung ngày còn thiếu sau khi đối chiếu BCS/);
+  assert.match(club.logs[0].text, /Bổ sung ngày còn thiếu sau khi đối chiếu BĐH/);
   assert.throws(
     () =>
       applyAction(club, admin, "meeting", {

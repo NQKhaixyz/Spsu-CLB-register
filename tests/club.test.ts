@@ -71,13 +71,13 @@ test("Vietnam midnight and Monday–Sunday boundaries", () => {
   assert.equal(weekId("2026-11-01"), "2026-10-26");
   assert.equal(weekId("2026-11-02"), "2026-11-02");
 });
-test("First owner becomes BCS; normal profile cannot choose admin", () => {
+test("First owner becomes BĐH; normal profile cannot choose admin", () => {
   const c = fixture();
   assert.equal(c.members[0].role, "admin");
   assert.equal(c.members[1].role, "member");
   assert.throws(
     () => applyAction(c, memberIdentity, "settings", { name: "Hacked" }),
-    /BCS/,
+    /BĐH/,
   );
 });
 test("An imported MSSV cannot be claimed through profile updates", () => {
@@ -111,7 +111,7 @@ test("Empty or matching emails cannot link another imported profile", () => {
           name: "Người nhận nhầm",
           studentId: "IMPORTED001",
         }),
-      /BCS/,
+      /BĐH/,
     );
     assert.equal(JSON.stringify(c), before);
   }
@@ -144,7 +144,7 @@ test("Absence requires a reason and returning requires approval", () => {
   });
   assert.throws(
     () => applyAction(c, memberIdentity, "register", { status: "attending" }),
-    /BCS/,
+    /BĐH/,
   );
   applyAction(c, memberIdentity, "register", {
     status: "pending",
@@ -475,7 +475,7 @@ test("Detailed availability rejects incomplete rows instead of silently dropping
   await assert.rejects(() => readAvailabilityUpload(file), /Dòng 2/);
 });
 
-test("Detailed import is BCS-only and does not invent MSSVs or overwrite effective schedules", () => {
+test("Detailed import is BĐH-only and does not invent MSSVs or overwrite effective schedules", () => {
   const c = fixture();
   const beforeMembers = JSON.stringify(c.members),
     beforeSchedules = JSON.stringify(c.schedules),
@@ -495,7 +495,7 @@ test("Detailed import is BCS-only and does not invent MSSVs or overwrite effecti
   };
   assert.throws(
     () => applyAction(c, memberIdentity, "importAvailabilityDetails", data),
-    /BCS/,
+    /BĐH/,
   );
   applyAction(c, adminIdentity, "importAvailabilityDetails", data);
   assert.equal(JSON.stringify(c.members), beforeMembers);
@@ -525,7 +525,7 @@ function detailedFixture(period = "14h30-17h30") {
   c.availabilityDataset = {
     filename: "test.xlsx",
     importedAt: "",
-    importedBy: "BCS",
+    importedBy: "BĐH",
     settings: detailedSettings,
     memberLinks: { [m.name.toLocaleLowerCase("vi")]: m.id },
     rows: [
@@ -590,7 +590,7 @@ test("Activating detailed availability creates pending MSSV profiles, is repeata
   const data = { ...detailedSettings, month: "2026-11" };
   assert.throws(
     () => applyAction(c, memberIdentity, "activateAvailabilityDetails", data),
-    /BCS/,
+    /BĐH/,
   );
   applyAction(c, adminIdentity, "activateAvailabilityDetails", data);
   const m = c.members.find((x) => x.name === "Người chờ MSSV")!;
@@ -642,7 +642,7 @@ test("Late checkbox deducts D and is exported with notes and the net duty score"
   assert.equal(scoreFor(c, m.id, s.month).lateDeduction, 5);
   assert.throws(
     () => applyAction(c, memberIdentity, "shift", { ...data, late: false }),
-    /BCS/,
+    /BĐH/,
   );
   const { buffer } = await makeReport(c, "2026-11");
   const { default: ExcelJS } = await import("exceljs");
@@ -730,7 +730,7 @@ test("Official roster promotion archives sample data and preserves real members,
       applyAction(c, memberIdentity, "activateOfficialRoster", {
         latePenalty: 5,
       }),
-    /BCS/,
+    /BĐH/,
   );
   applyAction(c, adminIdentity, "activateOfficialRoster", { latePenalty: 5 });
   assert.equal(c.demo, false);
@@ -772,7 +772,7 @@ test("Cancelling a whole shift clears points for both people and restores their 
   assert.equal(scoreFor(c, second.memberId, s.month).points, -15);
   assert.throws(
     () => applyAction(c, memberIdentity, "cancelShift", data),
-    /BCS/,
+    /BĐH/,
   );
   applyAction(c, adminIdentity, "cancelShift", {
     ...data,

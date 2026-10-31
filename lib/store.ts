@@ -5,7 +5,7 @@ type Row = { payload: string; revision: number };
 export class ClubNotReadyError extends Error {
   constructor() {
     super(
-      "BCS chưa thiết lập không gian CLB. Vui lòng quay lại sau khi chủ quản trị hoàn tất hồ sơ.",
+      "BĐH chưa thiết lập không gian CLB. Vui lòng quay lại sau khi chủ quản trị hoàn tất hồ sơ.",
     );
   }
 }

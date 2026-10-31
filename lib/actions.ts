@@ -73,7 +73,7 @@ export function applyAction(
     );
     if (existing) {
       throw new Error(
-        "MSSV đã có trong danh sách. Nhờ BCS cấp tài khoản cho hồ sơ này.",
+        "MSSV đã có trong danh sách. Nhờ BĐH cấp tài khoản cho hồ sơ này.",
       );
     } else if (me) {
       me.name = name;
@@ -111,12 +111,12 @@ export function applyAction(
     check(e, "Bạn chưa có trong danh sách tuần này.");
     check(
       !e.attendanceVerified,
-      "Kết quả đã được BCS ghi nhận. Liên hệ BCS nếu cần điều chỉnh.",
+      "Kết quả đã được BĐH ghi nhận. Liên hệ BĐH nếu cần điều chỉnh.",
     );
     if (data.status === "attending") {
       check(
         e.status === "unregistered" || e.status === "attending",
-        "Đăng ký vắng cần gửi yêu cầu để BCS duyệt.",
+        "Đăng ký vắng cần gửi yêu cầu để BĐH duyệt.",
       );
       e.status = "attending";
       e.absent = false;
@@ -138,7 +138,7 @@ export function applyAction(
     } else if (data.status === "pending") {
       check(e.status === "absent", "Chỉ gửi yêu cầu khi đang đăng ký vắng.");
       const request = str(data.reason);
-      check(request.length >= 3, "Nhập lời nhắn gửi BCS.");
+      check(request.length >= 3, "Nhập lời nhắn gửi BĐH.");
       e.status = "pending";
       e.absent = undefined;
       e.request = request;
@@ -157,7 +157,7 @@ export function applyAction(
     note("Cập nhật nguyện vọng trực thêm");
     return;
   }
-  check(admin, "Chỉ BCS được thực hiện thao tác này.");
+  check(admin, "Chỉ BĐH được thực hiện thao tác này.");
   const getWeek = () => {
     const w = club.weeks.find((w) => w.id === data.week);
     check(w, "Không tìm thấy tuần.");
@@ -210,7 +210,7 @@ export function applyAction(
     check(data.approved || str(data.reason).length >= 3, "Nhập lý do từ chối.");
     e.status = data.approved ? "attending" : "absent";
     e.absent = !data.approved;
-    e.decision = data.approved ? "BCS chấp thuận" : str(data.reason);
+    e.decision = data.approved ? "BĐH chấp thuận" : str(data.reason);
     if (data.approved) e.excused = false;
     note(
       `${data.approved ? "Duyệt" : "Từ chối"} yêu cầu của ${getMember().name}`,
@@ -279,7 +279,7 @@ export function applyAction(
       check(!shift.cancelled, "Ca này đã hủy.");
       shift.cancellationSnapshot = structuredClone(shift.assignments);
       shift.cancelled = true;
-      shift.cancelReason = str(data.reason, 500) || "BCS hủy ca trực";
+      shift.cancelReason = str(data.reason, 500) || "BĐH hủy ca trực";
       shift.cancelledAt = new Date().toISOString();
       for (const assignment of shift.assignments) {
         assignment.result = "cancelled";
@@ -543,7 +543,7 @@ export function applyAction(
         const matches = club.members.filter((m) => personKey(m.name) === key);
         check(
           matches.length <= 1,
-          `Có nhiều hồ sơ trùng tên ${row.name}. BCS cần phân biệt trước khi áp dụng.`,
+          `Có nhiều hồ sơ trùng tên ${row.name}. BĐH cần phân biệt trước khi áp dụng.`,
         );
         member = matches[0];
       }

@@ -44,7 +44,7 @@ export default function DutyRegister({
     <section className="panel duty-register">
       <PanelHead
         title="Theo dõi trực và đến muộn"
-        description={`BCS tích Đến muộn thì trừ ${rule.D ?? 0} điểm/lượt. Nếu lý do hợp lệ, xem ghi chú và để ô trống.`}
+        description={`BĐH tích Đến muộn thì trừ ${rule.D ?? 0} điểm/lượt. Nếu lý do hợp lệ, xem ghi chú và để ô trống.`}
       />
       <div className="availability-toolbar">
         <input

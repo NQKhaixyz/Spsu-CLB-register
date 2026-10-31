@@ -406,7 +406,7 @@ export default function Workspace() {
       <div className="welcome">
         <Brand />
         <Empty title="Tài khoản đã ngừng hoạt động">
-          Liên hệ BCS để mở lại tài khoản của bạn.
+          Liên hệ BĐH để mở lại tài khoản của bạn.
         </Empty>
         <Button variant="secondary" onClick={logoutAccount}>
           Đăng xuất
@@ -624,8 +624,8 @@ export default function Workspace() {
         status === "absent" ? "Xin vắng buổi họp" : "Xin chuyển sang tham gia",
       description:
         status === "absent"
-          ? "Lý do sẽ được gửi riêng đến BCS."
-          : "Yêu cầu được đưa vào nhóm chưa xử lý để BCS duyệt.",
+          ? "Lý do sẽ được gửi riêng đến BĐH."
+          : "Yêu cầu được đưa vào nhóm chưa xử lý để BĐH duyệt.",
       content: (
         <form
           onSubmit={(e) =>
@@ -634,13 +634,13 @@ export default function Workspace() {
               { ...getForm(e), status },
               status === "absent"
                 ? "Đã ghi nhận đăng ký xin vắng"
-                : "Đã gửi yêu cầu đến BCS",
+                : "Đã gửi yêu cầu đến BĐH",
             )
           }
         >
           <Field
             label={
-              status === "absent" ? "Lý do xin vắng *" : "Lời nhắn gửi BCS *"
+              status === "absent" ? "Lý do xin vắng *" : "Lời nhắn gửi BĐH *"
             }
           >
             <textarea
@@ -723,7 +723,7 @@ export default function Workspace() {
             <Field label="Vai trò">
               <select name="role" defaultValue={member.role}>
                 <option value="member">Thành viên</option>
-                <option value="admin">Ban cán sự</option>
+                <option value="admin">Ban điều hành</option>
               </select>
             </Field>
           ) : null}
@@ -1050,7 +1050,7 @@ export default function Workspace() {
             <CalendarDays size={16} />
             {w.meetingDate
               ? `${["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"][weekday(w.meetingDate)]}, ${dateLabel(w.meetingDate)}`
-              : "BCS chưa đặt ngày họp"}
+              : "BĐH chưa đặt ngày họp"}
             {w.meetingDate ? ` · ${w.time}` : ""}
           </span>
           <span>
@@ -1080,7 +1080,7 @@ export default function Workspace() {
     return (
       <section className="panel requests-panel">
         <PanelHead
-          title={full ? "Đang chờ BCS duyệt" : "Cần bạn xử lý"}
+          title={full ? "Đang chờ BĐH duyệt" : "Cần bạn xử lý"}
           action={<span className="count-pill">{pending.length}</span>}
         />
         {items.length ? (
@@ -1239,7 +1239,7 @@ export default function Workspace() {
                             <small title={e.reason}>{e.reason}</small>
                           ) : (
                             <small>
-                              {m.role === "admin" ? "Ban cán sự" : "Thành viên"}
+                              {m.role === "admin" ? "Ban điều hành" : "Thành viên"}
                             </small>
                           )}
                         </span>
@@ -1409,7 +1409,7 @@ export default function Workspace() {
           <Stat
             title="Yêu cầu chưa xử lý"
             value={count("pending")}
-            description="Đang chờ BCS phê duyệt"
+            description="Đang chờ BĐH phê duyệt"
             icon={Clock3}
             color="amber"
             onClick={() => go("requests")}
@@ -1591,7 +1591,7 @@ export default function Workspace() {
                 <Badge status={schedule.published ? "attending" : "pending"}>
                   {schedule.published
                     ? "Đã công bố"
-                    : "Bản nháp · Chỉ BCS nhìn thấy"}
+                    : "Bản nháp · Chỉ BĐH nhìn thấy"}
                 </Badge>
                 <span>
                   {activeShifts.length} ca hoạt động
@@ -1719,7 +1719,7 @@ export default function Workspace() {
                                           ) : null}
                                           {a?.note ? (
                                             <p className="assignment-note">
-                                              BCS: {a.note}
+                                              BĐH: {a.note}
                                             </p>
                                           ) : null}
                                           {isAdmin ? (
@@ -1829,7 +1829,7 @@ export default function Workspace() {
                                                   }
                                                 >
                                                   <Field
-                                                    label={`Ghi chú BCS: ${m?.name}`}
+                                                    label={`Ghi chú BĐH: ${m?.name}`}
                                                   >
                                                     <textarea
                                                       name="note"
@@ -2009,7 +2009,7 @@ export default function Workspace() {
             >
               {isAdmin
                 ? "Nhập lịch rảnh và để hệ thống gợi ý phân công cho cả tháng."
-                : "BCS sẽ công bố lịch trực sau khi kiểm tra bản nháp."}
+                : "BĐH sẽ công bố lịch trực sau khi kiểm tra bản nháp."}
             </Empty>
           </section>
         )}
@@ -2099,7 +2099,7 @@ export default function Workspace() {
                     <td>
                       {m.role === "admin" ? (
                         <span className="role-tag">
-                          <ShieldCheck size={13} /> BCS
+                          <ShieldCheck size={13} /> BĐH
                         </span>
                       ) : (
                         "Thành viên"
@@ -2197,7 +2197,7 @@ export default function Workspace() {
           <Stat
             title="Lượt trực hoàn thành"
             value={total.reduce((a, s) => a + s.completed, 0)}
-            description="Đã được BCS xác minh"
+            description="Đã được BĐH xác minh"
             icon={CalendarCheck2}
           />
           <Stat
@@ -2210,14 +2210,14 @@ export default function Workspace() {
           <Stat
             title="Lượt qua quy chế"
             value={total.reduce((a, s) => a + s.passed, 0)}
-            description="BCS ghi nhận trực tiếp"
+            description="BĐH ghi nhận trực tiếp"
             icon={ClipboardCheck}
             color="amber"
           />
           <Stat
             title="Trực chưa xác minh"
             value={waiting}
-            description="Chưa tính A/B; đi muộn do BCS tích được tính riêng"
+            description="Chưa tính A/B; đi muộn do BĐH tích được tính riêng"
             icon={Clock3}
             color="rose"
           />
@@ -2369,7 +2369,7 @@ export default function Workspace() {
           <section className="panel settings-card">
             <PanelHead
               title="Hệ số điểm"
-              description="A cộng trực đủ; B/C trừ vắng không phép; D trừ mỗi lượt BCS tích đi muộn."
+              description="A cộng trực đủ; B/C trừ vắng không phép; D trừ mỗi lượt BĐH tích đi muộn."
             />
             <form
               key={month}
@@ -2422,7 +2422,7 @@ export default function Workspace() {
               </div>
               <p className="hint">
                 Họp có mặt, vắng có phép và quy chế không làm thay đổi điểm. Hệ
-                số mặc định là 0 cho đến khi BCS đặt quy định.
+                số mặc định là 0 cho đến khi BĐH đặt quy định.
               </p>
               <Button type="submit" disabled={busy}>
                 <Check size={16} /> Lưu hệ số
@@ -2557,7 +2557,7 @@ export default function Workspace() {
                         : "Vắng không phép"
                       : "Có mặt"}
                   </Badge>
-                  <p>{currentWeek.closed ? "Kết quả điểm danh đã chốt bởi BCS hoặc hệ thống." : "Kết quả điểm danh đã được BCS ghi nhận."}</p>
+                  <p>{currentWeek.closed ? "Kết quả điểm danh đã chốt bởi BĐH hoặc hệ thống." : "Kết quả điểm danh đã được BĐH ghi nhận."}</p>
                 </>
               ) : (
                 <Badge status={ownEntry?.status ?? "unregistered"} />
@@ -2565,7 +2565,7 @@ export default function Workspace() {
               {ownEntry?.reason ? (
                 <p>Lý do xin vắng đã gửi: {ownEntry.reason}</p>
               ) : !currentWeek.closed && !currentWeek.cancelled ? (
-                <p>Hãy cho BCS biết bạn có tham gia buổi họp tuần này nhé.</p>
+                <p>Hãy cho BĐH biết bạn có tham gia buổi họp tuần này nhé.</p>
               ) : null}
             </div>
             {currentWeek.closed || currentWeek.cancelled || ownEntry?.attendanceVerified || !ownEntry ? (
@@ -2573,8 +2573,8 @@ export default function Workspace() {
                 {currentWeek.cancelled
                   ? "Tuần này không tổ chức họp."
                   : !ownEntry
-                    ? "Bạn không thuộc danh sách buổi họp tuần này. Liên hệ BCS nếu cần bổ sung."
-                    : "Kết quả đã được ghi nhận. Liên hệ BCS nếu cần điều chỉnh."}
+                    ? "Bạn không thuộc danh sách buổi họp tuần này. Liên hệ BĐH nếu cần bổ sung."
+                    : "Kết quả đã được ghi nhận. Liên hệ BĐH nếu cần điều chỉnh."}
               </div>
             ) : (
               <div className="registration-buttons">
@@ -2596,7 +2596,7 @@ export default function Workspace() {
                 ) : ownEntry?.status === "pending" ? (
                   <>
                     <div className="notice amber">
-                      Yêu cầu đang chờ BCS duyệt, được thống kê trong nhóm chưa
+                      Yêu cầu đang chờ BĐH duyệt, được thống kê trong nhóm chưa
                       xử lý.
                     </div>
                     <Button
@@ -2688,7 +2688,7 @@ export default function Workspace() {
             ))}
             {!shifts.length ? (
               <Empty title="Bạn chưa có ca trực sắp tới" icon={CalendarDays}>
-                Theo dõi tại đây sau khi BCS công bố lịch.
+                Theo dõi tại đây sau khi BĐH công bố lịch.
               </Empty>
             ) : null}
             <label className="extra-preference">
@@ -2733,7 +2733,7 @@ export default function Workspace() {
             </div>
             <p className="hint">
               Trực đủ/vắng trực tính khi xác minh; họp tính khi chốt. Đi muộn
-              tính theo ô BCS tích trên lịch đã công bố.
+              tính theo ô BĐH tích trên lịch đã công bố.
             </p>
           </section>
         </div>
@@ -2806,7 +2806,7 @@ export default function Workspace() {
           <div>
             <strong>{club.name}</strong>
             <span>
-              {isAdmin ? "Không gian ban cán sự" : "Không gian thành viên"}
+              {isAdmin ? "Không gian ban điều hành" : "Không gian thành viên"}
             </span>
           </div>
           <ChevronDown size={14} />
@@ -2883,10 +2883,10 @@ export default function Workspace() {
                   <div className="help-content">
                     <p>
                       <strong>Họp tuần:</strong> tự mở thứ Hai, chốt cuối Chủ
-                      nhật. Xin vắng cần lý do; đổi sang tham gia cần BCS duyệt.
+                      nhật. Xin vắng cần lý do; đổi sang tham gia cần BĐH duyệt.
                     </p>
                     <p>
-                      <strong>Lịch trực:</strong> BCS nhập lịch rảnh, xếp bản
+                      <strong>Lịch trực:</strong> BĐH nhập lịch rảnh, xếp bản
                       nháp rồi công bố. Hai ca/người là ưu tiên; có thể xếp
                       thêm.
                     </p>
@@ -2896,7 +2896,7 @@ export default function Workspace() {
                       điểm.
                     </p>
                     <p>
-                      <strong>Báo cáo:</strong> BCS chọn tháng rồi bấm xuất
+                      <strong>Báo cáo:</strong> BĐH chọn tháng rồi bấm xuất
                       Excel. Dữ liệu thiếu được ghi rõ trong bản tạm.
                     </p>
                   </div>
@@ -2911,7 +2911,7 @@ export default function Workspace() {
             <Avatar name={me.name} />
             <div>
               <strong>{me.name}</strong>
-              <span>{isAdmin ? "Ban cán sự" : "Thành viên"}</span>
+              <span>{isAdmin ? "Ban điều hành" : "Thành viên"}</span>
             </div>
             <button
               title="Đăng xuất"
@@ -2970,7 +2970,7 @@ export default function Workspace() {
             <span className="topbar-divider" />
             <Avatar name={me.name} size="small" />
             <span className="topbar-role">
-              {isAdmin ? "Ban cán sự" : "Thành viên"}
+              {isAdmin ? "Ban điều hành" : "Thành viên"}
               <ChevronDown size={13} />
             </span>
           </div>

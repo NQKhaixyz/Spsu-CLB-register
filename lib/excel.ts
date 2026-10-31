@@ -210,7 +210,7 @@ export async function makeReport(club: Club, month: string) {
       ["A", rule.A, "Cộng cho mỗi ca đã trực và được xác minh"],
       ["B", rule.B, "Trừ cho mỗi ca trực vắng không phép"],
       ["C", rule.C, "Trừ cho mỗi buổi họp vắng không phép đã chốt"],
-      ["D", rule.D ?? 0, "Trừ mỗi lượt BCS tích Đến muộn trên lịch đã công bố"],
+      ["D", rule.D ?? 0, "Trừ mỗi lượt BĐH tích Đến muộn trên lịch đã công bố"],
       [
         "Công thức",
         "A × trực đủ − B × vắng trực − C × vắng họp − D × đi muộn",

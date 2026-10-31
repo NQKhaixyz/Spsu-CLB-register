@@ -125,11 +125,11 @@ test("Self profile update rolls back on account-write failure and retries concur
     if(!queries.some((q)=>q.startsWith("UPDATE auth_accounts SET display_name")))return;
     beforeBatch=undefined;
     const row=sqlite.prepare("SELECT payload,revision FROM club_state WHERE id='main'").get()!;
-    const c=JSON.parse(String(row.payload));c.name="BCS thay đổi đồng thời";
+    const c=JSON.parse(String(row.payload));c.name="BĐH thay đổi đồng thời";
     sqlite.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main'").run(JSON.stringify(c));
   };
   const changed=await updateOwnProfile(request(token),{name:"Trang mới",studentId:"20269999"});
-  assert.equal(changed.club.name,"BCS thay đổi đồng thời");
+  assert.equal(changed.club.name,"BĐH thay đổi đồng thời");
   assert.equal(changed.club.members.find((m)=>m.id===target.id)!.studentId,"20269999");
 });
 const request = (token = "") =>
@@ -201,7 +201,7 @@ test("Failed account insertion rolls back member link and audit log; retry provi
   assert.equal(sqlite.prepare("SELECT count(*) AS n FROM auth_accounts WHERE login='real001'").get()?.n, 1);
 });
 
-test("Provisioning retries a stale revision and preserves concurrent BCS changes", async () => {
+test("Provisioning retries a stale revision and preserves concurrent BĐH changes", async () => {
   const { req, target } = await addMember();
   beforeBatch = (queries) => {
     if (!queries.some((q) => q.startsWith("INSERT INTO auth_accounts"))) return;
@@ -224,12 +224,12 @@ test("Public signup cannot create a duplicate of a pending imported profile", as
   const { admin } = await adminContext();
   await mutate(admin.userId, (club) => {
     club.members.push({ id: "source-linked", name: "Nguyễn Mai Lan", studentId: "", role: "member", active: true, joined: "2026-01-01", availability: [], extraDuties: false, needsStudentId: true });
-    club.availabilityDataset = { filename: "real.xlsx", importedAt: "2026-10-31", importedBy: "BCS", rows: [], memberLinks: { "nguyễn mai lan": "source-linked" } };
+    club.availabilityDataset = { filename: "real.xlsx", importedAt: "2026-10-31", importedBy: "BĐH", rows: [], memberLinks: { "nguyễn mai lan": "source-linked" } };
   });
   const before = await readState("", false);
   await assert.rejects(
     () => register(request(), { name: "  NGUYỄN   MAI LAN ", studentId: "REAL001", password: "Signup!2026", role: "admin" }),
-    (e: { status: number; message: string }) => e.status === 409 && e.message.includes("BCS"),
+    (e: { status: number; message: string }) => e.status === 409 && e.message.includes("BĐH"),
   );
   assert.deepEqual(await readState("", false), before);
   assert.equal(sqlite.prepare("SELECT count(*) AS n FROM auth_accounts WHERE login='real001'").get()?.n, 0);
@@ -291,7 +291,7 @@ async function cleanupContext() {
       imported("demo-0", "Hồ sơ mẫu", "DEMO001"),
     );
     club.activeAvailabilityDataset = {
-      filename: "source.xlsx", importedAt: "2026-10-31", importedBy: "BCS",
+      filename: "source.xlsx", importedAt: "2026-10-31", importedBy: "BĐH",
       rows: [
         { sourceRow: 2, name: "Thành viên nguồn một", day: "Thứ 2", period: "Cả ngày", weeks: "11-20", note: "" },
         { sourceRow: 3, name: "Thành viên nguồn hai", day: "Thứ 3", period: "Cả ngày", weeks: "11-20", note: "" },
@@ -379,7 +379,7 @@ test("Cleanup transaction failure rolls back state, removed sessions and account
   assert.deepEqual(sqlite.prepare("SELECT * FROM auth_sessions ORDER BY token_hash").all(), sessions);
 });
 
-test("Cleanup stale-CAS gate preserves test sessions until retry and retains concurrent BCS edits", async () => {
+test("Cleanup stale-CAS gate preserves test sessions until retry and retains concurrent BĐH edits", async () => {
   const context = await cleanupContext();
   let batches = 0;
   const sessionCount = sqlite.prepare("SELECT count(*) AS n FROM auth_sessions").get()!.n;
@@ -388,7 +388,7 @@ test("Cleanup stale-CAS gate preserves test sessions until retry and retains con
     batches++;
     if (batches === 1) {
       const concurrent = structuredClone(context.before.club);
-      concurrent.name = "BCS vừa sửa tên CLB";
+      concurrent.name = "BĐH vừa sửa tên CLB";
       sqlite.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main'").run(JSON.stringify(concurrent));
     } else {
       assert.equal(sqlite.prepare("SELECT count(*) AS n FROM auth_sessions").get()?.n, sessionCount);
@@ -398,7 +398,7 @@ test("Cleanup stale-CAS gate preserves test sessions until retry and retains con
   };
   const cleaned = await purgeTestData(context.admin, context.data);
   assert.equal(batches, 2);
-  assert.equal(cleaned.club.name, "BCS vừa sửa tên CLB");
+  assert.equal(cleaned.club.name, "BĐH vừa sửa tên CLB");
   assert.equal(cleaned.revision, context.before.revision + 2);
   assert.equal(await getNativeUser(request(context.trialToken)), null);
   assert.ok(await getNativeUser(context.req));

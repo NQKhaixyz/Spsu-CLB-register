@@ -31,7 +31,7 @@ export function AvailabilityPreview({ rows }: { rows: AvailabilityDetail[] }) {
           {rows.length} dòng lịch rảnh của {peopleCount(rows)} người
         </strong>
         . File không có MSSV. Khung giờ, tuần học và ghi chú được lưu nguyên văn
-        để BCS đối chiếu.
+        để BĐH đối chiếu.
       </div>
       <DetailTable rows={rows.slice(0, 8)} />
       {rows.length > 8 ? (
@@ -43,7 +43,7 @@ export function AvailabilityPreview({ rows }: { rows: AvailabilityDetail[] }) {
       <p className="dialog-copy">
         Bản chi tiết được lưu để xem và đối chiếu. Đặt mốc tuần học và giờ ca để
         áp dụng xếp lịch. Những tên chưa có trong danh sách được tạo hồ sơ chờ
-        BCS bổ sung MSSV trước khi cấp tài khoản.
+        BĐH bổ sung MSSV trước khi cấp tài khoản.
       </p>
     </>
   );
@@ -157,7 +157,7 @@ export default function AvailabilityPage({
             <Stat
               title="Dòng có ghi chú"
               value={rows.filter((r) => r.note).length}
-              description="BCS cần đối chiếu điều kiện riêng"
+              description="BĐH cần đối chiếu điều kiện riêng"
               icon={FileSpreadsheet}
               color="rose"
             />
@@ -171,7 +171,7 @@ export default function AvailabilityPage({
             <p>
               {dataset.settings
                 ? `Tuần ${dataset.settings.anchorWeek} bắt đầu ${dataset.settings.anchorDate}. Ca sáng ${dataset.settings.amStart}–${dataset.settings.amEnd}, ca chiều ${dataset.settings.pmStart}–${dataset.settings.pmEnd}. Cho phép đến muộn tối đa ${dataset.settings.allowedLateMinutes} phút.`
-                : "Đặt mốc tuần học và giờ ca bên dưới để xếp lịch. Người chưa có MSSV được tạo hồ sơ theo tên, chờ BCS bổ sung MSSV trước khi cấp tài khoản."}
+                : "Đặt mốc tuần học và giờ ca bên dưới để xếp lịch. Người chưa có MSSV được tạo hồ sơ theo tên, chờ BĐH bổ sung MSSV trước khi cấp tài khoản."}
             </p>
           </div>
           {dataset.memberLinks ? (
@@ -195,7 +195,7 @@ export default function AvailabilityPage({
                 </>
               ) : (
                 <p>
-                  BCS bổ sung MSSV trong mục Thành viên trước khi cấp tài khoản
+                  BĐH bổ sung MSSV trong mục Thành viên trước khi cấp tài khoản
                   cho người chưa có MSSV.
                 </p>
               )}
@@ -204,7 +204,7 @@ export default function AvailabilityPage({
           <section className="panel availability-settings">
             <PanelHead
               title="Áp dụng và xếp lịch nháp"
-              description="Bản nháp dành cho BCS kiểm tra trước khi công bố."
+              description="Bản nháp dành cho BĐH kiểm tra trước khi công bố."
             />
             <form
               onSubmit={async (e) => {
@@ -299,7 +299,7 @@ export default function AvailabilityPage({
                 </Field>
               </div>
               <p className="hint">
-                Cột ghi chú cuối file không dùng để xếp lịch. BCS nhập ghi chú
+                Cột ghi chú cuối file không dùng để xếp lịch. BĐH nhập ghi chú
                 ca và tích Đến muộn trong bảng theo dõi trực. Chỉ các khung rảnh
                 đủ đến hết ca và bắt đầu không muộn quá mức cho phép mới được
                 chọn.

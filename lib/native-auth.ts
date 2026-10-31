@@ -139,7 +139,7 @@ async function bootstrapAccounts() {
     (needed.includes("member") && !env.INITIAL_MEMBER_PASSWORD)
   )
     throw new AuthError(
-      "Tài khoản ban đầu chưa được cấu hình. Liên hệ BCS.",
+      "Tài khoản ban đầu chưa được cấu hình. Liên hệ BĐH.",
       503,
     );
   const { club } = await mutate(
@@ -162,7 +162,7 @@ async function bootstrapAccounts() {
           c.members.push({
             id: uid(),
             userId,
-            name: role === "admin" ? "Ban cán sự" : "Thành viên thử nghiệm",
+            name: role === "admin" ? "Ban điều hành" : "Thành viên thử nghiệm",
             studentId: prefix + String(n).padStart(3, "0"),
             role,
             active: true,
@@ -231,7 +231,7 @@ export async function login(request: Request, data: Record<string, unknown>) {
     !m?.active ||
     (club.testAccountsDisabled && account.user_id === "native:test-member")
   )
-    throw new AuthError("Tài khoản đã tạm dừng. Liên hệ BCS để mở lại.", 403);
+    throw new AuthError("Tài khoản đã tạm dừng. Liên hệ BĐH để mở lại.", 403);
   return issueSession(account.id);
 }
 export async function register(
@@ -254,7 +254,7 @@ export async function register(
     const { club, revision } = await readState("", false);
     if (club.members.some((m) => m.studentId.toLowerCase() === studentId))
       throw new AuthError(
-        "MSSV đã có trong danh sách. Nhờ BCS cấp mật khẩu hoặc dùng tài khoản đã có.",
+        "MSSV đã có trong danh sách. Nhờ BĐH cấp mật khẩu hoặc dùng tài khoản đã có.",
         409,
       );
     if (
@@ -263,7 +263,7 @@ export async function register(
       )
     )
       throw new AuthError(
-        "Tên đã có trong danh sách nhập từ file và đang chờ MSSV. Nhờ BCS bổ sung MSSV và cấp mật khẩu để giữ đúng lịch trực, lịch sử của bạn.",
+        "Tên đã có trong danh sách nhập từ file và đang chờ MSSV. Nhờ BĐH bổ sung MSSV và cấp mật khẩu để giữ đúng lịch trực, lịch sử của bạn.",
         409,
       );
     applyAction(club, { userId, displayName: name, email: "" }, "profile", {
@@ -309,7 +309,7 @@ export async function setAccountPassword(
     const { club, revision } = await readState("", false);
     const me = club.members.find((m) => m.userId === user.userId);
     if (!me?.active || me.role !== "admin")
-      throw new AuthError("Chỉ BCS được cấp mật khẩu.", 403);
+      throw new AuthError("Chỉ BĐH được cấp mật khẩu.", 403);
     const target = club.members.find((m) => m.id === data.memberId);
     if (!target) throw new AuthError("Không tìm thấy thành viên.", 404);
     if (club.testAccountsDisabled && target.userId === "native:test-member")
@@ -333,7 +333,7 @@ export async function setAccountPassword(
         .first<{ id: string }>();
       if (["admin", "member"].includes(loginName) || collision)
         throw new AuthError(
-          "MSSV trùng tên đăng nhập đã có hoặc tên dành riêng. Nhờ BCS sửa MSSV trước khi cấp tài khoản.",
+          "MSSV trùng tên đăng nhập đã có hoặc tên dành riêng. Nhờ BĐH sửa MSSV trước khi cấp tài khoản.",
           409,
         );
     }
