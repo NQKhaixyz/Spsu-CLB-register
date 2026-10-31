@@ -1,6 +1,5 @@
 "use client";
 import Login from "./login";
-import { GardenHero } from "../components/garden/scene";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
 import { activeAvailabilityDatasetFor, availabilityForDuty } from "../lib/availability";
@@ -1027,18 +1026,9 @@ export default function Workspace() {
     const w = personal ? currentWeek : week;
     return (
       <div className="meeting-card">
-        <div className="meeting-art" aria-hidden="true">
-          <div className="art-orbit" />
-          <div className="art-orbit two" />
-          <div className="art-center">
-            <HeartHandshake size={44} strokeWidth={1.4} />
-          </div>
-          <span className="art-spark">✦</span>
-          <span className="art-dot" />
-        </div>
         <div className="meeting-card-top">
           <span className="eyebrow">
-            <span className="live-dot" /> CUỘC HẸN TUẦN NÀY
+            LỊCH HỌP TUẦN
           </span>
           <Badge
             status={
@@ -1053,9 +1043,9 @@ export default function Workspace() {
           </Badge>
         </div>
         <h2>
-          {w.cancelled ? "Tuần này nghỉ họp." : "Gặp nhau, cùng tiến lên."}
+          {w.cancelled ? "Không tổ chức họp" : "Thông tin buổi họp"}
         </h2>
-        <p>Một buổi gặp, thêm nhiều kết nối.</p>
+        <p>{w.cancelled ? "Tuần này không yêu cầu đăng ký." : w.closed ? "Đăng ký tuần này đã được chốt." : "Đăng ký tham gia hoặc xin vắng trước khi chốt tuần."}</p>
         <div className="meeting-info">
           <span>
             <CalendarDays size={16} />
@@ -1071,12 +1061,9 @@ export default function Workspace() {
         </div>
         <div className="meeting-card-bottom">
           <div className="avatar-stack">
-            {club.members.slice(0, 4).map((m, i) => (
-              <Avatar key={m.id} name={m.name} size="small" index={i} />
-            ))}
             <span>
               {personal
-                ? "Hẹn gặp bạn tại buổi họp!"
+                ? "Chu kỳ đăng ký: Thứ Hai – Chủ nhật"
                 : `${count("attending")} thành viên đã đăng ký`}
             </span>
           </div>
@@ -1391,14 +1378,13 @@ export default function Workspace() {
   function overview() {
     return (
       <>
-        <GardenHero name={me!.name.split(" ").at(-1)!} onAction={() => go("duties")} />
         <div className="page-heading">
           <div>
-            <span className="eyebrow">MỘT TUẦN MỚI, CÙNG MỘT NHỊP</span>
+            <span className="eyebrow">QUẢN LÝ CLB</span>
             <h1>
-              Mọi hoạt động, trong tầm tay<span className="heading-dot">.</span>
+              Tổng quan
             </h1>
-            <p>Theo dõi buổi họp, lịch trực và kết nối các thành viên.</p>
+            <p>Tình hình đăng ký họp, lịch trực và yêu cầu cần xử lý.</p>
           </div>
           {weekSelect}
         </div>
@@ -2542,13 +2528,11 @@ export default function Workspace() {
       .sort((a, b) => a.id.localeCompare(b.id));
     return (
       <>
-        <GardenHero name={me!.name.split(" ").at(-1)!} onAction={() => document.getElementById("personal-registration")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" })} actionLabel="Đăng ký họp tuần này" />
         <div className="page-heading">
           <div>
-            <span className="eyebrow">MỖI THÀNH VIÊN, MỘT NHỊP CHUNG</span>
+            <span className="eyebrow">{me!.name}</span>
             <h1>
-              Chào {me!.name.split(" ").at(-1)}, tuần này bạn thế nào
-              <span className="heading-dot">?</span>
+              Hoạt động của tôi
             </h1>
             <p>Đăng ký họp và xem những đóng góp của bạn tại đây.</p>
           </div>
