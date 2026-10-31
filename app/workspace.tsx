@@ -2265,14 +2265,33 @@ export default function Workspace() {
         <div className="personal-top">
           {meetingCard(true)}
           <section className="panel registration-panel">
-            <PanelHead title="Đăng ký của tôi" />
+            <PanelHead
+              title={
+                currentWeek.closed ? "Kết quả buổi họp" : "Đăng ký của tôi"
+              }
+            />
             <div className="registration-status">
-              <Badge status={ownEntry?.status ?? "unregistered"} />
-              {ownEntry?.reason ? (
-                <p>{ownEntry.reason}</p>
+              {currentWeek.cancelled ? (
+                <Badge status="neutral">Không tổ chức họp</Badge>
+              ) : currentWeek.closed && ownEntry ? (
+                <>
+                  <Badge status={ownEntry.absent ? "absent" : "attending"}>
+                    {ownEntry.absent
+                      ? ownEntry.excused
+                        ? "Vắng có phép"
+                        : "Vắng không phép"
+                      : "Có mặt"}
+                  </Badge>
+                  <p>Kết quả điểm danh đã chốt bởi BCS hoặc hệ thống.</p>
+                </>
               ) : (
-                <p>Hãy cho BCS biết bạn có tham gia buổi họp tuần này nhé.</p>
+                <Badge status={ownEntry?.status ?? "unregistered"} />
               )}
+              {ownEntry?.reason ? (
+                <p>Lý do xin vắng đã gửi: {ownEntry.reason}</p>
+              ) : !currentWeek.closed && !currentWeek.cancelled ? (
+                <p>Hãy cho BCS biết bạn có tham gia buổi họp tuần này nhé.</p>
+              ) : null}
             </div>
             {currentWeek.closed || currentWeek.cancelled ? (
               <div className="notice neutral">
@@ -2427,6 +2446,10 @@ export default function Workspace() {
               <p>
                 {mine.completed} ca trực đủ · {mine.passed} lượt qua quy chế
               </p>
+              <p>
+                {mine.dutyMissed} lượt vắng trực không phép ·{" "}
+                {mine.meetingMissed} lượt vắng họp không phép
+              </p>
             </div>
             <p className="hint">
               Điểm được tính theo ca trực đã xác minh và buổi họp đã chốt.
@@ -2452,7 +2475,19 @@ export default function Workspace() {
                       {w.closed ? " · Đã chốt" : ""}
                     </span>
                   </div>
-                  <Badge status={e.status} />
+                  {w.cancelled ? (
+                    <Badge status="neutral">Không tổ chức họp</Badge>
+                  ) : w.closed ? (
+                    <Badge status={e.absent ? "absent" : "attending"}>
+                      {e.absent
+                        ? e.excused
+                          ? "Vắng có phép"
+                          : "Vắng không phép"
+                        : "Có mặt"}
+                    </Badge>
+                  ) : (
+                    <Badge status={e.status} />
+                  )}
                   {e.passed ? (
                     <span className="green-text">
                       <Check size={14} /> Qua quy chế
