@@ -3377,7 +3377,7 @@ export default function Workspace() {
             </>
           ) : activeTab === "requests" ? (
             <>
-              <div className="page-heading"><div><span className="eyebrow">THAM GIA VÀ ĐÓNG GÓP</span><h1>{isAdmin ? "Tạo sự kiện" : "Sự kiện Đội"}<span className="heading-dot">.</span></h1><p>BĐH tạo sự kiện · Thành viên đăng ký · Duyệt để tính điểm.</p></div></div>
+              <div className="page-heading"><div><span className="eyebrow">THAM GIA VÀ ĐÓNG GÓP</span><h1>{isAdmin ? "Tạo sự kiện" : "Sự kiện Đội"}<span className="heading-dot">.</span></h1><p>{isAdmin ? "Tạo sự kiện, duyệt đăng ký và thêm người đã tham gia." : "Đăng ký sự kiện và xem kết quả tham gia của bạn."}</p></div></div>
               <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load}/>
               {isAdmin ? requestsPanel(true) : null}
             </>

@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
-import { activityLabels, activityName, activityPointsFor, activityStatusLabels, eventDescriptionLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
+import { activityLabels, activityName, activityPointsFor, canAttendEvent, registrationStatusLabel, eventDescriptionLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { EvidencePanel } from "./duty-evidence";
@@ -9,7 +9,7 @@ import { Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui
 type ActivityProps = {club:Club;me:Member;isAdmin:boolean;week:string;busy:boolean;onAction:Act};
 type Act = (action: string, data: Record<string, unknown>, message: string, close?: boolean) => Promise<boolean>;
 type EventChange = "cancel" | "restore" | "delete";
-type EventDialog = { mode: "create" } | { mode: "edit"; event: ClubEvent } | { mode: EventChange; event: ClubEvent };
+type EventDialog = { mode: "create" } | { mode: "edit"; event: ClubEvent } | { mode: "participant"; eventId: string } | { mode: EventChange; event: ClubEvent };
 const formData = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); return Object.fromEntries(new FormData(e.currentTarget)); };
 
 export default function Activities({ club, me, isAdmin, busy, onAction, onEvidenceSaved }: Omit<ActivityProps, "week"> & { onEvidenceSaved: () => void }) {
@@ -36,9 +36,10 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     .sort((a, b) => Number(!!b.ready) - Number(!!a.ready) ||
       b.row.submittedAt.localeCompare(a.row.submittedAt));
   const editingEvent = eventDialog?.mode === "edit" ? eventDialog.event : undefined;
-  const eventChange = eventDialog && eventDialog.mode !== "create" && eventDialog.mode !== "edit" ? eventDialog : null;
+  const participantEvent = eventDialog?.mode === "participant" ? events.find(event => event.id === eventDialog.eventId && !event.cancelledAt) : undefined;
+  const eventChange = eventDialog && (eventDialog.mode === "cancel" || eventDialog.mode === "restore" || eventDialog.mode === "delete") ? eventDialog : null;
   return <div className="activity-sections">
-    <div className="notice green">BĐH tạo sự kiện và đặt điểm. Với sự kiện yêu cầu minh chứng, hãy đăng ký rồi gửi ảnh cho BĐH duyệt. Điểm được ghi một lần vào tuần kết thúc sự kiện.</div>
+    <div className="notice green">Điểm tham gia được ghi một lần vào tuần kết thúc sự kiện. Nếu tự đăng ký sự kiện yêu cầu ảnh, hãy gửi minh chứng để BĐH duyệt. BĐH cũng có thể xác nhận trực tiếp người đã tham gia.</div>
     <section className="panel">
       <PanelHead title="Sự kiện của Đội" description="Đăng ký được mở từ khi tạo đến hết ngày kết thúc, theo giờ Việt Nam." />
       <div className="event-toolbar">
@@ -60,7 +61,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
           <div><h3>{event.name}</h3><p>{dateLabel(event.startDate,true)} – {dateLabel(event.endDate,true)}</p>
             {event.description ? <p className="event-description">{event.description}</p> : null}
             {!cancelled ? <p className="event-points">{event.points} điểm / thành viên được duyệt</p> : null}
-            {event.requiresEvidence && !cancelled ? <p className="hint">Yêu cầu minh chứng · Ảnh được xóa sau 2 ngày kể từ khi kết thúc.</p> : null}
+            {event.requiresEvidence && !cancelled && (isAdmin || !own?.confirmedDirectly) ? <p className="hint">Đăng ký cá nhân cần ảnh minh chứng · Ảnh được xóa sau 2 ngày kể từ khi kết thúc.</p> : null}
             <Badge status={cancelled ? "absent" : "neutral"}>{cancelled ? "Đã hủy" : ended ? "Đã kết thúc" : event.startDate > currentDay ? "Sắp diễn ra" : "Đang diễn ra"}</Badge>
             {own && !cancelled ? <span className="event-own-status"><Badge status={own.status==="confirmed"?"attending":own.status==="pending"?"pending":"neutral"}>{eventRegistrationLabel(own, evidence)}</Badge></span> : null}
             {isAdmin && !cancelled ? <p className="hint">{waitingReview} chờ duyệt · {eventRows.filter(r=>r.status==="confirmed").length} đã duyệt</p> : null}
@@ -74,6 +75,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
               <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "restore", event })}>Khôi phục sự kiện</Button>
             ) : (
               <>
+                <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "participant", eventId: event.id })}>Thêm người đã tham gia</Button>
                 <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "edit", event })}>Sửa sự kiện</Button>
                 <Button variant="danger" disabled={busy} onClick={() => setEventDialog({ mode: "cancel", event })}>Hủy sự kiện</Button>
               </>
@@ -83,7 +85,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         </article>;
       })}</div> : <Empty title="Chưa có sự kiện đang mở">{isAdmin ? "Bấm Tạo sự kiện để nhập tên, điểm và khoảng ngày diễn ra." : "Sự kiện do BĐH tạo sẽ xuất hiện ở đây để bạn đăng ký."}</Empty>}
     </section>
-    <section className="panel"><PanelHead title={isAdmin?"Duyệt đăng ký sự kiện":"Đăng ký của tôi"} description="Chỉ đăng ký được BĐH duyệt mới tính điểm." />
+    <section className="panel"><PanelHead title={isAdmin?"Duyệt đăng ký sự kiện":"Kết quả tham gia của tôi"} description="Người tham gia được tính điểm khi BĐH duyệt đăng ký hoặc xác nhận trực tiếp." />
       <div className="activity-search"><Field label="Lọc theo sự kiện"><select value={selectedEvent} onChange={e=>setEventFilter(e.target.value)}><option value="">Tất cả sự kiện</option>{visibleEvents.map(event=><option key={event.id} value={event.id}>{event.name}{event.cancelledAt ? " (đã hủy)" : ""}</option>)}</select></Field></div>
       {rows.length ? <div className="activity-list">{rows.map(({ row: r, event, evidence }) => {
         const cancelled = !!event?.cancelledAt;
@@ -98,7 +100,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
           {r.status==="confirmed" || (!event?.requiresEvidence && r.status!=="declined") ? <Button variant="secondary" disabled={busy} onClick={()=>setReview({row:r,confirmed:false})}>{r.status==="confirmed"?"Hủy duyệt":"Không duyệt"}</Button>:null}
         </>:null}{!cancelled && r.memberId===me.id && r.status==="pending"?<Button variant="secondary" disabled={busy} onClick={()=>onAction("withdrawActivity",{id:r.id},"Đã rút đăng ký",false)}>Rút đăng ký</Button>:null}</div>
       </article>;
-      })}</div>:<Empty title="Chưa có đăng ký">Thành viên đăng ký vào sự kiện để BĐH duyệt.</Empty>}
+      })}</div>:<Empty title="Chưa có người tham gia">Danh sách sẽ hiển thị khi có thành viên đăng ký hoặc được BĐH thêm vào sự kiện.</Empty>}
     </section>
     {(eventDialog?.mode === "create" || editingEvent) ? (
       <Dialog title={editingEvent ? "Sửa sự kiện" : "Tạo sự kiện"} onClose={close} busy={busy}>
@@ -107,6 +109,9 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     ) : null}
     {eventChange && (
       <EventChangeDialog mode={eventChange.mode} event={eventChange.event} busy={busy} onAction={onAction} onClose={close} />
+    )}
+    {isAdmin && participantEvent && (
+      <AddParticipantDialog key={participantEvent.id} event={participantEvent} members={club.members} registrations={registrations} busy={busy} onAction={onAction} onClose={close} />
     )}
     {review?<Dialog title={review.confirmed?"Duyệt tham gia sự kiện":"Không duyệt tham gia"} description={`${activityName(club,review.row)} · ${club.members.find(m=>m.id===review.row.memberId)?.name}`} onClose={close} busy={busy}>
       <form onSubmit={async e=>{const f=formData(e);if(await onAction("reviewActivity",{id:review.row.id,confirmed:review.confirmed,reason:f.reason},"Đã cập nhật kết quả duyệt",false))close();}}>
@@ -119,6 +124,51 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
       <EvidencePanel key={proof.row.id} endpoint={"/api/event-evidence?" + new URLSearchParams({ registrationId: proof.row.id })} event onSaved={onEvidenceSaved} />
     </Dialog> : null}
   </div>;
+}
+
+function AddParticipantDialog({ event, members, registrations, busy, onAction, onClose }: {
+  event: ClubEvent; members: Member[]; registrations: ActivityRegistration[];
+  busy: boolean; onAction: Act; onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [memberId, setMemberId] = useState("");
+  const byMember = new Map(registrations.filter(row => row.eventId === event.id).map(row => [row.memberId, row]));
+  const candidates = members.filter(member => canAttendEvent(member, event) && byMember.get(member.id)?.status !== "confirmed");
+  const search = query.trim().toLocaleLowerCase("vi");
+  const matches = candidates.filter(member => (member.name + " " + member.studentId).toLocaleLowerCase("vi").includes(search))
+    .sort((a, b) => a.name.localeCompare(b.name, "vi") || a.studentId.localeCompare(b.studentId));
+  const selected = matches.find(member => member.id === memberId);
+  const previous = selected && byMember.get(selected.id);
+  return <Dialog title="Thêm người đã tham gia" description={event.name} onClose={onClose} busy={busy}>
+    {candidates.length ? <form onSubmit={async e => {
+      const fields = formData(e);
+      if (!selected) return;
+      const ok = await onAction("addEventParticipant", {
+        eventId: event.id, memberId: selected.id, reason: fields.reason,
+        previousStatus: previous?.status, previousDecisionAt: previous?.reviewedAt ?? previous?.submittedAt,
+      }, `Đã ghi nhận ${selected.name} tham gia sự kiện`, false);
+      if (ok) onClose();
+    }}>
+      <Field label="Tìm theo tên hoặc MSSV">
+        <input type="search" value={query} onChange={e => { setQuery(e.target.value); setMemberId(""); }} />
+      </Field>
+      <Field label="Thành viên">
+        <select required name="memberId" value={selected?.id ?? ""} onChange={e => setMemberId(e.target.value)}>
+          <option value="" disabled>{matches.length ? "Chọn thành viên" : "Không tìm thấy thành viên phù hợp"}</option>
+          {matches.map(member => {
+            const row = byMember.get(member.id);
+            return <option value={member.id} key={member.id}>{member.name}{member.studentId && ` · ${member.studentId}`}{row && ` · ${registrationStatusLabel(row)}`}</option>;
+          })}
+        </select>
+      </Field>
+      {previous?.status === "declined" && <Field label="Lý do thay đổi kết quả"><textarea key={memberId} name="reason" required minLength={3} maxLength={500} /></Field>}
+      <p className="hint">Xác nhận sẽ ghi {event.points} điểm vào tuần {dateLabel(weekId(event.endDate))} – {dateLabel(addDays(weekId(event.endDate), 6), true)}.{event.requiresEvidence ? " Thành viên được BĐH xác nhận trực tiếp được miễn gửi ảnh." : ""}</p>
+      <div className="form-footer">
+        <Button variant="secondary" onClick={onClose} disabled={busy}>Quay lại</Button>
+        <Button type="submit" disabled={busy || !selected}>Xác nhận tham gia</Button>
+      </div>
+    </form> : <p className="dialog-copy">Không còn thành viên nào có thể thêm vào sự kiện này.</p>}
+  </Dialog>;
 }
 
 const eventChangeCopy = {
@@ -168,7 +218,7 @@ function eventRegistrationLabel(row: ActivityRegistration, evidence: ReturnType<
     if (evidence.expired) return "Hết hạn duyệt minh chứng";
     return evidence.evidence ? "Ảnh đang chờ duyệt" : "Chưa gửi minh chứng";
   }
-  return activityStatusLabels[row.status];
+  return registrationStatusLabel(row);
 }
 
 function eventEvidenceButton(row: ActivityRegistration, evidence: ReturnType<typeof eventEvidenceView>) {

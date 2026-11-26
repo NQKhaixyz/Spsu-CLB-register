@@ -65,7 +65,12 @@ export type ActivityRegistration = {
   reviewedAt?: string;
   reviewedBy?: string;
   decision?: string;
-  evidence?: { id: string; submittedAt: number };
+  confirmedDirectly?: true;
+  evidence?: {
+    id: string;
+    submittedAt: number;
+    review?: { status: "attached" | "rejected"; at?: string; note?: string };
+  };
 };
 export type ManualActivity = {
   id: string;
@@ -86,6 +91,8 @@ export const activityStatusLabels = {
   declined: "Không được duyệt",
   withdrawn: "Đã rút đăng ký",
 };
+export const registrationStatusLabel = (row: ActivityRegistration) =>
+  row.status === "confirmed" && row.confirmedDirectly ? "BĐH xác nhận trực tiếp" : activityStatusLabels[row.status];
 export const activityRate = (club: Club, kind: ActivityKind, date: string) =>
   rulesFor(club, date.slice(0, 7)).activities?.[kind] ?? 0;
 const committeeRate = (club: Club, committee: StoredCommitteeKind, date: string) =>
@@ -93,6 +100,8 @@ const committeeRate = (club: Club, committee: StoredCommitteeKind, date: string)
 export const eventForActivity = (club: Club, row: { kind: ActivityKind; eventId?: string }) =>
   row.kind === "event" ? club.events?.find(event => event.id === row.eventId) : undefined;
 export const isEventOpen = (event: ClubEvent, date: string) => !event.cancelledAt && event.endDate >= date;
+export const canAttendEvent = (member: Member, event: ClubEvent) =>
+  (member.active || !!member.left) && isMemberOnDate(member, event.endDate);
 export const eventEvidenceExpiry = (event: ClubEvent) =>
   Date.parse(addDays(event.endDate, 3) + "T00:00:00+07:00");
 
@@ -188,6 +197,11 @@ function datedWeek(club: Club, member: Member, data: Record<string, unknown>) {
   return { week, date };
 }
 
+function newEventRegistration(event: ClubEvent, memberId: string, submittedAt: string): ActivityRegistration {
+  return { id: uid(), eventId: event.id, memberId, week: weekId(event.endDate), date: event.endDate,
+    kind: "event", quantity: 1, note: "", status: "pending", submittedAt };
+}
+
 export function reviewEventRegistration(
   club: Club, me: Member, data: Record<string, unknown>, log: (message: string) => void,
   checkedPhoto?: string,
@@ -215,11 +229,13 @@ export function reviewEventRegistration(
   row.reviewedAt = new Date(now).toISOString();
   row.reviewedBy = me.id;
   row.decision = reason;
+  delete row.confirmedDirectly;
+  if (checkedPhoto && row.evidence) delete row.evidence.review;
   log(`${data.confirmed ? "Xác nhận tham gia" : "Không xác nhận"} ${event.name}: ${club.members.find(m => m.id === row.memberId)?.name ?? "Thành viên"}, ${row.quantity} lượt ngày ${row.date}${reason ? "; " + reason : ""}`);
 }
 
 export function applyActivityAction(club: Club, me: Member, action: string, data: Record<string, unknown>, log: (message: string) => void) {
-  if (!["createEvent", "editEvent", "cancelEvent", "restoreEvent", "registerEvent", "registerActivity", "withdrawActivity", "reviewActivity", "saveManualActivity", "deductPoints", "cancelPointDeduction"].includes(action)) return false;
+  if (!["createEvent", "editEvent", "cancelEvent", "restoreEvent", "registerEvent", "addEventParticipant", "registerActivity", "withdrawActivity", "reviewActivity", "saveManualActivity", "deductPoints", "cancelPointDeduction"].includes(action)) return false;
   requireValue(me.active, "Tài khoản đã ngừng hoạt động.");
   if (action === "createEvent" || action === "editEvent") {
     requireValue(me.role === "admin", "Chỉ BĐH được quản lý sự kiện.");
@@ -286,8 +302,7 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
       delete existing.decision;
       delete existing.evidence;
     } else {
-      rows.push({ id: uid(), eventId: event.id, memberId: me.id, week: weekId(event.endDate), date: event.endDate,
-        kind: "event", quantity: 1, note: "", status: "pending", submittedAt: new Date().toISOString() });
+      rows.push(newEventRegistration(event, me.id, new Date().toISOString()));
     }
     log(`Đăng ký sự kiện ${event.name}`);
     return true;
@@ -302,6 +317,41 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     return true;
   }
   requireValue(me.role === "admin", "Chỉ BĐH được xác nhận hoặc nhập điểm hoạt động.");
+  if (action === "addEventParticipant") {
+    const event = club.events?.find(item => item.id === data.eventId);
+    requireValue(event, "Không tìm thấy sự kiện.");
+    requireValue(!event.cancelledAt, "Sự kiện đã hủy.");
+    const member = club.members.find(item => item.id === data.memberId);
+    requireValue(member, "Không tìm thấy thành viên.");
+    const existing = club.activityRegistrations?.find(row => row.kind === "event" && row.eventId === event.id && row.memberId === member.id);
+    if (existing?.status === "confirmed") return true;
+    requireValue(canAttendEvent(member, event), "Thành viên không hoạt động vào ngày tính điểm của sự kiện.");
+    const reason = text(data.reason);
+    if (existing?.status === "declined" || existing?.status === "withdrawn") {
+      requireValue(data.previousStatus === existing.status && data.previousDecisionAt === (existing.reviewedAt ?? existing.submittedAt),
+        "Đăng ký đã thay đổi. Tải lại danh sách trước khi xác nhận.");
+      if (existing.status === "declined") requireValue(reason.length >= 3, "Ghi lý do khi sửa kết quả đã xác nhận.");
+    }
+    const at = new Date().toISOString();
+    const row = existing ?? newEventRegistration(event, member.id, at);
+    // Confirm attendance without recording a photo approval the reviewer did not make.
+    if (row.evidence && !row.evidence.review) {
+      row.evidence.review = row.status === "declined"
+        ? { status: "rejected", at: row.reviewedAt, note: row.decision }
+        : { status: "attached" };
+    }
+    row.date = event.endDate;
+    row.week = weekId(event.endDate);
+    row.quantity = 1;
+    row.status = "confirmed";
+    row.confirmedDirectly = true;
+    row.reviewedAt = at;
+    row.reviewedBy = me.id;
+    row.decision = reason;
+    if (!existing) (club.activityRegistrations ??= []).push(row);
+    log(`Xác nhận trực tiếp ${member.name} đã tham gia ${event.name}${reason ? " · " + reason : ""}`);
+    return true;
+  }
   if (action === "cancelEvent") {
     const event = club.events?.find(event => event.id === data.id);
     requireValue(event, "Không tìm thấy sự kiện.");

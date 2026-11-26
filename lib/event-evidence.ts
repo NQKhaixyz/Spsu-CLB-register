@@ -12,15 +12,18 @@ export function eventEvidenceTarget(club: Club, viewer: Member, registrationId: 
   return { row, event };
 }
 
-export function eventEvidenceView(row: ActivityRegistration, event: ClubEvent, viewer: Member, now = Date.now()): PhotoEvidenceView {
+export function eventEvidenceView(row: ActivityRegistration, event: ClubEvent, viewer: Member, now = Date.now()): PhotoEvidenceView<"attached"> {
   const expiresAt = eventEvidenceExpiry(event);
   const expired = now >= expiresAt;
+  const savedReview = row.evidence?.review;
+  const reviewedAt = savedReview ? savedReview.at : row.reviewedAt;
   const evidence = !event.cancelledAt && !expired && row.evidence ? {
-    ...row.evidence,
-    status: row.status === "confirmed" ? "approved" as const : row.status === "declined" ? "rejected" as const : "pending" as const,
+    id: row.evidence.id,
+    submittedAt: row.evidence.submittedAt,
+    status: savedReview?.status ?? (row.status === "confirmed" ? "approved" as const : row.status === "declined" ? "rejected" as const : "pending" as const),
     expiresAt,
-    reviewedAt: row.reviewedAt ? Date.parse(row.reviewedAt) : null,
-    reviewNote: row.decision ?? "",
+    reviewedAt: reviewedAt ? Date.parse(reviewedAt) : null,
+    reviewNote: (savedReview ? savedReview.note : row.decision) ?? "",
   } : null;
   return {
     evidence, expiresAt, expired,

@@ -9,8 +9,8 @@ export type PhotoEvidence = {
   reviewNote: string;
 };
 
-export type PhotoEvidenceView = {
-  evidence: PhotoEvidence | null;
+export type PhotoEvidenceView<ExtraStatus extends string = never> = {
+  evidence: (Omit<PhotoEvidence, "status"> & { status: PhotoEvidence["status"] | ExtraStatus }) | null;
   expiresAt: number;
   expired: boolean;
   canUpload: boolean;

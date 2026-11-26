@@ -7,6 +7,7 @@ import { maxPhotoBytes, type PhotoEvidenceView } from "../lib/photo-evidence";
 import { Badge, Button, Field } from "./ui";
 
 const statusLabels = {
+  attached: { badge: "neutral", label: "Ảnh đính kèm" },
   pending: { badge: "pending", label: "Chờ duyệt" },
   approved: { badge: "attending", label: "Đã duyệt" },
   rejected: { badge: "absent", label: "Từ chối" },
@@ -40,7 +41,7 @@ async function preparePhoto(file: File) {
 
 async function evidenceRequest(url: string, options?: RequestInit) {
   const response = await fetch(url, options);
-  const data = await response.json() as PhotoEvidenceView & { error?: string };
+  const data = await response.json() as PhotoEvidenceView<"attached"> & { error?: string };
   if (!response.ok) throw new Error(data.error || "Chưa tải được minh chứng.");
   return data;
 }
@@ -76,7 +77,7 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
   event?: boolean;
   onSaved?: () => void;
 }) {
-  const [data, setData] = useState<PhotoEvidenceView | null>(null);
+  const [data, setData] = useState<PhotoEvidenceView<"attached"> | null>(null);
   const [draft, setDraft] = useState<{ photo: Blob; url: string } | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");

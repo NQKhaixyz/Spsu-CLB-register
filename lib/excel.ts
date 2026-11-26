@@ -1,4 +1,4 @@
-import { visibleActivityKinds, ratedActivityKinds, activityLabels, activityName, activityPointsFor, activityUnitPoints, activityStatusLabels, eventForActivity, isManualActivityKind } from "./activity";
+import { visibleActivityKinds, ratedActivityKinds, activityLabels, activityName, activityPointsFor, activityUnitPoints, registrationStatusLabel, eventForActivity, isManualActivityKind } from "./activity";
 import {
   addDays,
   dateLabel,
@@ -215,7 +215,7 @@ export async function makeReport(club: Club, month: string) {
       const cancelled = !!eventForActivity(club, r)?.cancelledAt;
       return {
         ...r,
-        state: cancelled ? "Sự kiện đã hủy" : activityStatusLabels[r.status],
+        state: cancelled ? "Sự kiện đã hủy" : registrationStatusLabel(r),
         credited: !cancelled && r.status === "confirmed",
         actor: r.reviewedBy ?? "",
         decision: r.decision ?? "",

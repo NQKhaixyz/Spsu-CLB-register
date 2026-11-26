@@ -25,7 +25,7 @@ function createEvent(c:ReturnType<typeof fixture>, data: ReturnType<typeof event
 function register(c:ReturnType<typeof fixture>,eventId="event-test-1",identity=user) {
  applyAction(c,identity,"registerEvent",{eventId});return c.activityRegistrations!.find(r=>r.eventId===eventId&&r.memberId===c.members.find(m=>m.userId===identity.userId)!.id)!;
 }
-test("An evidence event only awards points via the review of the current photo", () => {
+test("Self registrations for evidence events require review of the current photo", () => {
   const c = fixture();
   const event = createEvent(c, { ...eventData(), requiresEvidence: true });
   const row = register(c);
@@ -55,6 +55,110 @@ test("An evidence event only awards points via the review of the current photo",
   assert.equal(eventEvidenceView(row, event, owner).canUpload, false);
   assert.equal(activityScoreFor(c, owner.id, row.week, true).activityPoints.event, 6);
   assert.equal(activityScoreFor(c, owner.id, row.date.slice(0, 7)).activityCounts.event, 1);
+});
+
+test("BĐH can directly credit a roster member without an account, registration or photo after an event ends", async () => {
+  const c = fixture();
+  const event = createEvent(c, { ...eventData("manual-past", 2.75), requiresEvidence: true });
+  const endDate = addDays(weekId(), -5);
+  applyAction(c, admin, "editEvent", { ...event, startDate: endDate, endDate });
+  const member = c.members[2];
+  delete member.userId;
+  member.studentId = "";
+  member.needsStudentId = true;
+  const args = { eventId: event.id, memberId: member.id };
+  applyAction(c, admin, "addEventParticipant", args);
+  const row = c.activityRegistrations![0];
+  const logged = c.logs.length;
+  applyAction(c, admin, "addEventParticipant", args);
+  assert.equal(c.logs.length, logged);
+  assert.equal(c.activityRegistrations!.length, 1);
+  assert.deepEqual([row.status, row.confirmedDirectly, row.reviewedBy, row.date, row.week, row.quantity],
+    ["confirmed", true, c.members[0].id, endDate, weekId(endDate), 1]);
+  assert.ok(row.reviewedAt);
+  assert.equal(row.evidence, undefined);
+  assert.equal(eventEvidenceView(row, event, member).canUpload, false);
+  assert.equal(weeklyScoreFor(c, member.id, row.week).activityCounts.event, 1);
+  assert.equal(scoreFor(c, member.id, endDate.slice(0, 7)).activityPoints.event, 2.75);
+  const { buffer } = await makeReport(c, endDate.slice(0, 7));
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const detail = workbook.getWorksheet("Chi tiết hoạt động")!.getRow(4);
+  assert.equal(detail.getCell(8).value, 2.75);
+  assert.equal(detail.getCell(9).value, "BĐH xác nhận trực tiếp");
+  assert.equal(detail.getCell(11).value, c.members[0].name);
+  applyAction(c, admin, "cancelEvent", { id: event.id });
+  assert.equal(weeklyScoreFor(c, member.id, row.week).activityTotal, 0);
+  applyAction(c, admin, "restoreEvent", { id: event.id, cancelledAt: event.cancelledAt });
+  assert.equal(weeklyScoreFor(c, member.id, row.week).activityTotal, 2.75);
+});
+
+test("A direct confirmation reuses a pending registration and leaves its existing photo as an attachment", () => {
+  const c = fixture();
+  const event = createEvent(c, { ...eventData(), requiresEvidence: true });
+  const row = register(c);
+  const submittedAt = row.submittedAt, photoId = crypto.randomUUID();
+  row.quantity = 2;
+  row.date = addDays(event.endDate, -7);
+  row.week = weekId(row.date);
+  row.evidence = { id: photoId, submittedAt: Date.now() };
+  const args = { eventId: event.id, memberId: row.memberId };
+  applyAction(c, admin, "addEventParticipant", args);
+  applyAction(c, user, "registerEvent", { eventId: event.id });
+  assert.equal(c.activityRegistrations!.length, 1);
+  assert.equal(row.submittedAt, submittedAt);
+  assert.deepEqual([row.quantity, row.date, row.week], [1, event.endDate, weekId(event.endDate)]);
+  assert.equal(weeklyScoreFor(c, row.memberId, row.week).activityTotal, event.points);
+  const proof = eventEvidenceView(row, event, c.members[0]);
+  assert.equal(proof.evidence?.id, photoId);
+  assert.equal(proof.evidence?.status, "attached");
+  assert.equal(proof.evidence?.reviewedAt, null);
+  assert.equal(proof.canReview, false);
+  applyAction(c, admin, "reviewActivity", { id: row.id, confirmed: false, reason: "Nhầm người" });
+  assert.equal(weeklyScoreFor(c, row.memberId, row.week).activityTotal, 0);
+  assert.throws(() => applyAction(c, admin, "addEventParticipant", args), /thay đổi/);
+});
+
+test("Direct confirmation can correct a withdrawal or rejection and preserves an actual photo rejection", () => {
+  const c = fixture();
+  const event = createEvent(c, { ...eventData(), requiresEvidence: true });
+  const row = register(c);
+  const args = { eventId: event.id, memberId: row.memberId };
+  applyAction(c, user, "withdrawActivity", { id: row.id });
+  applyAction(c, admin, "addEventParticipant", { ...args, previousStatus: "withdrawn", previousDecisionAt: row.submittedAt });
+  assert.equal(row.status, "confirmed");
+  const other = register(c, event.id, { ...user, userId: "other-activity" });
+  other.evidence = { id: crypto.randomUUID(), submittedAt: Date.now() };
+  reviewEventRegistration(c, c.members[0], { id: other.id, confirmed: false, reason: "Ảnh mờ" }, () => {}, other.evidence.id);
+  const correction = { eventId: event.id, memberId: other.memberId, previousStatus: "declined", previousDecisionAt: other.reviewedAt };
+  assert.throws(() => applyAction(c, admin, "addEventParticipant", correction), /lý do/);
+  applyAction(c, admin, "addEventParticipant", { ...correction, reason: "BĐH có mặt tại sự kiện" });
+  assert.equal(other.status, "confirmed");
+  assert.equal(other.decision, "BĐH có mặt tại sự kiện");
+  const proof = eventEvidenceView(other, event, c.members[0]);
+  assert.equal(proof.evidence?.status, "rejected");
+  assert.equal(proof.evidence?.reviewNote, "Ảnh mờ");
+  assert.equal(c.activityRegistrations!.length, 2);
+  assert.equal(weeklyScoreFor(c, other.memberId, other.week).activityTotal, event.points);
+});
+
+test("Direct attendance is restricted to BĐH, eligible members and non-cancelled events", () => {
+  const c = fixture(), event = createEvent(c);
+  const args = { eventId: event.id, memberId: c.members[1].id };
+  assert.throws(() => applyAction(c, user, "addEventParticipant", args), /BĐH/);
+  assert.throws(() => applyAction(c, admin, "addEventParticipant", { ...args, memberId: "missing" }), /thành viên/);
+  assert.throws(() => applyAction(c, admin, "addEventParticipant", { ...args, eventId: "missing" }), /sự kiện/);
+  c.members[1].joined = addDays(event.endDate, 1);
+  assert.throws(() => applyAction(c, admin, "addEventParticipant", args), /không hoạt động/);
+  c.members[1].joined = "2020-01-01";
+  const row = register(c);
+  applyAction(c, admin, "reviewActivity", { id: row.id, confirmed: true });
+  const before = structuredClone(row);
+  applyAction(c, admin, "addEventParticipant", args);
+  assert.deepEqual(row, before);
+  applyAction(c, admin, "cancelEvent", { id: event.id });
+  assert.throws(() => applyAction(c, admin, "addEventParticipant", { ...args, memberId: "a2" }), /đã hủy/);
+  assert.equal(c.activityRegistrations!.length, 1);
 });
 
 test("Event photos expire at Vietnam midnight after two full days, across months", () => {
