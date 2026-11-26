@@ -97,7 +97,7 @@ export function workspaceView(
   for (const log of view.club.logs) {
     log.text = log.text
       .replace(/^(Nhập Điểm theo ban: .*), Ban (?:HC|hậu cần) · /i, "$1, ")
-      .replace(/^(Nhập Điểm theo ban: .*), Cán sự · /i, "$1, " + committeeLabels.cs + " · ");
+      .replace(/^(Nhập Điểm theo ban: .*), (?:Cán sự|Ban điều hành|Ban ĐH) · /i, "$1, " + committeeLabels.cs + " · ");
   }
   if (club.links) view.club.links = club.links;
   return view;

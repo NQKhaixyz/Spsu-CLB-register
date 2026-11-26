@@ -32,7 +32,9 @@ test("Members see the same monthly totals as the admin report across a split wee
   ];
   club.members[0].joined = "2026-09-01";
   club.members[2].committee = "cs";
-  club.logs.push({ at: "", actor: "BĐH", text: "Nhập Điểm theo ban: Other, Cán sự · 5.25 điểm, ngày 2026-08-31 (tuần 2026-08-31)" });
+  const oldBoardLabels = ["Cán sự", "Ban điều hành", "Ban ĐH"];
+  for (const label of oldBoardLabels)
+    club.logs.push({ at: "", actor: "BĐH", text: `Nhập Điểm theo ban: Other, ${label} · 5.25 điểm, ngày 2026-08-31 (tuần 2026-08-31)` });
   const stored = JSON.stringify(club);
   const august = monthlyScoreboard(club, "2026-08");
   const september = monthlyScoreboard(club, "2026-09");
@@ -47,8 +49,11 @@ test("Members see the same monthly totals as the admin report across a split wee
   }
   const published = JSON.stringify([...august, ...september]);
   for (const privateValue of [note, "ACT002", "other-activity", "aug-peer"]) assert.ok(!published.includes(privateValue));
-  assert.equal(activityName(club, club.manualActivities[0]), "Ban điều hành");
-  assert.ok(workspaceView(club, admin, 1).club.logs.some(log => log.text.includes("Other, Ban điều hành · 5.25 điểm")));
+  assert.equal(activityName(club, club.manualActivities[0]), "Điều hành");
+  assert.equal(activityName(club, { kind: "committee", committee: "dh" }), "Điều hành");
+  const boardLogs = workspaceView(club, admin, 1).club.logs.filter(log => log.text.startsWith("Nhập Điểm theo ban: Other,"));
+  assert.equal(boardLogs.length, oldBoardLabels.length);
+  assert.ok(boardLogs.every(log => log.text.includes("Other, Điều hành · 5.25 điểm")));
   assert.equal(workspaceView(club, { ...user, userId: "other-activity" }, 1).isAdmin, false);
   assert.equal(JSON.stringify(club), stored);
 });

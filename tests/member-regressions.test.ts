@@ -47,7 +47,7 @@ function askToReturn(club: Club) {
 test("BĐH can assign, move, filter and clear committees on existing and new profiles", () => {
   const { club, memberId } = fixture();
   const member = club.members.find(m => m.id === memberId)!;
-  assert.deepEqual(committeeKinds.map(kind => committeeLabels[kind]), ["Truyền thông", "Sự kiện", "Chuyên môn", "Ban điều hành"]);
+  assert.deepEqual(committeeKinds.map(kind => committeeLabels[kind]), ["Truyền thông", "Sự kiện", "Chuyên môn", "Điều hành"]);
   assert.ok(matchesCommittee(member, "unassigned"));
   const memberData = { name: "Hồ sơ mới", studentId: "SV_NEW" };
   assert.throws(() => applyAction(club, admin, "member", { ...memberData, committee: "hc" }), /Ban/);

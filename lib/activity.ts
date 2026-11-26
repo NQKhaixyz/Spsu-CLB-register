@@ -149,7 +149,7 @@ export function activityPointsFor(club: Club, row: ActivityPointRow & { quantity
 export function activityName(club: Club, row: { kind: ActivityKind; eventId?: string; committee?: StoredCommitteeKind }) {
   if (row.kind === "committee") {
     if (isCommitteeKind(row.committee)) return committeeLabels[row.committee];
-    if (row.committee === "dh") return "Ban điều hành";
+    if (row.committee === "dh") return committeeLabels.cs;
   }
   if (row.kind === "event") return eventForActivity(club, row)?.name ?? "Sự kiện";
   return activityLabels[row.kind];

@@ -2,7 +2,7 @@ export const committeeLabels = {
   tt: "Truyền thông",
   sk: "Sự kiện",
   cm: "Chuyên môn",
-  cs: "Ban điều hành",
+  cs: "Điều hành",
 } as const;
 
 export type CommitteeKind = keyof typeof committeeLabels;
