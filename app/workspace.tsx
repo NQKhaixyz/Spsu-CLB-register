@@ -6,6 +6,7 @@ import { canDeleteMember } from "../lib/member-deletion";
 import { committeeKinds, committeeLabels, memberCommittees, matchesCommittee, type CommitteeFilter } from "../lib/committees";
 import { resolveFont } from "../lib/interface-fonts";
 import { FontSettings } from "./font-settings";
+import { MemberMonthlyScoreboard, Scoreboard, type ScoreScope } from "./scoreboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
@@ -118,6 +119,7 @@ type Tab =
   | "settings"
   | "preferences"
   | "personal";
+const memberTabs = new Set<Tab>(["personal", "preferences", "weeklyScores", "reports", "duties", "links", "requests"]);
 type Modal = {
   title: string;
   description?: string;
@@ -181,6 +183,7 @@ export default function Workspace() {
   const [tab, setTab] = useState<Tab>("overview");
   const [memberSection,setMemberSection]=useState<"profiles"|"points"|"availability">("profiles");
   const [committeeFilter, setCommitteeFilter] = useState<CommitteeFilter>("all");
+  const [scoreScope, setScoreScope] = useState<ScoreScope>("team");
   const [mobileNav, setMobileNav] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState(weekId);
   const [month, setMonth] = useState(() => today().slice(0, 7));
@@ -460,8 +463,7 @@ export default function Workspace() {
         </Button>
       </div>
     );
-  const activeTab =
-    !isAdmin && !["personal", "preferences", "duties", "links", "requests", "weeklyScores"].includes(tab) ? "personal" : tab;
+  const activeTab = !isAdmin && !memberTabs.has(tab) ? "personal" : tab;
   const week =
     club.weeks.find((w) => w.id === selectedWeek) ?? club.weeks.at(-1)!;
   const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
@@ -2836,7 +2838,10 @@ export default function Workspace() {
             </h1>
             <p>Đăng ký họp và xem những đóng góp của bạn tại đây.</p>
           </div>
-          <Badge status="neutral">MSSV {me!.studentId}</Badge>
+          <div className="heading-actions">
+            <Badge status="neutral">MSSV {me!.studentId}</Badge>
+            {!isAdmin && <Button variant="secondary" onClick={() => { setScoreScope("team"); go("weeklyScores"); }}>Xem điểm toàn Đội</Button>}
+          </div>
         </div>
         <div className="personal-top" id="personal-registration">
           {meetingCard(true)}
@@ -3121,7 +3126,7 @@ export default function Workspace() {
         </div>
         <span className="nav-label">KHÔNG GIAN LÀM VIỆC</span>
         <nav aria-label="Điều hướng chính">
-          {(isAdmin ? tabs : tabs.filter((t) => ["duties", "links", "requests", "weeklyScores"].includes(t.id))).map(
+          {(isAdmin ? tabs : tabs.filter(t => memberTabs.has(t.id))).map(
             (item) => (
               <button
                 key={item.id}
@@ -3379,17 +3384,9 @@ export default function Workspace() {
             <>
               <div className="page-heading"><div><span className="eyebrow">CÙNG THEO DÕI ĐÓNG GÓP</span><h1>Điểm hàng tuần<span className="heading-dot">.</span></h1><p>Tất cả thành viên đều xem được điểm của nhau.</p></div>{weekSelect}</div>
               <p className="notice green weekly-score-note">Tuần mới bắt đầu từ 0. Điểm đã ghi được cộng vào báo cáo tháng theo ngày tính điểm. Điểm sự kiện chỉ cộng sau khi BĐH duyệt.</p>
-              <section className="panel"><PanelHead title={`Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6))}`} description="Sáng kiến, đồng đẳng viên và sự kiện hiển thị số lượt. Điểm theo ban, điểm riêng và điểm trừ hiển thị số điểm."/>
-                <div className="table-scroll"><table><thead><tr>
-                  <th>Thành viên</th><th>Tổng điểm tuần</th><th>Trực đủ</th><th>Vắng trực</th><th>Vắng họp</th><th>Đạt phiếu điểm danh</th><th>Đi muộn</th>
-                  {visibleActivityKinds.map(k => <th key={k}>{activityLabels[k]}</th>)}
-                </tr></thead><tbody>
-                  {weeklyScores.map(r => <tr key={r.memberId}>
-                    <td>{findMember(r.memberId)?.name}</td><td><strong>{r.points}</strong></td><td>{r.completed}</td><td>{r.dutyMissed}</td><td>{r.meetingMissed}</td><td>{r.passed}</td><td>{r.lateCount}</td>
-                    {visibleActivityKinds.map(k => <td key={k}>{r.activityCounts[k]}</td>)}
-                  </tr>)}
-                </tbody></table></div>
-              </section>
+              <Scoreboard title={`Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6))}`} period="tuần"
+                rows={weeklyScores.map(r => ({ ...r, name: findMember(r.memberId)?.name ?? "" }))}
+                memberId={isAdmin ? undefined : me.id} scope={scoreScope} onScopeChange={setScoreScope} />
             </>
           ) : activeTab === "requests" ? (
             <>
@@ -3409,7 +3406,11 @@ export default function Workspace() {
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "reports" ? (
-            reports()
+            isAdmin ? reports() : <>
+              <div className="page-heading"><h1>Báo cáo tháng</h1>{monthSelect}</div>
+              <MemberMonthlyScoreboard key={`${me.id}:${month}:${view.revision}`} month={month} memberId={me.id}
+                scope={scoreScope} onScopeChange={setScoreScope} />
+            </>
           ) : activeTab === "preferences" ? (
             <>
               <div className="page-heading"><h1>Cài đặt cá nhân</h1></div>

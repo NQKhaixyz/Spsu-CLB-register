@@ -1,4 +1,5 @@
-import { addDays, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, scoreFor, type Club } from "./club";
+import { addDays, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, reportMembers, scoreFor, type Club, type ScoreboardRow } from "./club";
+import { committeeLabels } from "./committees";
 import { academicWeekFor, activeAvailabilityDatasetFor } from "./availability";
 
 // Show current organization and role wording in the interface and reports,
@@ -7,20 +8,30 @@ const displayTextFields = new Set([
   "name", "description", "actor", "text", "reason", "request", "decision", "note",
   "availabilityNote", "cancelReason", "importedBy", "location", "filename", "sourceFilename",
 ]);
+function displayText(text: string) {
+  return text.replace(/\bCLB\b/g, "Đội")
+    .replace(/\bBCS\b/g, "BĐH")
+    .replace(/Ban cán sự/g, "Ban điều hành")
+    .replace(/ban cán sự/g, "ban điều hành")
+    .replace(/BAN CÁN SỰ/g, "BAN ĐIỀU HÀNH")
+    .replace(/^Nhập Có sáng kiến:/, "Nhập Sáng kiến:")
+    .replace(/^Nhập Tư vấn DDV:/, "Nhập Đồng đẳng viên:");
+}
 function currentTerminology<T>(value: T): T {
   if (Array.isArray(value)) return value.map(currentTerminology) as T;
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
     typeof item === "string" && displayTextFields.has(key)
-      ? item.replace(/\bCLB\b/g, "Đội")
-          .replace(/\bBCS\b/g, "BĐH")
-          .replace(/Ban cán sự/g, "Ban điều hành")
-          .replace(/ban cán sự/g, "ban điều hành")
-          .replace(/BAN CÁN SỰ/g, "BAN ĐIỀU HÀNH")
-          .replace(/^Nhập Có sáng kiến:/, "Nhập Sáng kiến:")
-          .replace(/^Nhập Tư vấn DDV:/, "Nhập Đồng đẳng viên:")
+      ? displayText(item)
       : currentTerminology(item),
   ])) as T;
+}
+
+export function monthlyScoreboard(club: Club, month: string): ScoreboardRow[] {
+  return reportMembers(club, month).map(member => {
+    const { points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts } = scoreFor(club, member.id, month);
+    return { memberId: member.id, name: displayText(member.name), points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts };
+  });
 }
 
 export function workspaceView(
@@ -84,7 +95,9 @@ export function workspaceView(
   for (const member of view.club.members) delete member.fontPreference;
   for (const member of view.club.demoArchive?.members ?? []) delete member.fontPreference;
   for (const log of view.club.logs) {
-    log.text = log.text.replace(/^(Nhập Điểm theo ban: .*), Ban (?:HC|hậu cần) · /i, "$1, ");
+    log.text = log.text
+      .replace(/^(Nhập Điểm theo ban: .*), Ban (?:HC|hậu cần) · /i, "$1, ")
+      .replace(/^(Nhập Điểm theo ban: .*), Cán sự · /i, "$1, " + committeeLabels.cs + " · ");
   }
   if (club.links) view.club.links = club.links;
   return view;

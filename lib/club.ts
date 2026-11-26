@@ -731,6 +731,8 @@ export type WeeklyScore = {
   activityTotal: number;
   points: number;
 };
+export type ScoreboardRow = Omit<WeeklyScore, "week" | "activityTotal"> & { name: string };
+
 export function weeklyScoreFor(club: Club, memberId: string, week: string): WeeklyScore {
   const months = [...new Set([week.slice(0, 7), addDays(week, 6).slice(0, 7)])];
   const parts = months.map(month => scoreFor(club, memberId, month, week));

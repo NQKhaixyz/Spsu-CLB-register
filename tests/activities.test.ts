@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyAction } from "../lib/actions";
 import { createClub, syncWeeks, today, weekId, addDays, scoreFor, weeklyScoreFor, type Member } from "../lib/club";
-import { activityScoreFor, ratedActivityKinds, visibleActivityKinds, activityUnitPoints, eventEvidenceExpiry, isEventOpen, reviewEventRegistration } from "../lib/activity";
+import { activityName, activityScoreFor, ratedActivityKinds, visibleActivityKinds, activityUnitPoints, eventEvidenceExpiry, isEventOpen, reviewEventRegistration } from "../lib/activity";
 import { committeeKinds } from "../lib/committees";
 import { detachExpiredEventPhotos, eventEvidenceTarget, eventEvidenceView } from "../lib/event-evidence";
 import { eventPhotoKey, purgeExpiredEventPhotos } from "../lib/event-photo-storage";
-import { workspaceView } from "../lib/workspace-view";
+import { monthlyScoreboard, workspaceView } from "../lib/workspace-view";
 import { makeReport } from "../lib/excel";
 import ExcelJS from "exceljs";
 const admin={userId:"owner-activity",displayName:"Admin",email:""};
@@ -19,6 +19,39 @@ function fixture(){
 }
 
 const eventData=(id="event-test-1",points=6,startDate=today(),endDate=today())=>({id,name:"Ngày hội C2",points,startDate,endDate});
+
+test("Members see the same monthly totals as the admin report across a split week without receiving private records", () => {
+  const club = fixture();
+  const week = "2026-08-31";
+  const note = "ghi chú nội bộ của người khác";
+  const base = { week, kind: "committee" as const, committee: "cs" as const, quantity: 1, note, updatedAt: "", updatedBy: "a0" };
+  club.manualActivities = [
+    { ...base, id: "aug-peer", memberId: "a2", date: week, points: 5.25 },
+    { ...base, id: "sep-mine", memberId: "a1", date: "2026-09-01", points: 3.5 },
+    { ...base, id: "sep-peer", kind: "special", memberId: "a2", date: "2026-09-02", points: 6.75 },
+  ];
+  club.members[0].joined = "2026-09-01";
+  club.members[2].committee = "cs";
+  club.logs.push({ at: "", actor: "BĐH", text: "Nhập Điểm theo ban: Other, Cán sự · 5.25 điểm, ngày 2026-08-31 (tuần 2026-08-31)" });
+  const stored = JSON.stringify(club);
+  const august = monthlyScoreboard(club, "2026-08");
+  const september = monthlyScoreboard(club, "2026-09");
+  assert.deepEqual(august.map(r => [r.memberId, r.points]), [["a1", 0], ["a2", 5.25]]);
+  assert.deepEqual(september.map(r => [r.memberId, r.points]), [["a0", 0], ["a1", 3.5], ["a2", 6.75]]);
+  assert.equal(weeklyScoreFor(club, "a2", week).points, 12);
+  for (const row of september) {
+    const report = scoreFor(club, row.memberId, "2026-09");
+    assert.equal(row.points, report.points);
+    assert.deepEqual(row.activityCounts, report.activityCounts);
+    assert.deepEqual(Object.keys(row).sort(), ["memberId", "name", "points", "completed", "dutyMissed", "meetingMissed", "passed", "lateCount", "activityCounts"].sort());
+  }
+  const published = JSON.stringify([...august, ...september]);
+  for (const privateValue of [note, "ACT002", "other-activity", "aug-peer"]) assert.ok(!published.includes(privateValue));
+  assert.equal(activityName(club, club.manualActivities[0]), "Ban điều hành");
+  assert.ok(workspaceView(club, admin, 1).club.logs.some(log => log.text.includes("Other, Ban điều hành · 5.25 điểm")));
+  assert.equal(workspaceView(club, { ...user, userId: "other-activity" }, 1).isAdmin, false);
+  assert.equal(JSON.stringify(club), stored);
+});
 function createEvent(c:ReturnType<typeof fixture>, data: ReturnType<typeof eventData> & { requiresEvidence?: boolean } = eventData()) {
  applyAction(c,admin,"createEvent",data);return c.events!.find(e=>e.id===data.id)!;
 }
