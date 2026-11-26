@@ -45,9 +45,9 @@ function cookieToken(request: Request) {
       ?.split("=")[1] ?? ""
   );
 }
-export async function getNativeUser(
+export async function getNativeUserWithClub(
   request: Request,
-): Promise<(Identity & { accountId: string; login: string }) | null> {
+) {
   const token = cookieToken(request);
   if (!/^[0-9a-f]{64}$/.test(token)) return null;
   const account = await db()
@@ -57,7 +57,7 @@ export async function getNativeUser(
     .bind(await tokenHash(token), Date.now())
     .first<Omit<Account, "password_hash">>();
   if (!account) return null;
-  const { club } = await readState("", false);
+  const { club, revision } = await readState("", false);
   const member = club.members.find((m) => m.userId === account.user_id);
   if (
     !member?.active ||
@@ -75,7 +75,16 @@ export async function getNativeUser(
     email: account.email,
     accountId: account.id,
     login: account.login,
+    club,
+    revision,
+    member,
   };
+}
+export async function getNativeUser(request: Request): Promise<(Identity & { accountId: string; login: string }) | null> {
+  const session = await getNativeUserWithClub(request);
+  if (!session) return null;
+  const { userId, displayName, email, accountId, login } = session;
+  return { userId, displayName, email, accountId, login };
 }
 async function issueSession(accountId: string) {
   const token = randomToken();

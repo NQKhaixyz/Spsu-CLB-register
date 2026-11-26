@@ -1,8 +1,17 @@
 "use client";
+import Activities, { WeeklyActivityPoints } from "./activities";
+import { visibleActivityKinds, activityLabels, eventForActivity, isEventOpen, ratedActivityKinds } from "../lib/activity";
+import { eventEvidenceView } from "../lib/event-evidence";
+import { canDeleteMember } from "../lib/member-deletion";
+import { committeeKinds, committeeLabels, isCommitteeKind, matchesCommittee, type CommitteeFilter } from "../lib/committees";
 import Login from "./login";
+import MusicPlayer from "./music-player";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
-import { activeAvailabilityDatasetFor, availabilityForDuty } from "../lib/availability";
+import DutyEvidenceAction from "./duty-evidence";
+import SharedLinks from "./shared-links";
+import { evidenceSubmissionOpen } from "../lib/duty-evidence";
+import { activeAvailabilityDatasetFor, availabilityForDuty, personKey, profileAvailability } from "../lib/availability";
 import {
   useCallback,
   useEffect,
@@ -30,6 +39,7 @@ import {
   HeartHandshake,
   LayoutDashboard,
   Leaf,
+  Link2,
   ListFilter,
   LoaderCircle,
   LogOut,
@@ -45,6 +55,7 @@ import {
   Sparkles,
   Sun,
   Sunset,
+  Trash2,
   Upload,
   UserCheck,
   UserRound,
@@ -57,11 +68,15 @@ import {
   addDays,
   dateLabel,
   dutyNames,
-  monthDays,
   monthLabel,
   reportMembers,
   rulesFor,
   scoreFor,
+  shiftCapacity,
+  canReplanDutyShift,
+  createDutyShiftSlots,
+  isDutyReportShift,
+  isShiftPublished,
   statusNames,
   today,
   weekId,
@@ -89,11 +104,12 @@ import {
 } from "./ui";
 
 type Tab =
+  | "weeklyScores"
   | "overview"
   | "meetings"
   | "requests"
   | "duties"
-  | "availability"
+  | "links"
   | "members"
   | "reports"
   | "settings"
@@ -105,29 +121,47 @@ type Modal = {
   wide?: boolean;
 };
 const tabs = [
+  { id: "weeklyScores", name: "Điểm hàng tuần", icon: ClipboardCheck },
   { id: "overview", name: "Tổng quan", icon: LayoutDashboard },
   { id: "meetings", name: "Họp hằng tuần", icon: CalendarCheck2 },
-  { id: "requests", name: "Yêu cầu đăng ký", icon: MessageSquare },
+  { id: "requests", name: "Tạo sự kiện", icon: MessageSquare },
   { id: "duties", name: "Lịch trực C1", icon: CalendarDays },
-  { id: "availability", name: "Lịch rảnh", icon: ClipboardCheck },
+  { id: "links", name: "Link", icon: Link2 },
   { id: "members", name: "Thành viên", icon: Users },
   { id: "reports", name: "Báo cáo tháng", icon: FileSpreadsheet },
 ] as const;
 const titles: Record<Tab, string> = {
+  weeklyScores: "Điểm hàng tuần",
   overview: "Tổng quan",
   meetings: "Họp hằng tuần",
-  requests: "Yêu cầu đăng ký",
+  requests: "Tạo sự kiện",
   duties: "Lịch trực C1",
-  availability: "Lịch rảnh",
+  links: "Link",
   members: "Thành viên",
   reports: "Báo cáo tháng",
-  settings: "Cài đặt CLB",
+  settings: "Cài đặt Đội",
   personal: "Góc thành viên",
 };
 const getForm = (e: FormEvent<HTMLFormElement>) => {
   e.preventDefault();
   return Object.fromEntries(new FormData(e.currentTarget));
 };
+const scoreRateFields = [
+  ["A", "Cộng mỗi ca trực đủ"],
+  ["B", "Trừ mỗi ca trực vắng không phép"],
+  ["C", "Trừ mỗi buổi họp vắng không phép"],
+  ["D", "Trừ mỗi lượt đi muộn"],
+  ["E", "Cộng mỗi phiếu điểm danh đạt"],
+] as const;
+function parseScoreRate(value: FormDataEntryValue | undefined) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return /^(?:\d+|\d*[.,]\d+)(?:e[+-]?\d+)?$/i.test(text)
+    ? Number(text.replace(",", "."))
+    : NaN;
+}
+function ScoreRateInput({ name, value }: { name: string; value: number }) {
+  return <input name={name} inputMode="decimal" defaultValue={String(value).replace(".", ",")} required />;
+}
 const digits = (number: number) => String(number).padStart(2, "0");
 
 export default function Workspace() {
@@ -136,9 +170,12 @@ export default function Workspace() {
   const [auth, setAuth] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
+  const [memberSection,setMemberSection]=useState<"profiles"|"points"|"availability">("profiles");
+  const [committeeFilter, setCommitteeFilter] = useState<CommitteeFilter>("all");
   const [mobileNav, setMobileNav] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState(weekId);
   const [month, setMonth] = useState(() => today().slice(0, 7));
+  const [dutyWeek, setDutyWeek] = useState(weekId);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -313,11 +350,11 @@ export default function Workspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, data }),
       });
-      const result = (await r.json()) as View & { error?: string };
+      const result = (await r.json()) as View & { error?: string; notice?: string };
       if (!r.ok) throw new Error(result.error || "Không lưu được dữ liệu");
       setView(result);
       if (close) closeModal();
-      notify(message);
+      notify(result.notice ?? message);
       return true;
     } catch (e) {
       notify(e instanceof Error ? e.message : "Không lưu được dữ liệu.", true);
@@ -357,7 +394,7 @@ export default function Workspace() {
         <form
           onSubmit={(e) => {
             const f = getForm(e);
-            act("profile", f, "Chào mừng bạn đến với CLB");
+            act("profile", f, "Chào mừng bạn đến với Đội");
           }}
         >
           <Field label="Họ và tên">
@@ -390,7 +427,7 @@ export default function Workspace() {
             <span>Tên đăng nhập được cấp: {me?.loginName || me?.studentId || view.identity.email}</span>
           </div>
           <Button type="submit" disabled={busy}>
-            Vào không gian CLB <ArrowRight size={16} />
+            Vào không gian Đội <ArrowRight size={16} />
           </Button>
         </form>
         <Button variant="secondary" onClick={logoutAccount}>Đăng xuất</Button>
@@ -414,9 +451,10 @@ export default function Workspace() {
       </div>
     );
   const activeTab =
-    !isAdmin && !["personal", "duties"].includes(tab) ? "personal" : tab;
+    !isAdmin && !["personal", "duties", "links", "requests", "weeklyScores"].includes(tab) ? "personal" : tab;
   const week =
     club.weeks.find((w) => w.id === selectedWeek) ?? club.weeks.at(-1)!;
+  const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
   const currentWeek = club.weeks.find((w) => w.id === weekId())!;
   const findMember = (id: string) => club.members.find((m) => m.id === id);
   const pending = club.weeks.flatMap((w) =>
@@ -426,9 +464,15 @@ export default function Workspace() {
           .map((e) => ({ week: w, entry: e }))
       : [],
   );
+  const currentDay = today();
+  const activityPending = (club.activityRegistrations ?? []).filter(row => {
+    if (row.kind !== "event" || row.status !== "pending") return false;
+    const event = eventForActivity(club, row);
+    return !!event && (event.requiresEvidence ? eventEvidenceView(row, event, me).canReview : isEventOpen(event, currentDay));
+  }).length;
+  const pendingTotal = pending.length + activityPending;
   const count = (s: Registration) =>
     week.entries.filter((e) => e.status === s).length;
-  const schedule = club.schedules.find((s) => s.month === month);
   const liveMembers = club.members.filter((m) => m.active);
   const ownEntry = currentWeek.entries.find((e) => e.memberId === me!.id);
   const activeDataset = activeAvailabilityDatasetFor(club);
@@ -516,7 +560,7 @@ export default function Workspace() {
             </div>
           </div>
           <p className="dialog-copy">
-            Hãy rà soát ô vắng thực tế, có phép và qua quy chế trước khi chốt.
+            Hãy rà soát ô vắng thực tế, có phép và đạt phiếu điểm danh trước khi chốt.
             Sau khi chốt, thành viên không thể tự sửa đăng ký.
           </p>
           <div className="form-footer">
@@ -533,6 +577,52 @@ export default function Workspace() {
             </Button>
           </div>
         </>
+      ),
+    });
+  }
+  function reopenWeekDialog() {
+    setModal({
+      title: "Hủy chốt cuộc họp",
+      description: `Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6), true)}`,
+      content: (
+        <form onSubmit={(e) => act("reopen", { ...getForm(e), week: week.id }, "Đã hủy chốt cuộc họp")}>
+          <p className="dialog-copy">
+            Cuộc họp sẽ mở lại để điều chỉnh. Điểm vắng họp tạm ngừng tính cho đến khi chốt lại.
+            {week.closingSnapshot
+              ? " Các đăng ký chưa được BĐH sửa sẽ được khôi phục về trước khi chốt; kết quả BĐH đã xác minh được giữ lại."
+              : " Cuộc họp này chưa có bản lưu trước khi chốt; dữ liệu điểm danh hiện tại sẽ được giữ nguyên để BĐH rà soát."}
+            {week.id < weekId()
+              ? " Đây là tuần đã qua: BĐH cần chốt lại sau khi chỉnh sửa; hệ thống không tự chốt lại tuần đang mở để sửa."
+              : " Tuần hiện tại vẫn được tự chốt khi hết tuần."}
+          </p>
+          <Field label="Lý do hủy chốt">
+            <textarea name="note" required minLength={3} maxLength={500} placeholder="Ví dụ: Cần rà soát lại danh sách điểm danh" />
+          </Field>
+          <div className="form-footer">
+            <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
+            <Button type="submit" disabled={busy}>Hủy chốt cuộc họp</Button>
+          </div>
+        </form>
+      ),
+    });
+  }
+  function scheduleDialog(replan: boolean, capacity?: number) {
+    setModal({
+      title: replan ? "Xếp lại ca nháp trong tuần" : "Xếp lịch trực tuần",
+      description: `Tuần ${dateLabel(dutyWeek, true)} – ${dateLabel(addDays(dutyWeek, 6), true)}`,
+      content: (
+        <form onSubmit={(e) => act("schedule", { ...getForm(e), week: dutyWeek }, "Đã xếp lịch nháp trong tuần")}>
+          <Field label="Số người / 1 buổi trực C1">
+            <input name="peoplePerShift" type="number" min={1} max={50} step={1} required defaultValue={capacity ?? club.peoplePerShift ?? 2} />
+          </Field>
+          <p className="hint">
+            Nếu không đủ người rảnh, lịch sẽ hiển thị vị trí còn thiếu. Người đã thêm thủ công vẫn có trong ca.
+          </p>
+          <div className="form-footer">
+            <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
+            <Button type="submit" disabled={busy}>Xếp lịch nháp</Button>
+          </div>
+        </form>
       ),
     });
   }
@@ -662,6 +752,10 @@ export default function Workspace() {
     });
   }
   function editMember(member?: Member) {
+    const selectedAvailability = member ? profileAvailability(club, member) : [];
+    const detailedAvailability = member
+      ? activeDataset?.rows.filter((row) => activeDataset.memberLinks?.[personKey(row.name)] === member.id) ?? []
+      : [];
     setModal({
       title: member ? "Hồ sơ thành viên" : "Thêm thành viên",
       description:
@@ -719,6 +813,12 @@ export default function Workspace() {
               placeholder="Email liên hệ của thành viên"
             />
           </Field>
+          <Field label="Ban">
+            <select name="committee" defaultValue={member?.committee ?? ""}>
+              <option value="">Chưa phân ban</option>
+              {committeeKinds.map(kind => <option key={kind} value={kind}>{committeeLabels[kind]}</option>)}
+            </select>
+          </Field>
           {member ? (
             <Field label="Vai trò">
               <select name="role" defaultValue={member.role}>
@@ -745,7 +845,8 @@ export default function Workspace() {
           </label>
           {member ? (
             <div className="availability-editor">
-              <span className="field-label">Lịch rảnh cố định</span>
+              <span className="field-label">Lịch rảnh sáng / chiều</span>
+              <p className="hint">Tích hoặc bỏ tích rồi lưu để cập nhật dữ liệu xếp lịch. Các khung từ Excel áp dụng theo giờ và tuần học trong file.</p>
               <div className="availability-grid">
                 <span />
                 <strong>Sáng</strong>
@@ -760,7 +861,7 @@ export default function Workspace() {
                           type="checkbox"
                           name="availability"
                           value={`${d}-${p}`}
-                          defaultChecked={member.availability.includes(
+                          defaultChecked={selectedAvailability.includes(
                             `${d}-${p}`,
                           )}
                         />
@@ -769,6 +870,19 @@ export default function Workspace() {
                   </div>
                 ))}
               </div>
+              {detailedAvailability.length ? (
+                <details className="hint">
+                  <summary>Lịch rảnh theo Excel</summary>
+                  <ul>
+                    {detailedAvailability.map((row, index) => (
+                      <li key={`${row.sourceRow}-${index}`}>
+                        {row.day} · {row.period} · {row.weeks ? `Tuần ${row.weeks}` : "Chưa ghi tuần học"}
+                        {row.note ? ` · ${row.note}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
             </div>
           ) : null}
           <FormFooter onCancel={closeModal} busy={busy} />
@@ -804,7 +918,7 @@ export default function Workspace() {
                 if (upload.format === "details") {
                   setModal({
                     title: "Xem trước lịch rảnh chi tiết",
-                    description: upload.filename,
+                    description: upload.filename.replace(/\bCLB\b/g, "Đội"),
                     wide: true,
                     content: (
                       <>
@@ -818,15 +932,18 @@ export default function Workspace() {
                                 {
                                   filename: upload.filename,
                                   rows: upload.rows,
+                                  syncProfiles: !!activeDataset,
                                 },
                                 `Đã lưu ${upload.rows.length} dòng lịch rảnh chi tiết`,
                               )
-                            )
-                              go("availability");
+                            ) {
+                              setMemberSection("availability");
+                              go("members");
+                            }
                           }}
                         >
                           <FormFooter
-                            label={`Lưu ${upload.rows.length} dòng lịch rảnh`}
+                            label={activeDataset ? "Lưu và cập nhật lịch rảnh" : `Lưu ${upload.rows.length} dòng lịch rảnh`}
                             onCancel={closeModal}
                             busy={busy}
                           />
@@ -884,7 +1001,7 @@ export default function Workspace() {
             <p className="dialog-copy">
               Điền 1 hoặc x vào ca rảnh, để trống ca bận. Lịch mới áp dụng khi
               xếp lịch nháp tiếp theo; lịch đã công bố vẫn giữ nguyên. File theo
-              tuần học và khung giờ cụ thể sẽ được lưu tại mục Lịch rảnh để đối
+              tuần học và khung giờ cụ thể sẽ được lưu tại Thành viên → Lịch rảnh để đối
               chiếu trước khi áp dụng.
             </p>
           ) : null}
@@ -902,7 +1019,7 @@ export default function Workspace() {
       const { buffer, warnings } = await makeReport(club, month);
       saveFile(
         buffer,
-        `Nhip-CLB-${month}${warnings.length ? "-ban-tam" : ""}.xlsx`,
+        `Nhịp-Đội-${month}${warnings.length ? "-ban-tam" : ""}.xlsx`,
       );
       notify(
         warnings.length
@@ -916,7 +1033,7 @@ export default function Workspace() {
       setBusy(false);
     }
   }
-  function changeAssignment(shift: Shift, position: number) {
+  function changeAssignment(shift: Shift, shiftMonth: string, position: number) {
     const current = shift.assignments[position];
     const candidates = liveMembers.filter(
       (m) =>
@@ -935,7 +1052,7 @@ export default function Workspace() {
           onSubmit={(e) =>
             act(
               "shift",
-              { ...getForm(e), month, shiftId: shift.id, position },
+              { ...getForm(e), month: shiftMonth, shiftId: shift.id, position, assignmentMemberId: current?.memberId ?? null },
               "Đã cập nhật người trực",
             )
           }
@@ -951,7 +1068,7 @@ export default function Workspace() {
               </option>
               {candidates.map((m) => {
                 const turns =
-                  schedule?.shifts
+                  club.schedules.find(s => s.month === shiftMonth)?.shifts
                     .flatMap((s) => s.assignments)
                     .filter((a) => a.memberId === m.id).length ?? 0;
                 return (
@@ -973,6 +1090,71 @@ export default function Workspace() {
       ),
     });
   }
+  function addDutyMember(shift: Shift, shiftMonth: string) {
+    const assigned = new Set(shift.assignments.map(assignment => assignment.memberId));
+    const candidates = liveMembers.filter(member => !assigned.has(member.id)).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+    setModal({
+      title: "Thêm người vào ca",
+      description: `${dateLabel(shift.date, true)} · Ca ${shift.period === "am" ? "sáng" : "chiều"}`,
+      content: candidates.length ? (
+        <form onSubmit={e => act(
+          "addDutyMember",
+          { ...getForm(e), month: shiftMonth, shiftId: shift.id },
+          "Đã thêm người vào ca",
+        )}>
+          <Field label="Thành viên">
+            <select name="memberId" required defaultValue="">
+              <option value="" disabled>Chọn thành viên</option>
+              {candidates.map(member => <option key={member.id} value={member.id}>{member.name}{member.studentId ? ` · ${member.studentId}` : ""}</option>)}
+            </select>
+          </Field>
+          <p className="hint">Điểm được ghi theo kết quả xác minh của ca trực.</p>
+          <FormFooter label="Thêm người" onCancel={closeModal} busy={busy} />
+        </form>
+      ) : <p className="dialog-copy">Tất cả thành viên đang hoạt động đã có trong ca này.</p>,
+    });
+  }
+  function confirmDutyMemberRemoval(shift: Shift, shiftMonth: string, memberId: string, memberName: string) {
+    const period = shift.period === "am" ? "Ca sáng" : "Ca chiều";
+    setModal(previous => ({
+      title: "Gỡ người khỏi ca",
+      description: `${memberName} · ${period} ${dateLabel(shift.date, true)}`,
+      content: (
+        <>
+          <p className="dialog-copy">
+            Phân công, điểm đã ghi và ảnh minh chứng của lượt trực này sẽ bị xóa.
+          </p>
+          <div className="form-footer">
+            <Button variant="secondary" onClick={() => setModal(previous)}>Quay lại</Button>
+            <Button variant="danger" onClick={() => act(
+              "removeDutyMember",
+              { month: shiftMonth, shiftId: shift.id, memberId, confirm: memberId },
+              "Đã gỡ người khỏi ca",
+            )}>Xác nhận gỡ</Button>
+          </div>
+        </>
+      ),
+    }));
+  }
+  function confirmMemberDeletion(member: Member) {
+    setModal({
+      title: "Xóa vĩnh viễn thành viên",
+      description: member.studentId ? `${member.name} · ${member.studentId}` : member.name,
+      content: (
+        <>
+          <p className="dialog-copy">
+            Hồ sơ, tài khoản, lịch trực, điểm, đăng ký và ảnh minh chứng của {member.name} sẽ bị xóa. Thao tác này không thể hoàn tác.
+          </p>
+          <div className="form-footer">
+            <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
+            <Button variant="danger" onClick={() => act("deleteMember", { memberId: member.id, confirm: member.id }, "Đã xóa thành viên và dữ liệu liên quan")}>
+              <Trash2 size={16} /> Xóa vĩnh viễn
+            </Button>
+          </div>
+        </>
+      ),
+    });
+  }
   const weekSelect = (
     <select
       className="week-select"
@@ -987,6 +1169,7 @@ export default function Workspace() {
         <option key={w.id} value={w.id}>
           {dateLabel(w.id)} – {dateLabel(addDays(w.id, 6), true)}
           {w.id === weekId() ? " · Tuần này" : ""}
+          {w.closed && activeTab === "meetings" ? " · Đã chốt" : ""}
         </option>
       ))}
     </select>
@@ -1080,7 +1263,7 @@ export default function Workspace() {
     return (
       <section className="panel requests-panel">
         <PanelHead
-          title={full ? "Đang chờ BĐH duyệt" : "Cần bạn xử lý"}
+          title={full ? "Đăng ký họp chờ duyệt" : "Cần bạn xử lý"}
           action={<span className="count-pill">{pending.length}</span>}
         />
         {items.length ? (
@@ -1217,7 +1400,7 @@ export default function Workspace() {
                 <th>TRẠNG THÁI</th>
                 <th className="center">VẮNG</th>
                 <th className="center">CÓ PHÉP</th>
-                <th className="center">QUA QUY CHẾ</th>
+                <th className="center">ĐẠT PHIẾU ĐIỂM DANH</th>
                 <th />
               </tr>
             </thead>
@@ -1279,7 +1462,7 @@ export default function Workspace() {
                     <td className="center">
                       <input
                         type="checkbox"
-                        aria-label={`Qua quy chế: ${m.name}`}
+                        aria-label={`Đạt phiếu điểm danh: ${m.name}`}
                         checked={e.passed}
                         disabled={
                           busy ||
@@ -1343,7 +1526,7 @@ export default function Workspace() {
           </table>
           {!rows.length ? (
             <Empty title="Chưa có thành viên phù hợp" icon={Users}>
-              Thử bộ lọc khác hoặc thêm thành viên vào CLB.
+              Thử bộ lọc khác hoặc thêm thành viên vào Đội.
             </Empty>
           ) : null}
         </div>
@@ -1379,7 +1562,7 @@ export default function Workspace() {
       <>
         <div className="page-heading">
           <div>
-            <span className="eyebrow">QUẢN LÝ CLB</span>
+            <span className="eyebrow">QUẢN LÝ ĐỘI</span>
             <h1>
               Tổng quan
             </h1>
@@ -1389,7 +1572,7 @@ export default function Workspace() {
         </div>
         <div className="stats-grid">
           <Stat
-            title="Thành viên CLB"
+            title="Thành viên Đội"
             value={liveMembers.length}
             description="Đang cùng nhau hoạt động"
             icon={Users}
@@ -1443,7 +1626,7 @@ export default function Workspace() {
             />
             {club.schedules
               .filter((s) => s.published)
-              .flatMap((s) => s.shifts)
+              .flatMap((s) => s.shifts.filter((t) => isShiftPublished(s, t)))
               .filter((t) => t.date >= today() && !t.cancelled)
               .sort((a, b) => a.id.localeCompare(b.id))
               .slice(0, 2)
@@ -1464,12 +1647,12 @@ export default function Workspace() {
                     </span>
                   </div>
                   <Badge status="neutral">
-                    {shift.assignments.length}/2 người
+                    {shift.assignments.length}/{shiftCapacity(shift)} người
                   </Badge>
                 </div>
               ))}
             {!club.schedules.some(
-              (s) => s.published && s.shifts.some((t) => t.date >= today()),
+              (s) => s.shifts.some((t) => isShiftPublished(s, t) && t.date >= today() && !t.cancelled),
             ) ? (
               <div className="compact-empty">
                 <CalendarDays size={20} />
@@ -1490,7 +1673,7 @@ export default function Workspace() {
             </h3>
             <p>
               Mỗi ca trực, mỗi buổi họp đều là một phần đóng góp của bạn cho
-              CLB.
+              Đội.
             </p>
             <span>
               GIỮ NHỊP, CÙNG NHAU <ArrowRight size={15} />
@@ -1502,16 +1685,44 @@ export default function Workspace() {
   }
 
   function duties() {
-    const visibleShifts = schedule?.shifts ?? [];
+    const thisDutyWeek = weekId();
+    const dutyWeekEnd = addDays(dutyWeek, 6);
+    const weekLabel = (start: string) => `${dateLabel(start)} – ${dateLabel(addDays(start, 6), true)}`;
+    const weeks = [...new Set([
+      dutyWeek,
+      ...Array.from({ length: 25 }, (_, i) => addDays(thisDutyWeek, (i - 12) * 7)),
+      ...club.schedules.flatMap(s => [
+        ...s.shifts.map(shift => weekId(shift.date)),
+        ...(s.pendingDutyWeek ? [s.pendingDutyWeek] : []),
+      ]),
+    ])].sort().reverse();
+    const weeklySchedules = club.schedules
+      .map(schedule => ({ ...schedule, shifts: schedule.shifts.filter(shift => shift.date >= dutyWeek && shift.date <= dutyWeekEnd) }))
+      .filter(schedule => schedule.shifts.length);
+    const entries = weeklySchedules.flatMap(schedule => schedule.shifts.map(shift => ({ schedule, shift })));
+    const visibleShifts = entries.map(({ shift }) => shift);
+    const draftEntries = entries.filter(({schedule, shift}) => !isShiftPublished(schedule, shift));
+    const publishedCount = entries.length - draftEntries.length;
+    const missingSlots = [...new Set([dutyWeek.slice(0, 7), dutyWeekEnd.slice(0, 7)])].some(month =>
+      !weeklySchedules.some(schedule => schedule.month === month) &&
+      createDutyShiftSlots(club, month, club.peoplePerShift ?? 2).some(shift => weekId(shift.date) === dutyWeek),
+    );
+    const canPlan = missingSlots || draftEntries.some(({ schedule, shift }) => canReplanDutyShift(schedule, shift));
+    const publishShortage = draftEntries.map(({ shift }) => shift).filter(shift => !shift.cancelled)
+      .reduce((n, shift) => n + Math.max(0, shiftCapacity(shift) - shift.assignments.length), 0);
     const activeShifts = visibleShifts.filter((t) => !t.cancelled),
       cancelledCount = visibleShifts.length - activeShifts.length;
     const seats = activeShifts.flatMap((t) => t.assignments).length;
-    const shortage = activeShifts.length * 2 - seats;
+    const shortage = activeShifts.reduce((n, t) => n + Math.max(0, shiftCapacity(t) - t.assignments.length), 0);
+    const capacity = new Set(activeShifts.map(shiftCapacity));
+    const capacityLabel = capacity.size > 1 ? "Số người theo từng ca"
+      : `${capacity.values().next().value ?? club.peoplePerShift ?? 2} người mỗi ca`;
     const linkedIds = activeDataset
       ? new Set(Object.values(activeDataset.memberLinks ?? {}))
       : null;
     const counts = liveMembers
-      .filter((m) => !linkedIds || linkedIds.has(m.id))
+      .filter((m) => !linkedIds || linkedIds.has(m.id) || profileAvailability(club, m).length > 0 ||
+        activeShifts.some(shift => shift.assignments.some(assignment => assignment.memberId === m.id)))
       .map((m) => ({
         m,
         n: activeShifts
@@ -1529,18 +1740,24 @@ export default function Workspace() {
               Lịch trực C1<span className="heading-dot">.</span>
             </h1>
             <p>
-              Hai người mỗi ca · Sáng và chiều · Ưu tiên 2 ca/người, có thể trực
+              {capacityLabel} · Sáng và chiều · Ưu tiên 2 ca/người, có thể trực
               thêm.
             </p>
           </div>
           <div className="heading-actions">
-            {monthSelect}
+            <div className="duty-week-nav">
+              <Button variant="secondary" aria-label="Tuần trực trước" onClick={() => setDutyWeek(addDays(dutyWeek, -7))}><ChevronLeft size={16} /></Button>
+              <select className="week-select" aria-label="Chọn tuần trực" value={dutyWeek} onChange={e => setDutyWeek(e.target.value)}>
+                {weeks.map(start => <option key={start} value={start}>{weekLabel(start)}{start === thisDutyWeek ? " · Tuần này" : ""}</option>)}
+              </select>
+              <Button variant="secondary" aria-label="Tuần trực sau" onClick={() => setDutyWeek(addDays(dutyWeek, 7))}><ChevronRight size={16} /></Button>
+            </div>
             {isAdmin ? (
               <Button
                 onClick={() => importDialog("availability")}
                 variant="secondary"
               >
-                <Upload size={16} /> Nhập lịch rảnh
+                <Upload size={16} /> Nhập lịch rảnh từ Excel
               </Button>
             ) : null}
           </div>
@@ -1569,29 +1786,20 @@ export default function Workspace() {
               </p>
             ) : null}
             <Button
-              disabled={busy || !!schedule?.published}
-              onClick={() =>
-                act(
-                  "schedule",
-                  { month },
-                  "Đã xếp lịch nháp. Kiểm tra trước khi công bố.",
-                  false,
-                )
-              }
+              disabled={busy || !canPlan}
+              onClick={() => scheduleDialog(visibleShifts.length > 0, draftEntries[0]?.shift.capacity)}
             >
               <WandSparkles size={16} />{" "}
-              {schedule ? "Xếp lại bản nháp" : "Xếp lịch nháp"}
+              {visibleShifts.length ? "Xếp lại ca nháp trong tuần" : "Xếp lịch tuần"}
             </Button>
           </div>
         ) : null}
-        {schedule ? (
+        {visibleShifts.length ? (
           <>
             <div className="schedule-summary">
               <div>
-                <Badge status={schedule.published ? "attending" : "pending"}>
-                  {schedule.published
-                    ? "Đã công bố"
-                    : "Bản nháp · Chỉ BĐH nhìn thấy"}
+                <Badge status={publishedCount && !draftEntries.length ? "attending" : "pending"}>
+                  {draftEntries.length ? (publishedCount ? `${publishedCount} ca đã công bố · ${draftEntries.length} ca nháp` : "Bản nháp tuần") : "Tuần đã công bố"}
                 </Badge>
                 <span>
                   {activeShifts.length} ca hoạt động
@@ -1603,15 +1811,45 @@ export default function Workspace() {
                     : " · Đã đủ người"}
                 </span>
               </div>
-              {isAdmin && !schedule.published ? (
+              {isAdmin && publishedCount > 0 ? (
                 <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => setModal({
+                    title: "Hủy công bố tuần",
+                    description: weekLabel(dutyWeek),
+                    content: (
+                      <>
+                        <p className="dialog-copy">
+                          Đưa {publishedCount} ca đã công bố của tuần về bản nháp. Thành viên sẽ thấy lại lịch khi BĐH công bố. Điểm đã xác minh được giữ.
+                        </p>
+                        <div className="form-footer">
+                          <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
+                          <Button
+                            variant="danger"
+                            disabled={busy}
+                            onClick={() => act("withdrawDutyWeek", { week: dutyWeek }, "Đã hủy công bố tuần trực")}
+                          >
+                            Hủy công bố tuần
+                          </Button>
+                        </div>
+                      </>
+                    ),
+                  })}
+                >
+                  <XCircle size={16} /> Hủy công bố tuần
+                </Button>
+              ) : null}
+              {isAdmin && draftEntries.length > 0 ? (
+                <Button
+                  disabled={busy}
                   onClick={() =>
                     setModal({
-                      title: "Công bố lịch trực?",
-                      description: shortage
-                        ? `Lịch còn thiếu ${shortage} lượt. Thành viên sẽ nhìn thấy các phân công hiện tại.`
-                        : "Thành viên sẽ nhìn thấy lịch và ca trực của mình.",
+                      title: "Công bố tuần trực",
+                      description: weekLabel(dutyWeek),
                       content: (
+                        <>
+                        {publishShortage > 0 && <p className="dialog-copy">Lịch tuần này còn thiếu {publishShortage} lượt phân công.</p>}
                         <div className="form-footer">
                           <Button variant="secondary" onClick={closeModal}>
                             Kiểm tra lại
@@ -1619,17 +1857,18 @@ export default function Workspace() {
                           <Button
                             disabled={busy}
                             onClick={() =>
-                              act("publish", { month }, "Đã công bố lịch trực")
+                              act("publish", { week: dutyWeek }, "Đã công bố tuần trực")
                             }
                           >
-                            <CheckCheck size={16} /> Công bố lịch
+                            <CheckCheck size={16} /> Công bố tuần
                           </Button>
                         </div>
+                        </>
                       ),
                     })
                   }
                 >
-                  Công bố lịch <ArrowRight size={16} />
+                  Công bố tuần <ArrowRight size={16} />
                 </Button>
               ) : null}
             </div>
@@ -1649,41 +1888,35 @@ export default function Workspace() {
                   ))}
                 </div>
                 <div className="calendar-grid">
-                  {Array.from(
-                    { length: (weekday(month + "-01") + 6) % 7 },
-                    (_, i) => (
-                      <div className="calendar-cell blank" key={`blank-${i}`} />
-                    ),
-                  )}
-                  {monthDays(month).map((date) => {
-                    const shifts = visibleShifts.filter((t) => t.date === date);
+                  {Array.from({ length: 7 }, (_, i) => addDays(dutyWeek, i)).map((date) => {
+                    const shifts = entries.filter(({ shift }) => shift.date === date);
                     return (
                       <div
                         key={date}
                         className={`calendar-cell ${date === today() ? "today" : ""} ${!shifts.length ? "offday" : ""}`}
                       >
                         <span className="calendar-number">
-                          {Number(date.slice(8))}
+                          {dateLabel(date)}
                           {date === today() ? <small>Hôm nay</small> : null}
                         </span>
-                        {shifts.map((shift) => (
+                        {shifts.map(({ schedule, shift }) => (
                           <button
                             className={`calendar-shift ${shift.period} ${shift.cancelled ? "cancelled" : ""}`}
-                            aria-label={`Ca ${shift.period === "am" ? "sáng" : "chiều"} ngày ${dateLabel(date, true)}${shift.cancelled ? " · Đã hủy" : ""}`}
+                            aria-label={`Ca ${shift.period === "am" ? "sáng" : "chiều"} ngày ${dateLabel(date, true)}${shift.cancelled ? " · Đã hủy" : ""}${!isShiftPublished(schedule, shift) ? " · Bản nháp" : ""}`}
                             key={shift.id}
                             onClick={() =>
                               setModal({
                                 title: `Trực C1 · ${dateLabel(date, true)}`,
-                                description: `Ca ${shift.period === "am" ? "sáng" : "chiều"}${shift.startTime ? ` ${shift.startTime}–${shift.endTime}` : ""}${shift.academicWeek ? ` · Tuần học ${shift.academicWeek}` : ""} · ${shift.cancelled ? "Đã hủy" : schedule.published ? "Đã công bố" : "Bản nháp"}`,
+                                description: `Ca ${shift.period === "am" ? "sáng" : "chiều"}${shift.startTime ? ` ${shift.startTime}–${shift.endTime}` : ""}${shift.academicWeek ? ` · Tuần học ${shift.academicWeek}` : ""} · ${shift.cancelled ? "Đã hủy" : isShiftPublished(schedule, shift) ? "Đã công bố" : "Bản nháp"}`,
                                 content: (
                                   <div className="shift-detail">
                                     {shift.cancelled ? (
                                       <div className="notice neutral">
-                                        Ca này đã hủy cho cả hai người, không
+                                        Ca này đã hủy cho tất cả người được phân công, không
                                         cộng/trừ điểm. {shift.cancelReason}
                                       </div>
                                     ) : null}
-                                    {[0, 1].map((position) => {
+                                    {Array.from({ length: Math.max(shiftCapacity(shift), shift.assignments.length) }, (_, position) => {
                                       const a = shift.assignments[position],
                                         m = a ? findMember(a.memberId) : null;
                                       return (
@@ -1703,7 +1936,7 @@ export default function Workspace() {
                                                   {a.originalId &&
                                                   a.originalId !== a.memberId
                                                     ? `Thay ${findMember(a.originalId)?.name}`
-                                                    : "Thành viên phụ trách"}
+                                                    : a.manual ? "Thêm thủ công" : "Thành viên phụ trách"}
                                                 </small>
                                               </div>
                                             </div>
@@ -1722,23 +1955,37 @@ export default function Workspace() {
                                               BĐH: {a.note}
                                             </p>
                                           ) : null}
+                                          {a && !shift.cancelled && a.result !== "cancelled" &&
+                                           isShiftPublished(schedule, shift) && (isAdmin || a.memberId === me!.id) ? (
+                                            <DutyEvidenceAction
+                                              key={a.memberId}
+                                              target={{ month: schedule.month, shiftId: shift.id, memberId: a.memberId }}
+                                              canSend={a.memberId === me!.id && evidenceSubmissionOpen(shift)}
+                                              isAdmin={isAdmin}
+                                            />
+                                          ) : null}
                                           {isAdmin ? (
                                             <>
-                                              <Button
-                                                variant="secondary"
-                                                disabled={
-                                                  busy || shift.cancelled
-                                                }
-                                                onClick={() =>
-                                                  changeAssignment(
-                                                    shift,
-                                                    position,
-                                                  )
-                                                }
-                                              >
-                                                {m ? "Đổi người" : "Chọn người"}
-                                              </Button>
-                                              {a && schedule.published ? (
+                                              <div className="shift-assignment-actions">
+                                                <Button
+                                                  variant="secondary"
+                                                  disabled={busy || shift.cancelled || (!isShiftPublished(schedule, shift) && !canReplanDutyShift(schedule, shift) && !a?.manual)}
+                                                  onClick={() => changeAssignment(shift, schedule.month, position)}
+                                                >
+                                                  {m ? "Đổi người" : "Chọn người"}
+                                                </Button>
+                                                {a && (
+                                                  <Button
+                                                    variant="secondary"
+                                                    disabled={busy}
+                                                    aria-label={`Gỡ ${m?.name ?? "thành viên"} khỏi ca`}
+                                                    onClick={() => confirmDutyMemberRemoval(shift, schedule.month, a.memberId, m?.name ?? "Thành viên")}
+                                                  >
+                                                    <Trash2 size={15} aria-hidden="true" /> Gỡ khỏi ca
+                                                  </Button>
+                                                )}
+                                              </div>
+                                              {a && isShiftPublished(schedule, shift) ? (
                                                 <Field label="Kết quả xác minh">
                                                   <select
                                                     disabled={
@@ -1749,9 +1996,10 @@ export default function Workspace() {
                                                       act(
                                                         "shift",
                                                         {
-                                                          month,
+                                                          month: schedule.month,
                                                           shiftId: shift.id,
                                                           position,
+                                                          assignmentMemberId: a.memberId,
                                                           result:
                                                             e.target.value,
                                                         },
@@ -1777,7 +2025,7 @@ export default function Workspace() {
                                                   </select>
                                                 </Field>
                                               ) : null}
-                                              {a && schedule.published ? (
+                                              {a && isShiftPublished(schedule, shift) ? (
                                                 <label className="checkbox-label">
                                                   <input
                                                     type="checkbox"
@@ -1792,9 +2040,10 @@ export default function Workspace() {
                                                       act(
                                                         "shift",
                                                         {
-                                                          month,
+                                                          month: schedule.month,
                                                           shiftId: shift.id,
                                                           position,
+                                                          assignmentMemberId: a.memberId,
                                                           late: e.target
                                                             .checked,
                                                         },
@@ -1806,7 +2055,7 @@ export default function Workspace() {
                                                   <small>
                                                     Không tích = không đến muộn.
                                                     Tích ô sẽ trừ{" "}
-                                                    {rulesFor(club, month).D ??
+                                                    {rulesFor(club, schedule.month).D ??
                                                       0}{" "}
                                                     điểm. Lý do hợp lệ thì để
                                                     trống.
@@ -1820,9 +2069,10 @@ export default function Workspace() {
                                                       "shift",
                                                       {
                                                         ...getForm(e),
-                                                        month,
+                                                        month: schedule.month,
                                                         shiftId: shift.id,
                                                         position,
+                                                        assignmentMemberId: a.memberId,
                                                       },
                                                       "Đã lưu ghi chú ca trực",
                                                     )
@@ -1866,6 +2116,11 @@ export default function Workspace() {
                                         </div>
                                       );
                                     })}
+                                    {isAdmin && !shift.cancelled && (
+                                      <Button variant="secondary" disabled={busy} onClick={() => addDutyMember(shift, schedule.month)}>
+                                        <Plus size={16} /> Thêm người
+                                      </Button>
+                                    )}
                                     {isAdmin ? (
                                       <Button
                                         variant={
@@ -1879,10 +2134,10 @@ export default function Workspace() {
                                             shift.cancelled
                                               ? "restoreShift"
                                               : "cancelShift",
-                                            { month, shiftId: shift.id },
+                                            { month: schedule.month, shiftId: shift.id },
                                             shift.cancelled
                                               ? "Đã khôi phục cả ca"
-                                              : "Đã hủy cả ca cho hai người; ca này không cộng/trừ điểm",
+                                              : "Đã hủy cả ca cho tất cả người được phân công; ca này không cộng/trừ điểm",
                                           )
                                         }
                                       >
@@ -1892,7 +2147,7 @@ export default function Workspace() {
                                       </Button>
                                     ) : null}
                                     {isAdmin &&
-                                    !schedule.published &&
+                                    !isShiftPublished(schedule, shift) && !shift.wasPublished && !shift.withdrawnOn &&
                                     !shift.cancelled ? (
                                       <Button
                                         variant="danger"
@@ -1900,7 +2155,7 @@ export default function Workspace() {
                                           act(
                                             "shift",
                                             {
-                                              month,
+                                              month: schedule.month,
                                               shiftId: shift.id,
                                               position: 0,
                                               remove: true,
@@ -1923,6 +2178,7 @@ export default function Workspace() {
                               <Sunset size={12} />
                             )}
                             <span>
+                              {!isShiftPublished(schedule, shift) ? "Nháp · " : ""}
                               {shift.cancelled
                                 ? `Ca ${shift.period === "am" ? "sáng" : "chiều"} · Đã hủy`
                                 : shift.assignments
@@ -1935,7 +2191,7 @@ export default function Workspace() {
                                     .join(", ") || "Chưa phân công"}
                             </span>
                             {!shift.cancelled &&
-                            shift.assignments.length < 2 ? (
+                            shift.assignments.length < shiftCapacity(shift) ? (
                               <i />
                             ) : null}
                           </button>
@@ -1949,7 +2205,7 @@ export default function Workspace() {
                 <aside className="panel distribution">
                   <PanelHead
                     title="Phân bổ lượt trực"
-                    description="Mức ưu tiên: 2 ca/người"
+                    description="Phân công trong tuần đang chọn"
                   />
                   <div className="distribution-list">
                     {counts
@@ -1976,39 +2232,27 @@ export default function Workspace() {
                 </aside>
               ) : null}
             </div>
-            {isAdmin ? (
+            {isAdmin && weeklySchedules.map(schedule => (
               <DutyRegister
-                key={schedule.month}
+                key={`${dutyWeek}-${schedule.month}`}
                 schedule={schedule}
                 members={club.members}
                 busy={busy}
                 onUpdate={(data) =>
                   act("shift", data, "Đã lưu kết quả ca trực", false)
                 }
-                rule={rulesFor(club, month)}
+                rule={rulesFor(club, schedule.month)}
               />
-            ) : null}
+            ))}
           </>
         ) : (
           <section className="panel">
             <Empty
-              title="Chưa có lịch trực tháng này"
+              title="Chưa có lịch trực tuần này"
               icon={CalendarDays}
-              action={
-                isAdmin ? (
-                  <Button
-                    disabled={busy}
-                    onClick={() =>
-                      act("schedule", { month }, "Đã tạo lịch nháp", false)
-                    }
-                  >
-                    <WandSparkles size={16} /> Xếp lịch nháp
-                  </Button>
-                ) : undefined
-              }
             >
               {isAdmin
-                ? "Nhập lịch rảnh và để hệ thống gợi ý phân công cho cả tháng."
+                ? "Bấm Xếp lịch tuần để hệ thống gợi ý phân công."
                 : "BĐH sẽ công bố lịch trực sau khi kiểm tra bản nháp."}
             </Empty>
           </section>
@@ -2017,11 +2261,48 @@ export default function Workspace() {
     );
   }
 
+  function memberAvailability() {
+    return (
+            <AvailabilityPage
+              dataset={club.availabilityDataset}
+              peoplePerShift={club.peoplePerShift ?? 2}
+              onDuty={() => go("duties")}
+              busy={busy}
+              onActivate={async (data) => {
+                if (
+                  await act(
+                    "activateAvailabilityDetails",
+                    data,
+                    "Đã áp dụng lịch rảnh và xếp bản nháp",
+                    false,
+                  )
+                ) {
+                  setMonth(String(data.month));
+                  const plannedMonth = String(data.month);
+                  setDutyWeek(plannedMonth === today().slice(0, 7) ? weekId() : weekId(plannedMonth + "-01"));
+                  go("duties");
+                  return true;
+                }
+                return false;
+              }}
+              official={!club.demo}
+              onOfficial={() =>
+                act(
+                  "activateOfficialRoster",
+                  { latePenalty: 5 },
+                  "Đã chuyển danh sách sang chính thức và đặt mức trừ đi muộn 5 điểm",
+                  false,
+                )
+              }
+            />
+    );
+  }
+
   function members() {
     const result = club.members.filter((m) =>
-      `${m.name} ${m.studentId}`
+      matchesCommittee(m.committee, committeeFilter) && `${m.name} ${m.studentId}`
         .toLocaleLowerCase("vi")
-        .includes(search.toLocaleLowerCase("vi")),
+        .includes(search.trim().toLocaleLowerCase("vi")),
     );
     return (
       <>
@@ -2032,8 +2313,7 @@ export default function Workspace() {
               Những người cùng nhịp<span className="heading-dot">.</span>
             </h1>
             <p>
-              {liveMembers.length} thành viên đang hoạt động · Quản lý hồ sơ và
-              lịch rảnh tại đây.
+              {liveMembers.length} thành viên đang hoạt động · Quản lý hồ sơ, điểm cộng/trừ và lịch rảnh tại đây.
             </p>
             {!club.demo && club.officialSince ? (
               <Badge status="attending">
@@ -2046,16 +2326,32 @@ export default function Workspace() {
               </Badge>
             ) : null}
           </div>
-          <div className="heading-actions">
+          {memberSection === "profiles" ? <div className="heading-actions">
             <Button variant="secondary" onClick={() => importDialog("members")}>
-              <Upload size={16} /> Nhập Excel
+              <Upload size={16} /> Nhập danh sách Excel
             </Button>
             <Button onClick={() => editMember()}>
               <Plus size={16} /> Thêm thành viên
             </Button>
-          </div>
+          </div> : memberSection === "points" ? weekSelect : null}
         </div>
-        <section className="panel">
+        <div className="member-section-tools">
+          <nav className="member-section-nav" aria-label="Quản lý thành viên">
+            {([["profiles","Hồ sơ"],["points","Điểm cộng / trừ"],["availability","Lịch rảnh"]] as const).map(([id,label])=><Button key={id} variant={memberSection===id?"primary":"secondary"} aria-pressed={memberSection===id} onClick={()=>setMemberSection(id)}>{label}</Button>)}
+          </nav>
+          {memberSection !== "availability" && <label className="member-committee-filter">
+            Lọc theo ban
+            <select className="week-select" value={committeeFilter} onChange={e => setCommitteeFilter(e.target.value as CommitteeFilter)}>
+              <option value="all">Tất cả ban</option>
+              {committeeKinds.map(kind => <option key={kind} value={kind}>{committeeLabels[kind]}</option>)}
+              <option value="unassigned">Chưa phân ban</option>
+            </select>
+          </label>}
+        </div>
+        {memberSection === "points" ? <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin={isAdmin} week={week.id} weeklyScores={weeklyScores} committeeFilter={committeeFilter} busy={busy} onAction={act}/> : memberSection === "availability" ? <>
+          <p className="notice neutral">Sửa các ô lịch rảnh của từng người trong <button className="text-button" onClick={()=>setMemberSection("profiles")}>Hồ sơ → Chỉnh sửa</button>. Nhập file Excel tại tab Lịch trực C1.</p>
+          {memberAvailability()}
+        </> : <section className="panel">
           <div className="members-toolbar">
             <span>{result.length} thành viên</span>
             <label className="table-search">
@@ -2074,6 +2370,7 @@ export default function Workspace() {
                 <tr>
                   <th>THÀNH VIÊN</th>
                   <th>MSSV</th>
+                  <th>BAN</th>
                   <th>VAI TRÒ</th>
                   <th>LỊCH RẢNH</th>
                   <th>TRỰC THÊM</th>
@@ -2096,6 +2393,7 @@ export default function Workspace() {
                     <td className="mono muted">
                       {m.studentId || "Chờ bổ sung MSSV"}
                     </td>
+                    <td>{isCommitteeKind(m.committee) ? committeeLabels[m.committee] : "Chưa phân ban"}</td>
                     <td>
                       {m.role === "admin" ? (
                         <span className="role-tag">
@@ -2106,11 +2404,7 @@ export default function Workspace() {
                       )}
                     </td>
                     <td>
-                      {Object.values(
-                        activeDataset?.memberLinks ?? {},
-                      ).includes(m.id)
-                        ? `${activeDataset?.rows.filter((r) => activeDataset?.memberLinks?.[r.name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi")] === m.id).length} khung theo tuần học`
-                        : `${m.availability.length} khung giờ/tuần`}
+                      {profileAvailability(club, m).length} buổi đã chọn
                     </td>
                     <td>
                       {m.extraDuties ? (
@@ -2142,13 +2436,22 @@ export default function Workspace() {
                       >
                         Mật khẩu
                       </button>
+                      {canDeleteMember(club, me!, m) && (
+                        <Button variant="danger" aria-label={`Xóa thành viên ${m.name}`} disabled={busy} onClick={() => confirmMemberDeletion(m)}>
+                          <Trash2 size={15} /> Xóa
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {!result.length ? (
+          {!result.length && club.members.length > 0 ? (
+            <Empty title="Không có thành viên phù hợp" icon={Users}>
+              Hãy đổi ban hoặc từ khóa tìm kiếm.
+            </Empty>
+          ) : !result.length ? (
             <Empty
               title="Danh sách đang chờ những cái tên đầu tiên"
               icon={Users}
@@ -2161,7 +2464,7 @@ export default function Workspace() {
               Thêm thủ công hoặc nhập danh sách từ Excel.
             </Empty>
           ) : null}
-        </section>
+        </section>}
       </>
     );
   }
@@ -2173,8 +2476,8 @@ export default function Workspace() {
     }));
     const rule = rulesFor(club, month);
     const waiting = club.schedules
-      .filter((s) => s.month === month && s.published)
-      .flatMap((s) => s.shifts.flatMap((t) => t.assignments))
+      .filter((s) => s.month === month)
+      .flatMap((s) => s.shifts.filter((t) => isDutyReportShift(s, t)).flatMap((t) => t.assignments))
       .filter((a) => a.result === "unverified").length;
     return (
       <>
@@ -2184,7 +2487,7 @@ export default function Workspace() {
             <h1>
               Báo cáo hoạt động<span className="heading-dot">.</span>
             </h1>
-            <p>Tổng hợp trực C1, tham gia họp và quy chế trong tháng.</p>
+            <p>Tổng hợp trực C1, họp và các hoạt động trong tháng. Excel xuất theo tháng.</p>
           </div>
           <div className="heading-actions">
             {monthSelect}
@@ -2208,9 +2511,9 @@ export default function Workspace() {
             color="purple"
           />
           <Stat
-            title="Lượt qua quy chế"
+            title="Lượt đạt phiếu điểm danh"
             value={total.reduce((a, s) => a + s.passed, 0)}
-            description="BĐH ghi nhận trực tiếp"
+            description={`Cộng ${rule.E} điểm mỗi phiếu đạt`}
             icon={ClipboardCheck}
             color="amber"
           />
@@ -2228,10 +2531,10 @@ export default function Workspace() {
           </span>
           <strong>
             <i>A</i> × trực đủ − <i>B</i> × vắng trực − <i>C</i> × vắng họp −{" "}
-            <i>D</i> × đi muộn
+            <i>D</i> × đi muộn + <i>E</i> × phiếu điểm danh đạt + điểm sáng kiến + điểm đồng đẳng viên + điểm sự kiện + điểm theo ban + điểm riêng − điểm trừ
           </strong>
           <span>
-            A = {rule.A} · B = {rule.B} · C = {rule.C} · D = {rule.D ?? 0}
+            A = {rule.A} · B = {rule.B} · C = {rule.C} · D = {rule.D ?? 0} · E = {rule.E}
           </span>
           <button className="text-button" onClick={() => go("settings")}>
             Điều chỉnh <Settings2 size={14} />
@@ -2240,7 +2543,7 @@ export default function Workspace() {
         <section className="panel">
           <PanelHead
             title={monthLabel(month)}
-            description="Họp và quy chế tính theo ngày họp; ca trực tính theo ngày trực thực tế."
+            description="Họp và phiếu điểm danh tính theo ngày họp; ca trực tính theo ngày trực thực tế."
           />
           <div className="table-scroll">
             <table>
@@ -2251,10 +2554,11 @@ export default function Workspace() {
                   <th className="center">TRỰC ĐỦ</th>
                   <th className="center">VẮNG TRỰC *</th>
                   <th className="center">VẮNG HỌP *</th>
-                  <th className="center">QUA QUY CHẾ</th>
+                  <th className="center">ĐẠT PHIẾU ĐIỂM DANH</th>
                   <th className="center">ĐI MUỘN</th>
                   <th className="center">TRỪ ĐI MUỘN</th>
                   <th className="center">ĐIỂM THÁNG</th>
+                  {visibleActivityKinds.map(k => <th className="center" key={k}>{activityLabels[k]}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -2283,6 +2587,7 @@ export default function Workspace() {
                         {s.points}
                       </span>
                     </td>
+                    {visibleActivityKinds.map(k => <td className="center" key={k}>{s.activityCounts[k]}</td>)}
                   </tr>
                 ))}
               </tbody>
@@ -2290,7 +2595,7 @@ export default function Workspace() {
           </div>
           <div className="table-footer">
             <span>
-              * Chỉ tính vắng không phép. Không qua quy chế không bị trừ điểm.
+              * Chỉ tính vắng không phép. Không đạt phiếu điểm danh không bị trừ điểm.
             </span>
             <FileSpreadsheet size={17} />
           </div>
@@ -2309,10 +2614,10 @@ export default function Workspace() {
               THIẾT LẬP CHO MỘT NHỊP VẬN HÀNH TỐT HƠN
             </span>
             <h1>
-              Cài đặt CLB<span className="heading-dot">.</span>
+              Cài đặt Đội<span className="heading-dot">.</span>
             </h1>
             <p>
-              Điều chỉnh lịch trực và hệ số điểm phù hợp với quy định của CLB.
+              Điều chỉnh lịch trực và hệ số điểm phù hợp với quy định của Đội.
             </p>
           </div>
         </div>
@@ -2335,7 +2640,7 @@ export default function Workspace() {
                 );
               }}
             >
-              <Field label="Tên CLB">
+              <Field label="Tên Đội">
                 <input
                   name="name"
                   defaultValue={club.name}
@@ -2358,7 +2663,7 @@ export default function Workspace() {
                 ))}
               </div>
               <p className="hint">
-                Mỗi ngày có 2 ca, mỗi ca 2 người. Thay đổi ngày trực áp dụng cho
+                Mỗi ngày có 2 ca. Chọn số người mỗi ca khi xếp lịch nháp. Thay đổi ngày trực áp dụng cho
                 lần xếp lịch nháp tiếp theo.
               </p>
               <Button type="submit" disabled={busy}>
@@ -2369,23 +2674,21 @@ export default function Workspace() {
           <section className="panel settings-card">
             <PanelHead
               title="Hệ số điểm"
-              description="A cộng trực đủ; B/C trừ vắng không phép; D trừ mỗi lượt BĐH tích đi muộn."
+              description="Mức điểm cho kết quả trực, họp và phiếu điểm danh."
             />
             <form
-              key={month}
+              key={month + "-" + view?.revision}
               onSubmit={(e) => {
                 const f = getForm(e);
+                const coefficients = Object.fromEntries(scoreRateFields.map(([key]) => [key, parseScoreRate(f[key])]));
+                const activities = Object.fromEntries(ratedActivityKinds.map(k => [k, parseScoreRate(f["activity-" + k])]));
+                if (![...Object.values(coefficients), ...Object.values(activities)].every(value => value >= 0 && value <= 100000)) {
+                  notify("Nhập hệ số điểm từ 0 đến 100.000. Ví dụ 0,25 hoặc 0.25.", true);
+                  return;
+                }
                 act(
                   "settings",
-                  {
-                    rule: {
-                      month: f.month,
-                      A: Number(f.A),
-                      B: Number(f.B),
-                      C: Number(f.C),
-                      D: Number(f.D),
-                    },
-                  },
+                  { rule: { month: f.month, ...coefficients, activities } },
                   "Đã lưu hệ số điểm",
                   false,
                 );
@@ -2401,29 +2704,21 @@ export default function Workspace() {
                 />
               </Field>
               <div className="rule-fields">
-                {[
-                  ["A", "Cộng mỗi ca trực đủ"],
-                  ["B", "Trừ mỗi ca trực vắng không phép"],
-                  ["C", "Trừ mỗi buổi họp vắng không phép"],
-                  ["D", "Trừ mỗi lượt đi muộn"],
-                ].map(([key, label]) => (
+                {scoreRateFields.map(([key, label]) => (
                   <Field key={key} label={`${key} · ${label}`}>
-                    <input
-                      name={key}
-                      type="number"
-                      min={0}
-                      max={100000}
-                      step="0.5"
-                      defaultValue={rule[key as "A" | "B" | "C" | "D"] ?? 0}
-                      required
-                    />
+                    <ScoreRateInput name={key} value={rule[key] ?? 0} />
                   </Field>
                 ))}
               </div>
-              <p className="hint">
-                Họp có mặt, vắng có phép và quy chế không làm thay đổi điểm. Hệ
-                số mặc định là 0 cho đến khi BĐH đặt quy định.
-              </p>
+              <h3>Điểm theo lượt</h3>
+              <div className="form-grid">
+                {ratedActivityKinds.map(k => (
+                  <Field key={k} label={activityLabels[k]}>
+                    <ScoreRateInput name={`activity-${k}`} value={rule.activities?.[k] ?? 0} />
+                  </Field>
+                ))}
+              </div>
+              <p className="hint">Sáng kiến và đồng đẳng viên lấy số lượt nhân với mức điểm tương ứng. BĐH nhập điểm riêng và điểm theo ban trực tiếp trong Thành viên.</p>
               <Button type="submit" disabled={busy}>
                 <Check size={16} /> Lưu hệ số
               </Button>
@@ -2432,12 +2727,6 @@ export default function Workspace() {
           <section className="panel settings-card">
             <PanelHead title="Dữ liệu & lịch sử" />
             <div className="settings-actions">
-              <Button
-                variant="secondary"
-                onClick={() => importDialog("availability")}
-              >
-                <Upload size={16} /> Nhập lịch rảnh
-              </Button>
               <Button
                 variant="secondary"
                 onClick={() => importDialog("members")}
@@ -2516,13 +2805,13 @@ export default function Workspace() {
   }
 
   function personal() {
-    const mine = scoreFor(club, me!.id, month);
+    const mine = view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
     const shifts = club.schedules
       .filter((s) => s.published)
-      .flatMap((s) => s.shifts)
+      .flatMap((s) => s.shifts.filter((t) => isShiftPublished(s, t)))
       .filter(
         (t) =>
-          t.date >= today() && t.assignments.some((a) => a.memberId === me!.id),
+          t.date >= weekId() && t.assignments.some((a) => a.memberId === me!.id),
       )
       .sort((a, b) => a.id.localeCompare(b.id));
     return (
@@ -2677,17 +2966,19 @@ export default function Workspace() {
                   </span>
                 </div>
                 <Badge status="neutral">
-                  {
-                    dutyNames[
-                      shift.assignments.find((a) => a.memberId === me!.id)!
-                        .result
-                    ]
-                  }
+                  {dutyNames[shift.assignments.find((a) => a.memberId === me!.id)!.result]}
                 </Badge>
+                {evidenceSubmissionOpen(shift) && shift.assignments.some(a => a.memberId === me!.id && a.result !== "cancelled") ? (
+                  <DutyEvidenceAction
+                    target={{ month: shift.date.slice(0, 7), shiftId: shift.id, memberId: me!.id }}
+                    canSend
+                    isAdmin={false}
+                  />
+                ) : null}
               </div>
             ))}
             {!shifts.length ? (
-              <Empty title="Bạn chưa có ca trực sắp tới" icon={CalendarDays}>
+              <Empty title="Bạn chưa có ca trực từ tuần này" icon={CalendarDays}>
                 Theo dõi tại đây sau khi BĐH công bố lịch.
               </Empty>
             ) : null}
@@ -2715,13 +3006,13 @@ export default function Workspace() {
           <section className="panel personal-score">
             <PanelHead title="Đóng góp tháng này" action={monthSelect} />
             <div className="my-score">
-              <span>ĐIỂM HOẠT ĐỘNG</span>
+              <span>TỔNG ĐIỂM THÁNG</span>
               <strong>
                 {mine.points > 0 ? "+" : ""}
                 {mine.points}
               </strong>
               <p>
-                {mine.completed} ca trực đủ · {mine.passed} lượt qua quy chế
+                {mine.completed} ca trực đủ · {mine.passed} lượt đạt phiếu điểm danh
               </p>
               <p>
                 {mine.dutyMissed} lượt vắng trực không phép ·{" "}
@@ -2730,6 +3021,7 @@ export default function Workspace() {
               <p>
                 {mine.lateCount} lượt đi muộn · trừ {mine.lateDeduction} điểm
               </p>
+              <LinkButton onClick={() => go("requests")}>Đăng ký sự kiện</LinkButton>
             </div>
             <p className="hint">
               Trực đủ/vắng trực tính khi xác minh; họp tính khi chốt. Đi muộn
@@ -2737,6 +3029,10 @@ export default function Workspace() {
             </p>
           </section>
         </div>
+        {!isAdmin ? <div className="member-own-points">
+          <div className="heading-actions">{weekSelect}</div>
+          <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin={false} week={week.id} weeklyScores={weeklyScores} busy={busy} onAction={act}/>
+        </div> : null}
         <section className="panel">
           <PanelHead title="Lịch sử đăng ký" />
           <div className="history-list">
@@ -2771,7 +3067,7 @@ export default function Workspace() {
                   )}
                   {e.passed ? (
                     <span className="green-text">
-                      <Check size={14} /> Qua quy chế
+                      <Check size={14} /> Đạt phiếu điểm danh
                     </span>
                   ) : null}
                 </div>
@@ -2813,7 +3109,7 @@ export default function Workspace() {
         </div>
         <span className="nav-label">KHÔNG GIAN LÀM VIỆC</span>
         <nav aria-label="Điều hướng chính">
-          {(isAdmin ? tabs : tabs.filter((t) => t.id === "duties")).map(
+          {(isAdmin ? tabs : tabs.filter((t) => ["duties", "links", "requests", "weeklyScores"].includes(t.id))).map(
             (item) => (
               <button
                 key={item.id}
@@ -2821,9 +3117,9 @@ export default function Workspace() {
                 onClick={() => go(item.id)}
               >
                 <item.icon size={19} />
-                <span>{item.name}</span>
-                {item.id === "requests" && pending.length ? (
-                  <b>{pending.length}</b>
+                <span>{item.id === "requests" && !isAdmin ? "Sự kiện" : item.name}</span>
+                {item.id === "requests" && pendingTotal ? (
+                  <b>{pendingTotal}</b>
                 ) : null}
               </button>
             ),
@@ -2840,6 +3136,9 @@ export default function Workspace() {
           <div>
             <span className="live-dot" /> TUẦN HIỆN TẠI
           </div>
+          {view.currentAcademicWeek != null && (
+            <strong>Tuần {view.currentAcademicWeek}</strong>
+          )}
           <strong>
             {dateLabel(weekId())} — {dateLabel(addDays(weekId(), 6))}
           </strong>
@@ -2871,7 +3170,7 @@ export default function Workspace() {
               onClick={() => go("settings")}
             >
               <Settings2 size={18} />
-              <span>Cài đặt CLB</span>
+              <span>Cài đặt Đội</span>
             </button>
           ) : null}
           <button
@@ -2891,9 +3190,8 @@ export default function Workspace() {
                       thêm.
                     </p>
                     <p>
-                      <strong>Điểm tháng:</strong> chỉ ca đã xác minh và họp đã
-                      chốt được tính. Qua quy chế được ghi nhận riêng, không trừ
-                      điểm.
+                      <strong>Điểm tháng:</strong> điểm trực dựa trên ca đã xác minh.
+                      Vắng họp được tính khi chốt. Phiếu được BĐH tích đạt cộng mức E theo ngày họp.
                     </p>
                     <p>
                       <strong>Báo cáo:</strong> BĐH chọn tháng rồi bấm xuất
@@ -2940,12 +3238,13 @@ export default function Workspace() {
             >
               <Menu size={22} />
             </button>
-            <span>Không gian CLB</span>
+            <span>Không gian Đội</span>
             <ChevronRight size={14} />
-            <strong>{titles[activeTab]}</strong>
+            <strong>{activeTab === "requests" && !isAdmin ? "Sự kiện" : titles[activeTab]}</strong>
           </div>
           <div className="topbar-right">
             <span className="today-label">{dateLabel(today(), true)}</span>
+            <MusicPlayer obscured={Boolean(modal)} />
             <button
               className="icon-button"
               aria-label="Cập nhật dữ liệu"
@@ -2960,11 +3259,11 @@ export default function Workspace() {
             {isAdmin ? (
               <button
                 className="icon-button notification-button"
-                aria-label={`${pending.length} yêu cầu chờ xử lý`}
+                aria-label={`${pendingTotal} đăng ký chờ xử lý`}
                 onClick={() => go("requests")}
               >
                 <Bell size={19} />
-                {pending.length ? <i /> : null}
+                {pendingTotal ? <i /> : null}
               </button>
             ) : null}
             <span className="topbar-divider" />
@@ -2977,8 +3276,10 @@ export default function Workspace() {
         </header>
         <main id="main-content" className="main-content">
           {club.demo &&
-          activeTab !== "availability" &&
-          !(activeTab === "duties" && schedule?.sourceFilename) ? (
+          !(activeTab === "members" && memberSection === "availability") &&
+          !(activeTab === "duties" && club.schedules.some(schedule => schedule.sourceFilename &&
+            schedule.shifts.some(shift => weekId(shift.date) === dutyWeek))) &&
+          activeTab !== "links" ? (
             <div className="demo-banner">
               <Sparkles size={15} />
               <span>
@@ -3018,7 +3319,7 @@ export default function Workspace() {
                     Họp hằng tuần<span className="heading-dot">.</span>
                   </h1>
                   <p>
-                    Đăng ký, ghi nhận có mặt và kết quả quy chế trong một bảng.
+                    Đăng ký, ghi nhận có mặt và kết quả phiếu điểm danh trong một bảng.
                   </p>
                 </div>
                 <div className="heading-actions">
@@ -3030,13 +3331,21 @@ export default function Workspace() {
                   >
                     <CalendarDays size={16} /> Đặt lịch
                   </Button>
-                  <Button
-                    onClick={closeWeekDialog}
-                    disabled={week.closed || busy}
-                  >
-                    <CheckCheck size={16} />
-                    {week.closed ? "Đã chốt" : "Chốt cuộc họp"}
-                  </Button>
+                  {isAdmin && !week.closed ? (
+                    <Button onClick={closeWeekDialog} disabled={busy}>
+                      <CheckCheck size={16} /> Chốt cuộc họp
+                    </Button>
+                  ) : null}
+                  {isAdmin ? (
+                    <Button
+                      onClick={reopenWeekDialog}
+                      disabled={busy || !week.closed}
+                      variant="secondary"
+                      title={week.closed ? undefined : "Tuần chưa chốt"}
+                    >
+                      <RefreshCw size={16} /> Hủy chốt cuộc họp
+                    </Button>
+                  ) : null}
                 </div>
               </div>
               {meetingCard()}
@@ -3044,59 +3353,42 @@ export default function Workspace() {
                 <Clock3 size={16} />{" "}
                 {week.closed
                   ? "Tuần đã chốt. Điều chỉnh kết quả cần ghi lý do và được lưu lịch sử."
-                  : "Chưa xử lý và chưa đăng ký là hai nhóm riêng. Cả hai chuyển vắng khi chốt hoặc hết tuần."}
+                  : week.reopenedForCorrection
+                    ? "Tuần đã mở lại để chỉnh sửa. BĐH cần chốt lại khi hoàn tất; hệ thống không tự chốt tuần này trong lúc sửa."
+                    : "Tuần chưa chốt. Nút Hủy chốt sẽ bật sau khi BĐH chốt cuộc họp."}
               </div>
               {meetingTable()}
             </>
+          ) : activeTab === "weeklyScores" ? (
+            <>
+              <div className="page-heading"><div><span className="eyebrow">CÙNG THEO DÕI ĐÓNG GÓP</span><h1>Điểm hàng tuần<span className="heading-dot">.</span></h1><p>Tất cả thành viên đều xem được điểm của nhau.</p></div>{weekSelect}</div>
+              <p className="notice green weekly-score-note">Tuần mới bắt đầu từ 0. Điểm đã ghi được cộng vào báo cáo tháng theo ngày tính điểm. Điểm sự kiện chỉ cộng sau khi BĐH duyệt.</p>
+              <section className="panel"><PanelHead title={`Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6))}`} description="Sáng kiến, đồng đẳng viên và sự kiện hiển thị số lượt. Điểm theo ban, điểm riêng và điểm trừ hiển thị số điểm."/>
+                <div className="table-scroll"><table><thead><tr>
+                  <th>Thành viên</th><th>Tổng điểm tuần</th><th>Trực đủ</th><th>Vắng trực</th><th>Vắng họp</th><th>Đạt phiếu điểm danh</th><th>Đi muộn</th>
+                  {visibleActivityKinds.map(k => <th key={k}>{activityLabels[k]}</th>)}
+                </tr></thead><tbody>
+                  {weeklyScores.map(r => <tr key={r.memberId}>
+                    <td>{findMember(r.memberId)?.name}</td><td><strong>{r.points}</strong></td><td>{r.completed}</td><td>{r.dutyMissed}</td><td>{r.meetingMissed}</td><td>{r.passed}</td><td>{r.lateCount}</td>
+                    {visibleActivityKinds.map(k => <td key={k}>{r.activityCounts[k]}</td>)}
+                  </tr>)}
+                </tbody></table></div>
+              </section>
+            </>
           ) : activeTab === "requests" ? (
             <>
-              <div className="page-heading">
-                <div>
-                  <span className="eyebrow">
-                    LẮNG NGHE VÀ CẬP NHẬT KỊP THỜI
-                  </span>
-                  <h1>
-                    Yêu cầu đăng ký<span className="heading-dot">.</span>
-                  </h1>
-                  <p>
-                    {pending.length} yêu cầu đổi từ xin vắng sang tham gia đang
-                    chờ phê duyệt.
-                  </p>
-                </div>
-              </div>
-              {requestsPanel(true)}
+              <div className="page-heading"><div><span className="eyebrow">THAM GIA VÀ ĐÓNG GÓP</span><h1>{isAdmin ? "Tạo sự kiện" : "Sự kiện Đội"}<span className="heading-dot">.</span></h1><p>BĐH tạo sự kiện · Thành viên đăng ký · Duyệt để tính điểm.</p></div></div>
+              <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load}/>
+              {isAdmin ? requestsPanel(true) : null}
             </>
           ) : activeTab === "duties" ? (
             duties()
-          ) : activeTab === "availability" ? (
-            <AvailabilityPage
-              dataset={club.availabilityDataset}
-              onImport={() => importDialog("availability")}
+          ) : activeTab === "links" ? (
+            <SharedLinks
+              links={club.links ?? []}
+              isAdmin={isAdmin}
               busy={busy}
-              onActivate={async (data) => {
-                if (
-                  await act(
-                    "activateAvailabilityDetails",
-                    data,
-                    "Đã áp dụng lịch rảnh và xếp bản nháp",
-                    false,
-                  )
-                ) {
-                  setMonth(String(data.month));
-                  go("duties");
-                  return true;
-                }
-                return false;
-              }}
-              official={!club.demo}
-              onOfficial={() =>
-                act(
-                  "activateOfficialRoster",
-                  { latePenalty: 5 },
-                  "Đã chuyển danh sách sang chính thức và đặt mức trừ đi muộn 5 điểm",
-                  false,
-                )
-              }
+              onAction={(action, data) => act(action, data, action === "deleteSharedLink" ? "Đã xóa link" : action === "moveSharedLink" ? "Đã đổi thứ tự link" : "Đã lưu link", false)}
             />
           ) : activeTab === "members" ? (
             members()

@@ -74,6 +74,7 @@ body { font-size:16px; font-weight:500; }
 @media(prefers-reduced-motion:reduce) { .stat-card:not(:disabled):hover { transform:none; } }
 
 .club-interface { position:relative; z-index:1; }
+.club-interface:has(.dialog-overlay) { z-index:80; }
 body { line-height:1.55; }
 h1,h2,h3,strong,.field>span,.field-label { font-weight:700; }
 .page-heading { padding:22px; border-radius:17px; margin-bottom:24px; }

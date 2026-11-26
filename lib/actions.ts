@@ -1,9 +1,19 @@
+import { applyActivityAction, ratedActivityKinds, type ActivityRates } from "./activity";
 import {
   addDays,
   closeWeek,
+  reopenWeek,
+  shiftCapacity,
+  canReplanDutyShift,
   createClub,
+  createDutyShiftSlots,
   demoClub,
   makeSchedule,
+  fillDutyShifts,
+  canEditDutyDraft,
+  canWithdrawDutyShift,
+  isShiftPublished,
+  isUpcomingShift,
   newEntry,
   rulesFor,
   syncWeeks,
@@ -22,7 +32,14 @@ import {
   clockMinutes,
   personKey,
   validateDetailRows,
+  setProfileAvailability,
+  syncProfileTicks,
+  applyAvailabilityOverrides,
 } from "./availability";
+import { syncAvailabilityProfiles } from "./availability-profile-import";
+import { sharedLinkUrl } from "./shared-links";
+import { isCommitteeKind } from "./committees";
+import { planDutyWeek } from "./duty-week-plan";
 import type { AvailabilitySettings } from "./club";
 
 export type Identity = { userId: string; email: string; displayName: string };
@@ -51,6 +68,7 @@ export function applyAction(
     club.logs.unshift({
       at: new Date().toISOString(),
       actor: me?.name ?? identity.displayName,
+      actorId: me?.id,
       text,
     });
     club.logs = club.logs.slice(0, 2000);
@@ -157,6 +175,7 @@ export function applyAction(
     note("Cập nhật nguyện vọng trực thêm");
     return;
   }
+  if (applyActivityAction(club, me, action, data, note)) return;
   check(admin, "Chỉ BĐH được thực hiện thao tác này.");
   const getWeek = () => {
     const w = club.weeks.find((w) => w.id === data.week);
@@ -168,7 +187,45 @@ export function applyAction(
     check(m, "Không tìm thấy thành viên.");
     return m;
   };
-  if (action === "meeting") {
+  const getCapacity = () => {
+    const value = Number(data.peoplePerShift ?? club.peoplePerShift ?? 2);
+    check(Number.isInteger(value) && value >= 1 && value <= 50,
+      "Số người mỗi buổi trực phải là số nguyên từ 1–50.");
+    return value;
+  };
+  if (action === "moveSharedLink") {
+    const links = club.links ?? [];
+    const index = links.findIndex(link => link.id === data.id);
+    const offset = data.offset;
+    check(index >= 0 && (offset === -1 || offset === 1), "Không tìm thấy vị trí của link.");
+    const link = links[index], neighbor = links[index + offset];
+    check(neighbor && neighbor.id === data.neighborId, "Thứ tự link vừa thay đổi. Tải lại danh sách để thử lại.");
+    links[index] = neighbor;
+    links[index + offset] = link;
+    note(`Đổi vị trí link ${link.title}`);
+  } else if (action === "saveSharedLink" || action === "deleteSharedLink") {
+    const links = club.links ??= [];
+    const existing = data.id ? links.find(link => link.id === data.id) : undefined;
+    check(!data.id || existing, "Link này đã bị xóa hoặc không còn tồn tại.");
+    if (existing) {
+      check(data.updatedAt === existing.updatedAt, "Link vừa được cập nhật. Tải lại để xem nội dung mới.");
+    }
+    if (action === "deleteSharedLink") {
+      check(existing, "Không tìm thấy link cần xóa.");
+      club.links = links.filter(link => link.id !== existing.id);
+      note(`Xóa link ${existing.title}`);
+    } else {
+      const title = str(data.title, 120);
+      const description = str(data.description, 1500);
+      const url = sharedLinkUrl(str(data.url, 2048));
+      check(title, "Nhập tên link.");
+      check(url, "Nhập đường dẫn bắt đầu bằng https:// hoặc http://.");
+      const fields = { title, description, url, updatedAt: new Date().toISOString() };
+      if (existing) Object.assign(existing, fields);
+      else links.unshift({ id: uid(), ...fields });
+      note(`${existing ? "Cập nhật" : "Thêm"} link ${title}`);
+    }
+  } else if (action === "meeting") {
     const w = getWeek();
     const date = str(data.meetingDate, 10);
     check(
@@ -202,6 +259,13 @@ export function applyAction(
     );
     closeWeek(w);
     note(`Chốt cuộc họp tuần ${w.id}`);
+  } else if (action === "reopen") {
+    const w = getWeek();
+    check(w.closed, "Cuộc họp chưa được chốt.");
+    const reason = str(data.note);
+    check(reason.length >= 3, "Cần ghi lý do hủy chốt cuộc họp.");
+    reopenWeek(w);
+    note(`Hủy chốt cuộc họp tuần ${w.id}: ${reason}`);
   } else if (action === "review") {
     const w = getWeek();
     check(!w.closed, "Tuần đã chốt.");
@@ -239,7 +303,7 @@ export function applyAction(
     if (typeof data.passed === "boolean") {
       check(
         !data.passed || (e.status === "attending" && !e.absent),
-        "Chỉ ghi nhận qua quy chế cho người có mặt.",
+        "Chỉ ghi nhận đạt phiếu điểm danh cho người có mặt.",
       );
       e.passed = data.passed;
     }
@@ -255,22 +319,120 @@ export function applyAction(
       `Cập nhật điểm danh ${getMember().name}${data.note ? `: ${str(data.note)}` : ""}`,
     );
   } else if (action === "schedule") {
+    if (data.month === undefined) {
+      const week = str(data.week, 10);
+      check(validDate(week) && weekId(week) === week, "Chọn tuần trực hợp lệ.");
+      const capacity = getCapacity();
+      const count = planDutyWeek(club, week, capacity);
+      check(count > 0, "Tuần này không còn ca nháp để xếp lại.");
+      club.peoplePerShift = capacity;
+      note(`Xếp ${count} ca nháp tuần ${week}: ${capacity} người/buổi trực`);
+      return;
+    }
     check(/^\d{4}-(0[1-9]|1[0-2])$/.test(data.month), "Tháng không hợp lệ.");
     const old = club.schedules.find((s) => s.month === data.month);
+    if (data.week !== undefined) {
+      check(old?.published, "Không tìm thấy lịch tháng đã công bố.");
+      const now = new Date();
+      if (old.pendingDutyWeek && old.pendingDutyWeek === data.week) {
+        check(!old.shifts.some((shift) => weekId(shift.date) === data.week), "Tuần này đã có ca trực. Tải lại trang để xem lịch.");
+        const capacity = getCapacity();
+        const shifts = createDutyShiftSlots(club, old.month, capacity)
+          .filter((shift) => weekId(shift.date) === data.week && isUpcomingShift(shift, now))
+          .map((shift) => ({ ...shift, draft: true }));
+        check(shifts.length > 0, "Tuần này không còn ca trực sắp tới để xếp.");
+        fillDutyShifts(club, old.month, shifts, old.shifts);
+        old.shifts = [...old.shifts, ...shifts].sort((a, b) => a.id.localeCompare(b.id));
+        delete old.pendingDutyWeek;
+        note(`Xếp mới ${shifts.length} ca nháp tuần ${data.week}: ${capacity} người/buổi trực`);
+        return;
+      }
+      const editable = old.shifts.filter((shift) =>
+        weekId(shift.date) === data.week && canEditDutyDraft(shift, now),
+      );
+      check(editable.length > 0, "Tuần này không còn ca nháp trong thời gian chỉnh sửa.");
+      const capacity = getCapacity();
+      const previous = new Map(editable.map((shift) => [shift.id, shift.assignments]));
+      for (const shift of editable) {
+        shift.assignments = shift.assignments.filter(a => a.manual);
+        shift.capacity = capacity;
+      }
+      fillDutyShifts(club, old.month, editable, old.shifts.filter((shift) => !editable.includes(shift)));
+      for (const shift of editable) {
+        for (const assignment of shift.assignments) {
+          const prior = previous.get(shift.id)?.find((a) => a.memberId === assignment.memberId);
+          if (prior?.note) assignment.note = prior.note;
+          if (prior?.originalId) assignment.originalId = prior.originalId;
+        }
+      }
+      note(`Xếp lại ${editable.length} ca nháp tuần ${data.week}: ${capacity} người/buổi trực`);
+      return;
+    }
     check(
       !old?.published,
       "Lịch đã công bố. Hãy sửa từng ca để giữ kết quả đã xác minh.",
     );
-    const next = makeSchedule(club, data.month);
+    const capacity = getCapacity();
+    const next = makeSchedule(club, data.month, capacity);
+    club.peoplePerShift = capacity;
     club.schedules = club.schedules.filter((s) => s.month !== data.month);
     club.schedules.push(next);
-    note(`Xếp lịch nháp tháng ${data.month}`);
+    note(`Xếp lịch nháp tháng ${data.month}: ${capacity} người/buổi trực`);
+  } else if (action === "withdrawDutyWeek") {
+    if (data.week !== undefined) {
+      const week = str(data.week, 10);
+      check(validDate(week) && weekId(week) === week, "Chọn tuần trực hợp lệ.");
+      const shifts = club.schedules.flatMap(schedule => schedule.shifts.filter(shift =>
+        weekId(shift.date) === week && isShiftPublished(schedule, shift),
+      ));
+      check(shifts.length > 0, "Tuần này chưa có lịch được công bố.");
+      for (const shift of shifts) {
+        shift.draft = true;
+        shift.wasPublished = true;
+      }
+      note(`Hủy công bố ${shifts.length} ca trực tuần ${week}`);
+      return;
+    }
+    const from = today();
+    check(data.from === from, "Ngày đã đổi. Tải lại lịch trực để chọn đúng phạm vi.");
+    const shifts = club.schedules.flatMap((schedule) =>
+      schedule.shifts.filter((shift) => canWithdrawDutyShift(schedule, shift, from)),
+    );
+    check(shifts.length > 0, "Từ hôm nay đến hết tuần không còn ca đã công bố có thể rút về nháp.");
+    for (const shift of shifts) {
+      shift.draft = true;
+      shift.withdrawnOn = from;
+    }
+    note(`Hủy công bố ${shifts.length} ca trực từ ${from} đến ${addDays(weekId(from), 6)}`);
   } else if (action === "publish") {
-    const s = club.schedules.find((s) => s.month === data.month);
-    check(s && !s.published, "Không có lịch nháp để công bố.");
-    check(s.shifts.length, "Lịch không có ca trực.");
-    s.published = true;
-    note(`Công bố lịch trực ${s.month}`);
+    const week = str(data.week, 10);
+    check(validDate(week) && weekId(week) === week, "Chọn tuần cần công bố.");
+    let count = 0;
+    for (const schedule of club.schedules) {
+      const shifts = schedule.shifts.filter(shift => weekId(shift.date) === week && !isShiftPublished(schedule, shift));
+      if (!shifts.length) continue;
+      if (!schedule.published) {
+        for (const shift of schedule.shifts) shift.draft = true;
+        schedule.published = true;
+      }
+      for (const shift of shifts) {
+        delete shift.draft;
+        delete shift.withdrawnOn;
+        delete shift.wasPublished;
+      }
+      count += shifts.length;
+    }
+    check(count > 0, "Tuần này không có ca nháp để công bố.");
+    note(`Công bố ${count} ca trực tuần ${week}`);
+  } else if (action === "addDutyMember") {
+    const schedule = club.schedules.find(item => item.month === data.month);
+    const shift = schedule?.shifts.find(item => item.id === data.shiftId);
+    check(shift && !shift.cancelled, "Ca trực đã hủy hoặc không còn tồn tại.");
+    const member = club.members.find(item => item.id === data.memberId && item.active);
+    check(member, "Chọn thành viên đang hoạt động.");
+    check(!shift.assignments.some(a => a.memberId === member.id), "Thành viên đã có trong ca này.");
+    shift.assignments.push({ memberId: member.id, manual: true, result: "unverified" });
+    note(`Thêm người vào ca ${shift.id}: ${member.name}`);
   } else if (action === "cancelShift" || action === "restoreShift") {
     const schedule = club.schedules.find((s) => s.month === data.month),
       shift = schedule?.shifts.find((t) => t.id === data.shiftId);
@@ -308,11 +470,16 @@ export function applyAction(
     );
     const position = Number(data.position);
     check(
-      Number.isInteger(position) && position >= 0 && position < 2,
+      Number.isInteger(position) && position >= 0 && position < Math.max(shiftCapacity(shift), shift.assignments.length),
       "Vị trí không hợp lệ.",
     );
     let a = shift.assignments[position];
+    if (data.assignmentMemberId !== undefined) {
+      check((a?.memberId ?? null) === data.assignmentMemberId, "Phân công vừa thay đổi. Mở lại ca để thử lại.");
+    }
     if (data.replacementId !== undefined) {
+      check(!shift.draft || canEditDutyDraft(shift) ||
+        canReplanDutyShift(s, shift) || a?.manual, "Công bố lại ca trước khi đổi người đã xác minh.");
       const replacement = club.members.find(
         (m) => m.id === data.replacementId && m.active,
       );
@@ -362,7 +529,7 @@ export function applyAction(
       note(`Đổi người ca ${shift.id}: ${replacement.name}`);
     }
     if (data.result !== undefined) {
-      check(s?.published, "Công bố lịch trước khi ghi nhận kết quả.");
+      check(isShiftPublished(s, shift), "Công bố ca trước khi ghi nhận kết quả.");
       check(a, "Ca chưa có người.");
       check(
         [
@@ -382,7 +549,7 @@ export function applyAction(
     }
     if (data.late !== undefined) {
       check(
-        s.published && a,
+        isShiftPublished(s, shift) && a,
         "Công bố lịch và phân người trước khi ghi nhận đến muộn.",
       );
       check(typeof data.late === "boolean", "Ô đến muộn không hợp lệ.");
@@ -399,11 +566,13 @@ export function applyAction(
       note(`Cập nhật ghi chú ca ${shift.id}`);
     }
     if (data.remove) {
-      check(!s?.published, "Chỉ bỏ ca khi còn là bản nháp.");
+      check(!isShiftPublished(s, shift) && !shift.wasPublished && !shift.withdrawnOn, "Chỉ bỏ ca chưa từng công bố.");
       s.shifts = s.shifts.filter((t) => t.id !== shift.id);
       note(`Bỏ ca ${shift.id}`);
     }
   } else if (action === "member") {
+    const committee = data.committee;
+    check(committee === undefined || committee === "" || isCommitteeKind(committee), "Ban của thành viên không hợp lệ.");
     let m = data.memberId ? getMember() : null;
     if (!m) {
       const studentId = str(data.studentId, 30),
@@ -473,6 +642,8 @@ export function applyAction(
         m.role = data.role;
       }
     }
+    if (committee === "") delete m.committee;
+    else if (committee !== undefined) m.committee = committee;
     if (data.extraDuties !== undefined) m.extraDuties = !!data.extraDuties;
     if (data.availability) {
       check(
@@ -482,11 +653,12 @@ export function applyAction(
           ),
         "Lịch rảnh không hợp lệ.",
       );
-      m.availability = [...new Set<string>(data.availability)];
+      setProfileAvailability(club, m, [...new Set<string>(data.availability)]);
     }
     syncWeeks(club);
     note(`Cập nhật thành viên ${m.name}`);
   } else if (action === "activateAvailabilityDetails") {
+    const capacity = getCapacity();
     const dataset = club.availabilityDataset;
     check(dataset?.rows.length, "Chưa có file lịch rảnh chi tiết.");
     check(
@@ -566,9 +738,11 @@ export function applyAction(
     dataset.settings = settings;
     dataset.memberLinks = links;
     club.activeAvailabilityDataset = structuredClone(dataset);
+    syncProfileTicks(club, club.activeAvailabilityDataset, new Set(Object.values(links)));
     club.availabilityVersion = new Date().toISOString();
     syncWeeks(club);
-    const draft = makeSchedule(club, data.month);
+    const draft = makeSchedule(club, data.month, capacity);
+    club.peoplePerShift = capacity;
     club.schedules = club.schedules.filter((s) => s.month !== data.month);
     club.schedules.push(draft);
     note(
@@ -616,6 +790,9 @@ export function applyAction(
       importedBy: me.name,
       rows,
     };
+    if (data.syncProfiles && activeDataset?.settings) {
+      syncAvailabilityProfiles(club, club.availabilityDataset);
+    }
     note(
       `Nhập lịch rảnh chi tiết: ${rows.length} dòng; giữ nguyên điều kiện tuần học và khung giờ`,
     );
@@ -628,7 +805,7 @@ export function applyAction(
     );
     const ids = new Set();
     if (data.kind === "availability")
-      for (const m of club.members) m.availability = [];
+      for (const m of club.members) m.availability = applyAvailabilityOverrides(m, []);
     for (const row of data.rows) {
       const studentId = str(row.studentId, 30),
         name = str(row.name, 100);
@@ -670,7 +847,7 @@ export function applyAction(
             ),
           "Lịch rảnh không hợp lệ.",
         );
-        m.availability = row.availability;
+        m.availability = applyAvailabilityOverrides(m, row.availability);
         m.extraDuties = !!row.extraDuties;
       }
     }
@@ -710,18 +887,26 @@ export function applyAction(
         r.month >= today().slice(0, 7),
         "Chỉ đổi hệ số từ tháng hiện tại trở đi.",
       );
-      const D = r.D ?? rulesFor(club, r.month).D ?? 0;
-      for (const key of ["A", "B", "C", "D"])
+      const previousRule = rulesFor(club, r.month);
+      const D = r.D ?? previousRule.D ?? 0;
+      const E = r.E ?? previousRule.E;
+      for (const value of [r.A, r.B, r.C, D, E])
         check(
-          Number.isFinite(key === "D" ? D : r[key]) &&
-            (key === "D" ? D : r[key]) >= 0 &&
-            (key === "D" ? D : r[key]) <= 100000,
+          Number.isFinite(value) && value >= 0 && value <= 100000,
           "Hệ số điểm phải là số không âm.",
         );
+      const previous = previousRule.activities ?? {};
+      const activities: ActivityRates = { ...previous };
+      for (const kind of ratedActivityKinds) {
+        const value = r.activities?.[kind] ?? previous[kind] ?? 0;
+        check(typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100000,
+          "Điểm mỗi lượt phải là số không âm, tối đa 100.000.");
+        activities[kind] = value;
+      }
       club.rules = club.rules.filter((rule) => rule.month !== r.month);
-      club.rules.push({ month: r.month, A: r.A, B: r.B, C: r.C, D });
+      club.rules.push({ month: r.month, A: r.A, B: r.B, C: r.C, D, E, activities, committees: previousRule.committees });
     }
-    note("Cập nhật cấu hình CLB");
+    note("Cập nhật cấu hình Đội");
   } else if (action === "activateOfficialRoster") {
     const dataset = activeAvailabilityDatasetFor(club);
     const ids = new Set(

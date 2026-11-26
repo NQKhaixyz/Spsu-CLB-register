@@ -1,3 +1,4 @@
+import { visibleActivityKinds, ratedActivityKinds, activityLabels, activityName, activityPointsFor, activityUnitPoints, activityStatusLabels, eventForActivity, isManualActivityKind } from "./activity";
 import {
   addDays,
   dateLabel,
@@ -9,6 +10,7 @@ import {
   dutyPointsFor,
   latePenaltyFor,
   statusNames,
+  isDutyReportShift,
   type Club,
   type AvailabilityDetail,
 } from "./club";
@@ -17,15 +19,18 @@ import type { Worksheet } from "exceljs";
 export async function makeReport(club: Club, month: string) {
   const { default: ExcelJS } = await import("exceljs");
   const book = new ExcelJS.Workbook();
-  book.creator = "Nhịp CLB";
+  book.creator = "Nhịp Đội";
   book.created = new Date();
   const weeks = club.weeks.filter(
     (w) => !w.cancelled && w.meetingDate.slice(0, 7) === month,
   );
   const schedules = club.schedules.filter(
-    (s) => s.month === month && s.published,
-  );
+    (s) => s.month === month,
+  ).map((s) => ({ ...s, shifts: s.shifts.filter((shift) => isDutyReportShift(s, shift)) }));
   const member = (id: string) => club.members.find((m) => m.id === id);
+  const eventIds = new Set((club.events ?? []).map(event => event.id));
+  const activityRegistrations = (club.activityRegistrations ?? [])
+    .filter(r => r.kind === "event" && eventIds.has(r.eventId ?? "") && r.date.slice(0, 7) === month);
   const pendingDuties = schedules
     .flatMap((s) => s.shifts.flatMap((t) => t.assignments))
     .filter((a) => a.result === "unverified").length;
@@ -40,6 +45,7 @@ export async function makeReport(club: Club, month: string) {
     )
       ? "Có tuần chưa đặt ngày họp; chưa tính vào điểm"
       : "",
+    activityRegistrations.some(r => r.status === "pending" && !eventForActivity(club, r)?.cancelledAt) ? "Có đăng ký hoạt động chưa xác nhận" : "",
     club.demo ? "DỮ LIỆU MẪU" : "",
   ].filter(Boolean);
   const addSheet = (
@@ -108,10 +114,11 @@ export async function makeReport(club: Club, month: string) {
       "Trực vắng không phép",
       "Họp có mặt",
       "Họp vắng không phép",
-      "Qua quy chế",
+      "Đạt phiếu điểm danh",
       "Tổng điểm",
       "Lượt đi muộn trừ điểm",
       "Điểm trừ đi muộn",
+      ...visibleActivityKinds.map(k => activityLabels[k] + (["deduction", "special", "committee"].includes(k) ? "" : " (lượt)")),
     ],
     participants.map((m, i) => {
       const s = scoreFor(club, m.id, month);
@@ -127,6 +134,7 @@ export async function makeReport(club: Club, month: string) {
         s.points,
         s.lateCount,
         s.lateDeduction,
+        ...visibleActivityKinds.map(k => s.activityCounts[k]),
       ];
     }),
   );
@@ -141,7 +149,7 @@ export async function makeReport(club: Club, month: string) {
       "Kết quả",
       "Có phép",
       "Lý do",
-      "Qua quy chế",
+      "Đạt phiếu điểm danh",
       "Đã chốt",
     ],
     weeks.flatMap((w) =>
@@ -202,6 +210,31 @@ export async function makeReport(club: Club, month: string) {
       ),
     ),
   );
+  const activityRows = [
+    ...activityRegistrations.map(r => {
+      const cancelled = !!eventForActivity(club, r)?.cancelledAt;
+      return {
+        ...r,
+        state: cancelled ? "Sự kiện đã hủy" : activityStatusLabels[r.status],
+        credited: !cancelled && r.status === "confirmed",
+        actor: r.reviewedBy ?? "",
+        decision: r.decision ?? "",
+      };
+    }),
+    ...(club.manualActivities ?? [])
+      .filter(r => isManualActivityKind(r.kind) && r.date.slice(0, 7) === month)
+      .map(r => ({ ...r, state: "BĐH nhập", credited: true, actor: r.updatedBy, decision: "" })),
+    ...(club.pointDeductions ?? []).filter(r => r.date.slice(0, 7) === month).map(r => ({ ...r, kind: "deduction" as const, quantity: r.points, note: r.reason, state: r.cancelledAt ? "Đã hủy khoản trừ" : "BĐH trừ điểm", credited: !r.cancelledAt, actor: r.createdBy, decision: r.cancelReason ?? "" })),
+  ].sort((a, b) => a.date.localeCompare(b.date) || a.memberId.localeCompare(b.memberId));
+  addSheet("Chi tiết hoạt động",
+    ["Tuần", "Ngày hoạt động / tính điểm", "MSSV", "Họ tên", "Hoạt động / tên sự kiện", "Số lượt / số điểm trừ", "Điểm/lượt", "Điểm", "Trạng thái", "Ghi chú / lý do trừ điểm", "Người xác nhận / nhập", "Lý do điều chỉnh", "Sự kiện từ ngày", "Sự kiện đến hết ngày"],
+    activityRows.map(r => {
+      const event = eventForActivity(club, r);
+      const count = r.kind === "committee" ? "" : r.quantity;
+      const rate = r.kind === "committee" ? "" : activityUnitPoints(club, r);
+      return [r.week, dateLabel(r.date, true), member(r.memberId)?.studentId ?? "", member(r.memberId)?.name ?? "", activityName(club, r), count, rate, r.credited ? activityPointsFor(club, r) : 0, r.state, r.note, member(r.actor)?.name ?? "", r.decision, event?.startDate ?? "", event?.endDate ?? ""];
+    }),
+  );
   const rule = rulesFor(club, month);
   addSheet(
     "Quy tắc điểm",
@@ -211,10 +244,16 @@ export async function makeReport(club: Club, month: string) {
       ["B", rule.B, "Trừ cho mỗi ca trực vắng không phép"],
       ["C", rule.C, "Trừ cho mỗi buổi họp vắng không phép đã chốt"],
       ["D", rule.D ?? 0, "Trừ mỗi lượt BĐH tích Đến muộn trên lịch đã công bố"],
+      ["E", rule.E, "Cộng cho mỗi phiếu được BĐH tích đạt, theo ngày họp"],
+      ...ratedActivityKinds.map(k => [activityLabels[k], rule.activities?.[k] ?? 0, "Nhân số lượt do BĐH nhập với mức điểm mỗi lượt"]),
+      ["Sự kiện", "Điểm riêng theo từng sự kiện", "BĐH duyệt: cộng một lần/người vào ngày kết thúc. Sự kiện đã hủy không tính điểm."],
+      ["Điểm theo ban", "Nhập trực tiếp", "BĐH chọn một ban và nhập số điểm cho mỗi thành viên trong tuần"],
+      ["Điểm riêng", "Nhập trực tiếp", "BĐH nhập số điểm cho từng thành viên trong tuần, không nhân số lượt; dữ liệu cũ giữ cách tính đã lưu"],
+      ["Điểm trừ", "Nhập trực tiếp", "BĐH nhập số điểm trừ và lý do; trừ đúng số điểm vào tuần/tháng của ngày ghi nhận. Khoản đã hủy không tính điểm."],
       [
         "Công thức",
-        "A × trực đủ − B × vắng trực − C × vắng họp − D × đi muộn",
-        "Quy chế không cộng/trừ điểm",
+        "A × trực đủ − B × vắng trực − C × vắng họp − D × đi muộn + E × phiếu điểm danh đạt + điểm sáng kiến + điểm đồng đẳng viên + điểm sự kiện + điểm theo ban + điểm riêng − điểm trừ",
+        "BĐH tích đạt để cộng E theo ngày họp",
       ],
       [
         "Lịch trực",
@@ -224,7 +263,7 @@ export async function makeReport(club: Club, month: string) {
       [
         "Ngày bắt đầu áp dụng hệ số",
         rule.month,
-        "Theo ngày họp/ngày trực thực tế",
+        "Theo ngày họp/ngày trực/ngày hoạt động thực tế; số lượt hoạt động bắt đầu lại ở mỗi tuần mới, giữ lịch sử",
       ],
     ],
   );

@@ -15,6 +15,27 @@
       "when": 1793421265641,
       "tag": "0001_loose_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794324847302,
+      "tag": "0002_boring_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794642429342,
+      "tag": "0003_watery_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794752792411,
+      "tag": "0004_lively_hemingway",
+      "breakpoints": true
     }
   ]
 }

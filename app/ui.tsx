@@ -20,7 +20,7 @@ export function Brand() {
       </span>
       <span>
         nhịp<span className="brand-dot">.</span>
-        <small>KHÔNG GIAN CLB</small>
+        <small>KHÔNG GIAN ĐỘI</small>
       </span>
     </div>
   );
@@ -67,6 +67,7 @@ export function Button({
   disabled,
   className = "",
   title,
+  "aria-label": ariaLabel,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -75,10 +76,12 @@ export function Button({
   disabled?: boolean;
   className?: string;
   title?: string;
+  "aria-label"?: string;
 }) {
   return (
     <button
       title={title}
+      aria-label={ariaLabel}
       type={type}
       onClick={onClick}
       disabled={disabled}
@@ -183,7 +186,7 @@ export function Loading() {
     <div className="loading-screen">
       <Brand />
       <LoaderCircle className="spin" size={24} />
-      <p>Đang kết nối không gian CLB…</p>
+      <p>Đang kết nối không gian Đội…</p>
     </div>
   );
 }

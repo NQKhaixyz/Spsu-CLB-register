@@ -161,7 +161,7 @@ export default function Login({
         </div>
       </section>
       </div>
-      <footer className="entry-login-footer"><span>Nhịp CLB</span><span>Không gian hoạt động thành viên</span></footer>
+      <footer className="entry-login-footer"><span>Nhịp Đội</span><span>Không gian hoạt động thành viên</span></footer>
     </main>
   );
 }

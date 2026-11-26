@@ -45,14 +45,18 @@ test("BĐH cannot enter reserved logins as MSSVs for pending or new members",()=
   assert.equal(pending.studentId,"");
 });
 
-test("Legacy role wording updates for display while identifiers and stored records stay intact",()=>{
+test("Legacy organization and role wording updates for display while identifiers and stored records stay intact",()=>{
   const {c}=fixture();
+  c.name="Nhịp CLB";
+  c.weeks[0].location="Phòng sinh hoạt CLB";
   c.members[0].name="Ban cán sự";
   c.members[0].loginName="BCS";
   c.logs=[{at:"2026-10-31",actor:"Ban cán sự",text:"BCS chấp thuận"}];
   c.weeks[0].entries[0].decision="BCS chấp thuận";
   const before=JSON.stringify(c);
   const view=workspaceView(c,{...owner,displayName:"Ban cán sự"},5);
+  assert.equal(view.club.name,"Nhịp Đội");
+  assert.equal(view.club.weeks[0].location,"Phòng sinh hoạt Đội");
   assert.equal(view.me?.name,"Ban điều hành");
   assert.equal(view.identity.name,"Ban điều hành");
   assert.equal(view.me?.loginName,"BCS");

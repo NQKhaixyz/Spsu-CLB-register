@@ -4,7 +4,9 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   dateLabel,
   dutyNames,
+  isShiftPublished,
   latePenaltyFor,
+  monthLabel,
   type Member,
   type Schedule,
   type Rule,
@@ -44,7 +46,7 @@ export default function DutyRegister({
     <section className="panel duty-register">
       <PanelHead
         title="Theo dõi trực và đến muộn"
-        description={`BĐH tích Đến muộn thì trừ ${rule.D ?? 0} điểm/lượt. Nếu lý do hợp lệ, xem ghi chú và để ô trống.`}
+        description={`${monthLabel(schedule.month)} · Đến muộn trừ ${rule.D ?? 0} điểm/lượt.`}
       />
       <div className="availability-toolbar">
         <input
@@ -57,7 +59,7 @@ export default function DutyRegister({
           }}
         />
       </div>
-      {!schedule.published ? (
+      {!schedule.shifts.some(shift => isShiftPublished(schedule, shift)) ? (
         <p className="hint duty-register-hint">
           Lịch còn là bản nháp. Công bố trước khi ghi nhận kết quả thực tế và
           đến muộn.
@@ -83,6 +85,7 @@ export default function DutyRegister({
                     month: schedule.month,
                     shiftId: shift.id,
                     position,
+                    assignmentMemberId: a.memberId,
                   },
                   label = `${name} ${shift.date} ${shift.period === "am" ? "sáng" : "chiều"}`;
                 return (
@@ -98,6 +101,7 @@ export default function DutyRegister({
                           ? ` · Tuần ${shift.academicWeek}`
                           : ""}
                       </small>
+                      {shift.draft ? <small className="duty-cell-detail">Bản nháp</small> : null}
                       {shift.cancelled ? (
                         <small className="duty-cell-detail">
                           Đã hủy cả ca · {shift.cancelReason}
@@ -139,7 +143,7 @@ export default function DutyRegister({
                       <select
                         aria-label={`Kết quả trực: ${label}`}
                         disabled={
-                          busy || !schedule.published || shift.cancelled
+                          busy || !isShiftPublished(schedule, shift) || shift.cancelled
                         }
                         value={a.result}
                         onChange={(e) =>
@@ -165,7 +169,7 @@ export default function DutyRegister({
                         checked={!!a.late}
                         disabled={
                           busy ||
-                          !schedule.published ||
+                          !isShiftPublished(schedule, shift) ||
                           ["unexcused", "excused", "cancelled"].includes(
                             a.result,
                           )

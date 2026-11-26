@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import "./club.css";
 import "./theme.css";
 import "./screen-cat.css";
+import "./music.css";
+import "./duty-evidence-and-links.css";
 import { ScreenCat } from "../components/screen-cat";
+import { SiteUpdateNotice } from "./site-update";
 
 export const metadata: Metadata = {
-  title: "Nhịp CLB · Họp & lịch trực",
+  title: "Nhịp Đội · Họp & lịch trực",
   description:
     "Cùng một nhịp. Quản lý họp tuần, lịch trực C1 và hoạt động thành viên.",
   icons: {
@@ -21,7 +24,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className="antialiased"><div className="club-interface">{children}</div><ScreenCat /></body>
+      <body className="antialiased">
+        <div className="club-interface">{children}</div>
+        <ScreenCat />
+        <SiteUpdateNotice />
+      </body>
     </html>
   );
 }

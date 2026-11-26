@@ -7,7 +7,6 @@ import {
   Clock3,
   FileSpreadsheet,
   Search,
-  Upload,
   Users,
 } from "lucide-react";
 import {
@@ -36,8 +35,7 @@ export function AvailabilityPreview({ rows }: { rows: AvailabilityDetail[] }) {
       <DetailTable rows={rows.slice(0, 8)} />
       {rows.length > 8 ? (
         <p className="hint">
-          Xem trước 8/{rows.length} dòng. Toàn bộ dữ liệu sẽ hiện trong mục Lịch
-          rảnh sau khi lưu.
+          Xem trước 8/{rows.length} dòng. Toàn bộ dữ liệu sẽ hiện trong Thành viên → Lịch rảnh sau khi lưu.
         </p>
       ) : null}
       <p className="dialog-copy">
@@ -84,14 +82,16 @@ function DetailTable({ rows }: { rows: AvailabilityDetail[] }) {
 
 export default function AvailabilityPage({
   dataset,
-  onImport,
+  peoplePerShift,
+  onDuty,
   busy,
   onActivate,
   official,
   onOfficial,
 }: {
   dataset?: AvailabilityDataset;
-  onImport: () => void;
+  peoplePerShift: number;
+  onDuty: () => void;
   busy: boolean;
   onActivate: (data: Record<string, unknown>) => Promise<boolean>;
   official: boolean;
@@ -115,19 +115,19 @@ export default function AvailabilityPage({
       <div className="page-heading">
         <div>
           <span className="eyebrow">LỊCH RẢNH CỦA THÀNH VIÊN</span>
-          <h1>
+          <h2>
             Lịch rảnh chi tiết<span className="heading-dot">.</span>
-          </h1>
-          <p>Đối chiếu khung giờ, tuần học và ghi chú từ file Excel của CLB.</p>
+          </h2>
+          <p>Đối chiếu khung giờ, tuần học và ghi chú từ file Excel của Đội.</p>
         </div>
-        <Button disabled={busy} onClick={onImport}>
-          <Upload size={16} /> Nhập lịch rảnh
+        <Button variant="secondary" onClick={onDuty}>
+          <CalendarDays size={16} /> Lịch trực C1
         </Button>
       </div>
       {!dataset ? (
         <section className="panel">
           <Empty title="Chưa có bản lịch rảnh chi tiết" icon={CalendarDays}>
-            Nhập file có các cột Họ và tên, Thứ, Buổi, Tuần học; cột ghi chú có
+            Vào Lịch trực C1 để nhập file có các cột Họ và tên, Thứ, Buổi, Tuần học; cột ghi chú có
             thể để trống.
           </Empty>
         </section>
@@ -296,6 +296,9 @@ export default function AvailabilityPage({
                     required
                     defaultValue={dataset.settings?.allowedLateMinutes ?? 30}
                   />
+                </Field>
+                <Field label="Số người / 1 buổi trực C1">
+                  <input name="peoplePerShift" type="number" min={1} max={50} step={1} required defaultValue={peoplePerShift} />
                 </Field>
               </div>
               <p className="hint">

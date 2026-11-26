@@ -3,6 +3,10 @@ import "./password.test";
 import "./member-regressions.test";
 import "./bcs-regressions.test";
 import "./workspace-regressions.test";
+import "./meeting-capacity.test";
+import "./activities.test";
+import "./duty-evidence-and-links.test";
+import "./duty-week-and-member-deletion.test";
 import assert from "node:assert/strict";
 import {
   addDays,
@@ -16,6 +20,7 @@ import {
   syncWeeks,
   today,
   weekId,
+  weeklyScoreFor,
   weekday,
   type Club,
   type Member,
@@ -224,6 +229,7 @@ test("Cancelled weeks do not deduct meeting points", () => {
 });
 test("Cross-month meetings are counted by meeting date", () => {
   const c = fixture();
+  c.members[0].joined = "2026-10-01";
   c.weeks = [
     {
       id: "2026-10-26",
@@ -253,6 +259,63 @@ test("Passed regulations never deduct points, including unchecked", () => {
   closeWeek(w);
   assert.equal(scoreFor(c, c.members[1].id, today().slice(0, 7)).points, 0);
   assert.equal(scoreFor(c, c.members[1].id, today().slice(0, 7)).passed, 1);
+});
+test("Ticking attendance awards the configured bonus once and clearing it removes the bonus", () => {
+  const c = fixture();
+  const w = c.weeks.at(-1)!;
+  w.meetingDate = today();
+  const month = w.meetingDate.slice(0, 7);
+  const memberId = c.members[1].id;
+  const rule = { month, A: 10, B: 15, C: 5, D: 0, E: 2.75 };
+  for (const E of [-1, Infinity, 100001, "2.75"]) {
+    assert.throws(() => applyAction(c, adminIdentity, "settings", { rule: { ...rule, E } }), /không âm/);
+  }
+  applyAction(c, adminIdentity, "settings", { rule });
+  const entry = { week: w.id, memberId, status: "attending", passed: true };
+  applyAction(c, adminIdentity, "entry", entry);
+  applyAction(c, adminIdentity, "entry", entry);
+  const weekly = weeklyScoreFor(c, memberId, w.id);
+  assert.equal(weekly.points, 2.75);
+  assert.equal(weekly.passed, 1);
+  assert.equal(scoreFor(c, memberId, month).points, 2.75);
+  assert.equal(scoreFor(c, memberId, month).passed, 1);
+
+  applyAction(c, adminIdentity, "entry", { week: w.id, memberId, passed: false });
+  assert.equal(weeklyScoreFor(c, memberId, w.id).points, 0);
+  assert.equal(weeklyScoreFor(c, memberId, w.id).passed, 0);
+  assert.equal(scoreFor(c, memberId, month).points, 0);
+  applyAction(c, adminIdentity, "entry", entry);
+  w.cancelled = true;
+  assert.equal(weeklyScoreFor(c, memberId, w.id).passed, 0);
+  assert.equal(scoreFor(c, memberId, month).points, 0);
+});
+test("The attendance bonus uses the meeting date and inherits through older rule snapshots", () => {
+  const c = fixture();
+  const member = c.members[1];
+  member.joined = "2026-01-01";
+  const week = "2026-10-26";
+  c.weeks = [{
+    ...c.weeks[0],
+    id: week,
+    meetingDate: "2026-11-01",
+    entries: [{ ...newEntry(member.id), status: "attending", passed: true }],
+  }];
+  c.rules = [
+    { month: "2026-10", A: 10, B: 15, C: 5, D: 0, E: 1.25 },
+    { month: "2026-11", A: 20, B: 15, C: 5, D: 0 },
+  ];
+  assert.equal(scoreFor(c, member.id, "2026-10").points, 0);
+  assert.equal(scoreFor(c, member.id, "2026-10").passed, 0);
+  assert.equal(scoreFor(c, member.id, "2026-11").points, 1.25);
+  assert.equal(scoreFor(c, member.id, "2026-11").passed, 1);
+  const weekly = weeklyScoreFor(c, member.id, week);
+  assert.equal(weekly.points, 1.25);
+  assert.equal(weekly.passed, 1);
+  c.rules[1].E = 3.5;
+  assert.equal(weeklyScoreFor(c, member.id, week).points, 3.5);
+  c.rules[1].E = 0;
+  assert.equal(weeklyScoreFor(c, member.id, week).points, 0);
+  assert.equal(weeklyScoreFor(c, member.id, week).passed, 1);
 });
 test("Absent members cannot pass regulations; closed edits require a reason", () => {
   const c = fixture();
@@ -370,7 +433,7 @@ test("Rule changes have an effective month", () => {
   assert.equal(rulesFor(c, "2026-10").A, 10);
   assert.equal(rulesFor(c, "2026-11").A, 20);
 });
-test("Excel exports four readable worksheets with correct totals", async () => {
+test("Excel exports five readable worksheets with correct totals", async () => {
   const c = schedulerFixture();
   const s = makeSchedule(c, today().slice(0, 7));
   s.published = true;
@@ -379,7 +442,7 @@ test("Excel exports four readable worksheets with correct totals", async () => {
   const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
-  assert.equal(workbook.worksheets.length, 4);
+  assert.equal(workbook.worksheets.length, 5);
   assert.ok(workbook.getWorksheet("Tổng hợp tháng"));
   assert.ok(workbook.getWorksheet("Chi tiết trực"));
   assert.ok(warnings.length > 0);
@@ -522,6 +585,7 @@ const detailedSettings = {
 function detailedFixture(period = "14h30-17h30") {
   const c = fixture(),
     m = c.members[1];
+  m.joined = "2026-11-01";
   c.availabilityDataset = {
     filename: "test.xlsx",
     importedAt: "",
@@ -696,6 +760,8 @@ test("Manual late deduction works before result verification; notes do not autom
 test("Official roster promotion archives sample data and preserves real members, accounts and draft assignments", () => {
   const c = fixture();
   Object.assign(c, demoClub(adminIdentity.userId, c.members[0]));
+  // The published demo month must not collide with the fixed real draft month.
+  for (const schedule of c.schedules) schedule.month = "2026-10";
   c.name = "CLB chính thức";
   applyAction(c, memberIdentity, "profile", {
     name: "Thành viên thật",

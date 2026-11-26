@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyAction } from "../lib/actions";
+import { committeeKinds, committeeLabels, matchesCommittee } from "../lib/committees";
+import { workspaceView } from "../lib/workspace-view";
 import {
   addDays,
   createClub,
@@ -41,6 +43,35 @@ function askToReturn(club: Club) {
     reason: "Đã đổi lịch học, xin tham gia lại",
   });
 }
+
+test("BĐH can assign, move, filter and clear committees on existing and new profiles", () => {
+  const { club, memberId } = fixture();
+  const member = club.members.find(m => m.id === memberId)!;
+  assert.deepEqual(committeeKinds.map(kind => committeeLabels[kind]), ["Truyền thông", "Sự kiện", "Chuyên môn", "Cán sự"]);
+  assert.ok(matchesCommittee(member.committee, "unassigned"));
+  const memberData = { name: "Hồ sơ mới", studentId: "SV_NEW" };
+  assert.throws(() => applyAction(club, admin, "member", { ...memberData, committee: "hc" }), /Ban/);
+  assert.equal(club.members.length, 2);
+  applyAction(club, admin, "member", { ...memberData, committee: "tt" });
+  for (const committee of committeeKinds) {
+    applyAction(club, admin, "member", { memberId, committee });
+    const stored = JSON.parse(JSON.stringify(club)) as Club;
+    const profiles = workspaceView(stored, admin, 1).club.members;
+    assert.equal(profiles.find(m => m.id === memberId)?.committee, committee);
+    assert.equal(profiles.filter(m => matchesCommittee(m.committee, committee)).length, committee === "tt" ? 2 : 1);
+    assert.equal(profiles.filter(m => matchesCommittee(m.committee, "all")).length, 3);
+  }
+  applyAction(club, admin, "member", { memberId, email: "member@example.test" });
+  assert.throws(() => applyAction(club, admin, "member", { memberId, committee: "__proto__" }), /Ban/);
+  assert.throws(() => applyAction(club, student, "member", { memberId, committee: "cm" }), /BĐH/);
+  applyAction(club, student, "profile", { name: member.name, studentId: member.studentId, committee: "cm" });
+  assert.equal(member.committee, "cs");
+  assert.equal(member.role, "member");
+  assert.equal(workspaceView(club, student, 2).isAdmin, false);
+  applyAction(club, admin, "member", { memberId, committee: "" });
+  assert.ok(matchesCommittee(member.committee, "unassigned"));
+  assert.ok(!matchesCommittee(member.committee, "cs"));
+});
 
 test("Rút yêu cầu trở về vắng có phép với ô Vắng và điểm thống nhất", () => {
   const { club, week, memberId, entry } = fixture();
@@ -196,7 +227,7 @@ test("Tuần tự chốt thiếu ngày được bổ sung có lý do, tính đú
   assert.equal(week.closed, true);
   assert.equal(week.cancelled, false);
   assert.equal(week.time, "18:30");
-  assert.equal(week.location, "Phòng sinh hoạt CLB");
+  assert.equal(week.location, "Phòng sinh hoạt Đội");
   assert.equal(scoreFor(club, memberId, month).meetingMissed, 1);
   assert.equal(scoreFor(club, memberId, month).points, -5);
   assert.match(club.logs[0].text, /Bổ sung ngày còn thiếu sau khi đối chiếu BĐH/);

@@ -4,6 +4,7 @@ import type {
   Shift,
   AvailabilityDetail,
   AvailabilitySettings,
+  AvailabilityDataset,
 } from "./club";
 
 export const personKey = (name: string) =>
@@ -120,6 +121,62 @@ export function validateDetailRows(
     periodInterval(row.period, settings);
   }
 }
+export function detailAvailabilitySlots(rows: AvailabilityDetail[], settings: AvailabilitySettings) {
+  const slots = new Set<string>();
+  for (const row of rows) {
+    const day = dayNumber(row.day);
+    const [from, to] = periodInterval(row.period, settings);
+    for (const period of ["am", "pm"] as const) {
+      const start = clockMinutes(period === "am" ? settings.amStart : settings.pmStart);
+      const end = clockMinutes(period === "am" ? settings.amEnd : settings.pmEnd);
+      if (from < end && to > start) slots.add(`${day}-${period}`);
+    }
+  }
+  return [...slots].sort();
+}
+
+export function applyAvailabilityOverrides(member: Member, slots: string[]) {
+  const selected = new Set(slots);
+  for (const [slot, available] of Object.entries(member.availabilityOverrides ?? {})) {
+    if (available) selected.add(slot);
+    else selected.delete(slot);
+  }
+  return [...selected].sort();
+}
+
+export function profileAvailability(club: Club, member: Member) {
+  const dataset = activeAvailabilityDatasetFor(club);
+  const rows = dataset?.rows.filter((row) => dataset.memberLinks?.[personKey(row.name)] === member.id) ?? [];
+  const imported = dataset?.settings && rows.length ? detailAvailabilitySlots(rows, dataset.settings) : [];
+  return applyAvailabilityOverrides(member, [...member.availability, ...imported]);
+}
+
+export function setProfileAvailability(club: Club, member: Member, slots: string[]) {
+  const before = new Set(profileAvailability(club, member));
+  const after = new Set(slots);
+  const overrides = { ...member.availabilityOverrides };
+  let changed = false;
+  for (const slot of new Set([...before, ...after])) {
+    if (before.has(slot) === after.has(slot)) continue;
+    overrides[slot] = after.has(slot);
+    changed = true;
+  }
+  member.availability = [...after].sort();
+  if (changed) {
+    member.availabilityOverrides = overrides;
+    club.availabilityVersion = new Date().toISOString();
+  }
+}
+
+export function syncProfileTicks(club: Club, dataset: AvailabilityDataset, memberIds: Set<string>) {
+  if (!dataset.settings) throw new Error("Chưa có giờ ca để đồng bộ lịch rảnh.");
+  for (const member of club.members) {
+    if (!memberIds.has(member.id)) continue;
+    const rows = dataset.rows.filter((row) => dataset.memberLinks?.[personKey(row.name)] === member.id);
+    member.availability = applyAvailabilityOverrides(member, detailAvailabilitySlots(rows, dataset.settings));
+  }
+}
+
 export function createDutyAvailability(club: Club) {
   const dataset = activeAvailabilityDatasetFor(club),
     settings = dataset?.settings;
@@ -136,6 +193,9 @@ export function createDutyAvailability(club: Club) {
       const id = dataset.memberLinks[personKey(row.name)];
       if (id) rowsByMember.set(id, [...(rowsByMember.get(id) ?? []), row]);
     }
+  const slotsByMember = new Map(
+    [...rowsByMember].map(([id, rows]) => [id, new Set(settings ? detailAvailabilitySlots(rows, settings) : [])]),
+  );
   const cache = new Map<
     string,
     { available: boolean; note: string; lateMinutes: number }
@@ -151,11 +211,12 @@ export function createDutyAvailability(club: Club) {
     if (cached) return cached;
     const no = { available: false, note: "", lateMinutes: 0 };
     if (!member.active || member.joined > date) return no;
-    if (!dataset || !settings || !dataset.memberLinks)
+    const slot = `${new Date(date + "T12:00:00Z").getUTCDay()}-${period}`;
+    const override = member.availabilityOverrides?.[slot];
+    if (override !== undefined) return { available: override, note: "", lateMinutes: 0 };
+    if (!dataset || !settings || !dataset.memberLinks || !slotsByMember.get(member.id)?.has(slot))
       return {
-        available: member.availability.includes(
-          `${new Date(date + "T12:00:00Z").getUTCDay()}-${period}`,
-        ),
+        available: member.availability.includes(slot),
         note: "",
         lateMinutes: 0,
       };

@@ -1,3 +1,6 @@
+import { activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
+import type { SharedLink } from "./shared-links";
+import type { CommitteeKind } from "./committees";
 import {
   academicWeekFor,
   activeAvailabilityDatasetFor,
@@ -17,10 +20,12 @@ export type Member = {
   userId?: string;
   email?: string;
   role: "admin" | "member";
+  committee?: CommitteeKind;
   active: boolean;
   joined: string;
   left?: string;
   availability: string[];
+  availabilityOverrides?: Record<string, boolean>;
   extraDuties: boolean;
   needsStudentId?: boolean;
   loginName?: string;
@@ -44,9 +49,12 @@ export type Week = {
   cancelled: boolean;
   closed: boolean;
   entries: Entry[];
+  closingSnapshot?: { before: Entry[]; after: Entry[] };
+  reopenedForCorrection?: boolean;
 };
 export type Assignment = {
   memberId: string;
+  manual?: boolean;
   originalId?: string;
   result: DutyResult;
   late?: boolean;
@@ -58,6 +66,10 @@ export type Shift = {
   date: string;
   period: "am" | "pm";
   assignments: Assignment[];
+  capacity?: number;
+  draft?: boolean;
+  withdrawnOn?: string;
+  wasPublished?: true;
   startTime?: string;
   endTime?: string;
   academicWeek?: number;
@@ -68,17 +80,22 @@ export type Shift = {
 };
 export type Schedule = {
   month: string;
+  peoplePerShift?: number;
   published: boolean;
   shifts: Shift[];
+  pendingDutyWeek?: string;
   availabilityVersion?: string;
   sourceFilename?: string;
 };
 export type Rule = {
+  activities?: ActivityRates;
+  committees?: CommitteeRates;
   month: string;
   A: number;
   B: number;
   C: number;
   D: number;
+  E?: number;
 };
 export type AvailabilityDetail = {
   sourceRow: number;
@@ -114,9 +131,19 @@ export type Club = {
   members: Member[];
   weeks: Week[];
   schedules: Schedule[];
+  links?: SharedLink[];
   rules: Rule[];
+  activityRegistrations?: ActivityRegistration[];
+  events?: ClubEvent[];
+  pointDeductions?: PointDeduction[];
+  manualActivities?: ManualActivity[];
   days: number[];
+  peoplePerShift?: number;
   availabilityVersion: string;
+  deletedWeeks?: string[];
+  deletedDutyDates?: string[];
+  deletedMeetingWeeks?: string[];
+  dutyWithdrawal?: { week: string; count: number };
   availabilityDataset?: AvailabilityDataset;
   activeAvailabilityDataset?: AvailabilityDataset;
   testAccountsDisabled?: boolean;
@@ -128,7 +155,7 @@ export type Club = {
     weeks: Week[];
     schedules: Schedule[];
   };
-  logs: { at: string; actor: string; text: string }[];
+  logs: { at: string; actor: string; actorId?: string; text: string }[];
 };
 export type View = {
   club: Club;
@@ -137,6 +164,9 @@ export type View = {
   identity: { name: string; email: string };
   setup: boolean;
   revision: number;
+  weeklyScores?: WeeklyScore[];
+  personalMonthlyScores?: Record<string, ReturnType<typeof scoreFor>>;
+  currentAcademicWeek?: number;
 };
 export const statusNames: Record<Registration, string> = {
   unregistered: "Chưa đăng ký",
@@ -190,22 +220,18 @@ export function monthLabel(month: string) {
   return `Tháng ${Number(month.slice(5))}, ${month.slice(0, 4)}`;
 }
 export function rulesFor(club: Club, month: string) {
-  return (
-    [...club.rules]
-      .filter((r) => r.month <= month)
-      .sort((a, b) => b.month.localeCompare(a.month))[0] ?? {
-      month,
-      A: 0,
-      B: 0,
-      C: 0,
-      D: 0,
-    }
-  );
+  const applicable = club.rules
+    .filter((r) => r.month <= month)
+    .sort((a, b) => b.month.localeCompare(a.month));
+  const rule: Rule = applicable[0] ?? { month, A: 0, B: 0, C: 0, D: 0 };
+  // Rule snapshots created before the attendance bonus may omit it.
+  const E = rule.E ?? applicable.find(r => typeof r.E === "number")?.E ?? 0;
+  return { ...rule, E };
 }
 export function createClub(ownerId: string): Club {
   return {
     ownerId,
-    name: "Nhịp CLB",
+    name: "Nhịp Đội",
     demo: false,
     members: [],
     weeks: [],
@@ -224,11 +250,12 @@ export function syncWeeks(club: Club, date = today()) {
   // Catch up after downtime without losing unregistered members in skipped weeks.
   if (latest)
     for (let id = addDays(latest, 7); id <= current; id = addDays(id, 7)) {
+      if (club.deletedWeeks?.includes(id) || club.deletedMeetingWeeks?.includes(id)) continue;
       club.weeks.push({
         id,
         meetingDate: "",
         time: "18:30",
-        location: "Phòng sinh hoạt CLB",
+        location: "Phòng sinh hoạt Đội",
         closed: false,
         cancelled: false,
         entries: club.members
@@ -240,7 +267,7 @@ export function syncWeeks(club: Club, date = today()) {
       changed = true;
     }
   for (const w of club.weeks)
-    if (!w.closed && addDays(w.id, 7) <= date) {
+    if (!w.closed && !w.reopenedForCorrection && addDays(w.id, 7) <= date) {
       closeWeek(w);
       club.logs.unshift({
         at: new Date().toISOString(),
@@ -254,7 +281,7 @@ export function syncWeeks(club: Club, date = today()) {
       id: current,
       meetingDate: "",
       time: "18:30",
-      location: "Phòng sinh hoạt CLB",
+      location: "Phòng sinh hoạt Đội",
       closed: false,
       cancelled: false,
       entries: club.members
@@ -298,8 +325,12 @@ export function isMemberOnDate(member: Member, date: string) {
 }
 export function reportMembers(club: Club, month: string) {
   const end = monthDays(month).at(-1)!;
+  const assigned = new Set(club.schedules.filter(s => s.month === month).flatMap(s =>
+    s.shifts.filter(shift => isDutyReportShift(s, shift) && !shift.cancelled)
+      .flatMap(shift => shift.assignments.map(a => a.memberId)),
+  ));
   return club.members.filter(
-    (m) => m.joined <= end && (!m.left || m.left >= month + "-01"),
+    (m) => assigned.has(m.id) || (m.joined <= end && (!m.left || m.left >= month + "-01")),
   );
 }
 export function newEntry(memberId: string): Entry {
@@ -313,6 +344,7 @@ export function newEntry(memberId: string): Entry {
 }
 export function closeWeek(week: Week) {
   if (week.closed) return;
+  const before = structuredClone(week.entries);
   for (const e of week.entries) {
     if (e.status === "pending") {
       e.decision = "Chưa được duyệt khi chốt";
@@ -328,6 +360,53 @@ export function closeWeek(week: Week) {
     if (e.absent) e.passed = false;
   }
   week.closed = true;
+  week.closingSnapshot = { before, after: structuredClone(week.entries) };
+  delete week.reopenedForCorrection;
+}
+export function reopenWeek(week: Week) {
+  // Undo only the automatic close changes; preserve any subsequent BĐH edits.
+  const snapshot = week.closingSnapshot;
+  if (snapshot) {
+    week.entries = week.entries.map((entry) => {
+      const before = snapshot.before.find((e) => e.memberId === entry.memberId);
+      const after = snapshot.after.find((e) => e.memberId === entry.memberId);
+      return before && after && !entry.attendanceVerified &&
+        JSON.stringify(entry) === JSON.stringify(after)
+        ? structuredClone(before) : entry;
+    });
+  }
+  week.closed = false;
+  // Past weeks need to stay open for admin correction until explicitly closed.
+  if (week.id < weekId()) week.reopenedForCorrection = true;
+  delete week.closingSnapshot;
+}
+export const shiftCapacity = (shift: Shift) => shift.capacity ?? 2;
+export const isShiftPublished = (schedule: Schedule, shift: Shift) =>
+  schedule.published && !shift.draft;
+export const isDutyReportShift = (schedule: Schedule, shift: Shift) =>
+  isShiftPublished(schedule, shift) || shift.wasPublished === true;
+export function isUpcomingShift(shift: Shift, now = new Date()) {
+  const date = today(now);
+  return shift.date > date || (
+    shift.date === date && !!shift.startTime &&
+    Date.parse(shift.date + "T" + shift.startTime + ":00+07:00") > now.getTime()
+  );
+}
+const isUnverifiedDutyShift = (shift: Shift) =>
+  !shift.cancelled && shift.assignments.every((assignment) => assignment.result === "unverified" && !assignment.late);
+export const canReplanDutyShift = (schedule: Schedule, shift: Shift) =>
+  !isShiftPublished(schedule, shift) && isUnverifiedDutyShift(shift);
+
+export function canWithdrawDutyShift(schedule: Schedule, shift: Shift, from: string) {
+  return isShiftPublished(schedule, shift) && isUnverifiedDutyShift(shift) &&
+    shift.date >= from && shift.date <= addDays(weekId(from), 6);
+}
+
+export function canEditDutyDraft(shift: Shift, now = new Date()) {
+  if (!shift.draft || !isUnverifiedDutyShift(shift)) return false;
+  if (!shift.withdrawnOn) return isUpcomingShift(shift, now);
+  const end = addDays(weekId(shift.withdrawnOn), 6);
+  return today(now) <= end && shift.date >= shift.withdrawnOn && shift.date <= end;
 }
 export const isChargeableLate = (a: Assignment) =>
   !!a.late && !["unexcused", "excused", "cancelled"].includes(a.result);
@@ -336,20 +415,21 @@ export const latePenaltyFor = (a: Assignment, rule: Rule) =>
 export const dutyPointsFor = (a: Assignment, rule: Rule) =>
   (a.result === "completed" ? rule.A : a.result === "unexcused" ? -rule.B : 0) -
   latePenaltyFor(a, rule);
-export function scoreFor(club: Club, memberId: string, month: string) {
+export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?: string) {
   const rule = rulesFor(club, month);
   const member = club.members.find((m) => m.id === memberId);
   const duties = club.schedules
-    .filter((s) => s.month === month && s.published)
+    .filter((s) => s.month === month)
     .flatMap((s) =>
       s.shifts
-        .filter((t) => !t.cancelled)
+        .filter((t) => isDutyReportShift(s, t) && !t.cancelled && (!onlyWeek || weekId(t.date) === onlyWeek))
         .flatMap((t) => t.assignments.filter((a) => a.memberId === memberId)),
     );
   const weeks = club.weeks.filter(
     (w) =>
       !w.cancelled &&
       w.meetingDate.slice(0, 7) === month &&
+      (!onlyWeek || weekId(w.meetingDate) === onlyWeek) &&
       !!member &&
       isMemberOnDate(member, w.meetingDate),
   );
@@ -369,8 +449,12 @@ export function scoreFor(club: Club, memberId: string, month: string) {
   const attended = entries.filter(
     ({ closed, e }) => closed && e?.status === "attending" && !e.absent,
   ).length;
-  const passed = entries.filter(({ e }) => e?.passed).length;
+  const passed = entries.filter(({ e }) => e?.passed && !e.absent).length;
+  const activities = activityScoreFor(club, memberId, month, false, onlyWeek);
+  const points = completed * rule.A - dutyMissed * rule.B - meetingMissed * rule.C -
+    lateDeduction + passed * rule.E + activities.activityTotal;
   return {
+    ...activities,
     completed,
     dutyMissed,
     meetingMissed,
@@ -378,30 +462,17 @@ export function scoreFor(club: Club, memberId: string, month: string) {
     passed,
     lateCount,
     lateDeduction,
-    points:
-      completed * rule.A -
-      dutyMissed * rule.B -
-      meetingMissed * rule.C -
-      lateDeduction,
+    points: Number(points.toFixed(10)),
   };
 }
-export function makeSchedule(club: Club, month: string): Schedule {
-  const dataset = activeAvailabilityDatasetFor(club);
-  const availableFor = createDutyAvailability(club),
-    detailSettings = dataset?.settings;
-  const members = club.members.filter(
-    (m) => m.active && m.joined <= monthDays(month).at(-1)!,
-  );
-  const counts = new Map(members.map((m) => [m.id, 0]));
-  const cancelled = new Map(
-    (club.schedules.find((s) => s.month === month)?.shifts ?? [])
-      .filter((t) => t.cancelled)
-      .map((t) => [t.id, t]),
-  );
-  const shifts: Shift[] = monthDays(month)
+export function createDutyShiftSlots(club: Club, month: string, peoplePerShift: number): Shift[] {
+  const detailSettings = activeAvailabilityDatasetFor(club)?.settings;
+  return monthDays(month)
     .filter(
       (d) =>
         club.days.includes(weekday(d)) &&
+        !club.deletedWeeks?.includes(weekId(d)) &&
+        !club.deletedDutyDates?.includes(d) &&
         (!detailSettings || d >= detailSettings.startDate),
     )
     .flatMap((date) =>
@@ -410,6 +481,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
         date,
         period,
         assignments: [] as Assignment[],
+        capacity: peoplePerShift,
         ...(detailSettings
           ? {
               startTime:
@@ -422,15 +494,54 @@ export function makeSchedule(club: Club, month: string): Schedule {
             }
           : {}),
       })),
-    )
-    .map((shift) =>
-      cancelled.has(shift.id)
-        ? structuredClone(cancelled.get(shift.id)!)
-        : shift,
     );
+}
+
+export function makeSchedule(club: Club, month: string, peoplePerShift = club.peoplePerShift ?? 2): Schedule {
+  if (!Number.isInteger(peoplePerShift) || peoplePerShift < 1 || peoplePerShift > 50)
+    throw new Error("Số người mỗi buổi trực phải là số nguyên từ 1–50.");
+  const dataset = activeAvailabilityDatasetFor(club);
+  const cancelled = new Map(
+    (club.schedules.find((s) => s.month === month)?.shifts ?? [])
+      .filter((t) => t.cancelled)
+      .map((t) => [t.id, t]),
+  );
+  const previous = new Map(club.schedules.find(s => s.month === month)?.shifts.map(shift => [shift.id, shift]));
+  const shifts = createDutyShiftSlots(club, month, peoplePerShift).map((shift) => {
+    const cancelledShift = cancelled.get(shift.id);
+    if (cancelledShift) return structuredClone(cancelledShift);
+    shift.assignments = structuredClone(previous.get(shift.id)?.assignments.filter(a => a.manual) ?? []);
+    return shift;
+  });
+  fillDutyShifts(club, month, shifts);
+  return {
+    month,
+    peoplePerShift,
+    published: false,
+    shifts,
+    availabilityVersion: club.availabilityVersion,
+    ...(dataset?.settings ? { sourceFilename: dataset.filename } : {}),
+  };
+}
+
+export function fillDutyShifts(club: Club, month: string, shifts: Shift[], fixedShifts: Shift[] = []) {
+  const availableFor = createDutyAvailability(club);
+  const members = club.members.filter(
+    (m) => m.active && m.joined <= monthDays(month).at(-1)!,
+  );
+  const counts = new Map(members.map((m) => [m.id, 0]));
+  const allShifts = [...shifts, ...fixedShifts];
+  for (const shift of allShifts) {
+    if (shift.cancelled) continue;
+    for (const { memberId } of shift.assignments) {
+      const count = counts.get(memberId);
+      if (count !== undefined) counts.set(memberId, count + 1);
+    }
+  }
   const available = (s: Shift) =>
     members.filter(
-      (m) => m.joined <= s.date && availableFor(m, s.date, s.period).available,
+      (m) => m.joined <= s.date && availableFor(m, s.date, s.period, s).available &&
+        !s.assignments.some(a => a.memberId === m.id),
     );
   const sorted = [...shifts].sort(
     (a, b) =>
@@ -441,7 +552,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
       memberId: member.id,
       result: "unverified",
       late: false,
-      availabilityNote: availableFor(member, shift.date, shift.period).note,
+      availabilityNote: availableFor(member, shift.date, shift.period, shift).note,
     });
     counts.set(member.id, counts.get(member.id)! + 1);
   };
@@ -450,12 +561,12 @@ export function makeSchedule(club: Club, month: string): Schedule {
   // is only free in a slot already taken by someone with other options.
   const seats = sorted
     .filter((shift) => !shift.cancelled)
-    .flatMap((shift) => [0, 1].map((position) => ({ shift, position })));
+    .flatMap((shift) => Array.from({ length: Math.max(0, shiftCapacity(shift) - shift.assignments.length) }, (_, position) => ({ shift, position })));
   const seatsByMember = new Map(
     members.map((member) => [
       member.id,
       seats.filter(({ shift }) =>
-        availableFor(member, shift.date, shift.period).available,
+        availableFor(member, shift.date, shift.period, shift).available,
       ),
     ]),
   );
@@ -475,7 +586,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
     }
     return false;
   };
-  const firstCandidates = [...members].sort(
+  const firstCandidates = members.filter((member) => counts.get(member.id) === 0).sort(
     (a, b) =>
       seatsByMember.get(a.id)!.length - seatsByMember.get(b.id)!.length ||
       a.id.localeCompare(b.id),
@@ -487,7 +598,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
   }
   for (const shift of sorted) {
     if (shift.cancelled) continue;
-    for (let seat = shift.assignments.length; seat < 2; seat++) {
+    for (let seat = shift.assignments.length; seat < shiftCapacity(shift); seat++) {
       const candidates = available(shift).filter(
         (m) => !shift.assignments.some((a) => a.memberId === m.id),
       );
@@ -497,7 +608,7 @@ export function makeSchedule(club: Club, month: string): Schedule {
         const bandA = ac < 2 ? ac : a.extraDuties ? 2 : 3;
         const bandB = bc < 2 ? bc : b.extraDuties ? 2 : 3;
         const sameDay = (id: string) =>
-          shifts.some(
+          allShifts.some(
             (s) =>
               s !== shift &&
               !s.cancelled &&
@@ -517,15 +628,6 @@ export function makeSchedule(club: Club, month: string): Schedule {
       if (m) assign(shift, m);
     }
   }
-  return {
-    month,
-    published: false,
-    shifts,
-    availabilityVersion: club.availabilityVersion,
-    ...(detailSettings
-      ? { sourceFilename: dataset?.filename }
-      : {}),
-  };
 }
 export function demoClub(ownerId: string, owner?: Member): Club {
   const club = createClub(ownerId);
@@ -614,4 +716,33 @@ export function demoClub(ownerId: string, owner?: Member): Club {
   );
   club.schedules.push(schedule);
   return club;
+}
+
+export type WeeklyScore = {
+  week: string;
+  memberId: string;
+  completed: number;
+  dutyMissed: number;
+  meetingMissed: number;
+  passed: number;
+  lateCount: number;
+  activityCounts: Record<import("./activity").ActivityKind, number>;
+  activityTotal: number;
+  points: number;
+};
+export function weeklyScoreFor(club: Club, memberId: string, week: string): WeeklyScore {
+  const months = [...new Set([week.slice(0, 7), addDays(week, 6).slice(0, 7)])];
+  const parts = months.map(month => scoreFor(club, memberId, month, week));
+  const activities = activityScoreFor(club, memberId, week, true);
+  return {
+    week,
+    memberId,
+    ...activities,
+    completed: parts.reduce((sum, score) => sum + score.completed, 0),
+    dutyMissed: parts.reduce((sum, score) => sum + score.dutyMissed, 0),
+    meetingMissed: parts.reduce((sum, score) => sum + score.meetingMissed, 0),
+    passed: parts.reduce((sum, score) => sum + score.passed, 0),
+    lateCount: parts.reduce((sum, score) => sum + score.lateCount, 0),
+    points: Number(parts.reduce((sum, score) => sum + score.points, 0).toFixed(10)),
+  };
 }

@@ -3,6 +3,10 @@ import { applyAction } from "../../../lib/actions";
 import { mutate, ClubNotReadyError } from "../../../lib/store";
 import { workspaceView as view } from "../../../lib/workspace-view";
 import { purgeTestData } from "../../../lib/maintenance";
+import { deleteEvent } from "../../../lib/delete-event";
+import { deleteMember } from "../../../lib/delete-member";
+import { AuthError } from "../../../lib/password";
+import { removeDutyMember } from "../../../lib/remove-duty-member";
 
 export const dynamic = "force-dynamic";
 const json = (data: unknown, status = 200) =>
@@ -42,6 +46,24 @@ export async function POST(request: Request) {
       const { club, revision } = await purgeTestData(user, data);
       return json(view(club, user, revision));
     }
+    if (action === "deleteMember") {
+      const { club, revision, photosDeleted } = await deleteMember(user, data);
+      return json({ ...view(club, user, revision), ...(photosDeleted ? {} : {
+        notice: "Đã xóa hồ sơ. Hệ thống sẽ thử lại việc dọn các tệp ảnh.",
+      }) });
+    }
+    if (action === "deleteEvent") {
+      const { club, revision, photosDeleted } = await deleteEvent(user, data);
+      return json({ ...view(club, user, revision), ...(photosDeleted ? {} : {
+        notice: "Đã xóa sự kiện. Hệ thống sẽ thử lại việc dọn các tệp ảnh.",
+      }) });
+    }
+    if (action === "removeDutyMember") {
+      const { club, revision, photoDeleted } = await removeDutyMember(user, data);
+      return json({ ...view(club, user, revision), ...(photoDeleted ? {} : {
+        notice: "Đã gỡ người khỏi ca. Hệ thống sẽ thử lại việc dọn ảnh minh chứng.",
+      }) });
+    }
     const { club, revision } = await mutate(
       user.userId,
       (c) => applyAction(c, user, action, data),
@@ -53,7 +75,7 @@ export async function POST(request: Request) {
       {
         error: e instanceof Error ? e.message : "Không lưu được thay đổi.",
       },
-      400,
+      e instanceof AuthError ? e.status : 400,
     );
   }
 }

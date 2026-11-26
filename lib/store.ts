@@ -5,7 +5,7 @@ type Row = { payload: string; revision: number };
 export class ClubNotReadyError extends Error {
   constructor() {
     super(
-      "BĐH chưa thiết lập không gian CLB. Vui lòng quay lại sau khi chủ quản trị hoàn tất hồ sơ.",
+      "BĐH chưa thiết lập không gian Đội. Vui lòng quay lại sau khi chủ quản trị hoàn tất hồ sơ.",
     );
   }
 }
@@ -30,7 +30,7 @@ export async function readState(ownerId: string, canInitialize: boolean) {
   const row = await db
     .prepare("SELECT payload,revision FROM club_state WHERE id='main'")
     .first<Row>();
-  if (!row) throw new Error("Không đọc được dữ liệu CLB.");
+  if (!row) throw new Error("Không đọc được dữ liệu Đội.");
   return { club: JSON.parse(row.payload) as Club, revision: row.revision };
 }
 export async function writeState(club: Club, revision: number) {
