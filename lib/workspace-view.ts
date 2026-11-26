@@ -80,6 +80,9 @@ export function workspaceView(
     delete club.dutyWithdrawal;
   }
   const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, currentAcademicWeek });
+  // The signed-in account gets its preference on `me`; rosters do not need personal settings.
+  for (const member of view.club.members) delete member.fontPreference;
+  for (const member of view.club.demoArchive?.members ?? []) delete member.fontPreference;
   for (const log of view.club.logs) {
     log.text = log.text.replace(/^(Nhập Điểm theo ban: .*), Ban (?:HC|hậu cần) · /i, "$1, ");
   }

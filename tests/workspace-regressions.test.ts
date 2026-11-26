@@ -3,8 +3,37 @@ import assert from "node:assert/strict";
 import { applyAction } from "../lib/actions";
 import { createClub, type AvailabilityDataset } from "../lib/club";
 import { workspaceView } from "../lib/workspace-view";
+import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
 
 const owner = {userId:"workspace-regression-owner",displayName:"BĐH",email:""};
+
+test("Members and admins save independent typefaces that follow their own account", () => {
+  const { c, pending } = fixture();
+  pending.userId = "font-test-member";
+  const member = { userId: pending.userId, displayName: pending.name, email: "" };
+  const saved = (user: typeof owner) => workspaceView(JSON.parse(JSON.stringify(c)), user, 1);
+  assert.equal(resolveFont(saved(member).me?.fontPreference), "inter");
+  assert.equal(resolveFont("obsolete"), "inter");
+  assert.deepEqual(interfaceFonts.map(font => font.name), ["Inter", "Nunito", "Lexend", "Spectral"]);
+  const rules = structuredClone(c.rules);
+  const logs = c.logs.length;
+  applyAction(c, owner, "setMyFont", { font: "nunito" });
+  for (const { id } of interfaceFonts) {
+    applyAction(c, member, "setMyFont", { font: id });
+    assert.equal(saved(member).me?.fontPreference, id);
+    assert.equal(saved(owner).me?.fontPreference, "nunito");
+    assert.ok(saved(owner).club.members.every(m => m.fontPreference === undefined));
+  }
+  assert.deepEqual(c.rules, rules);
+  assert.equal(c.logs.length, logs);
+  assert.throws(() => applyAction(c, owner, "setMyFont", { memberId: pending.id, font: "inter" }), /tài khoản của mình/);
+  for (const font of [null, false, "__proto__", "Arial", {}]) assert.throws(() => applyAction(c, member, "setMyFont", { font }), /Phông chữ/);
+  applyAction(c, owner, "settings", { name: "Đội kiểm thử" });
+  assert.equal(saved(member).me?.fontPreference, "spectral");
+  applyAction(c, owner, "setMyFont", { font: "inter" });
+  assert.equal(saved(owner).me?.fontPreference, "inter");
+  assert.equal(saved(member).me?.fontPreference, "spectral");
+});
 function fixture() {
   const c=createClub(owner.userId);
   applyAction(c,owner,"profile",{name:"BĐH",studentId:"BCS001"});

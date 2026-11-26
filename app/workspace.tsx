@@ -3,7 +3,9 @@ import Activities, { WeeklyActivityPoints } from "./activities";
 import { visibleActivityKinds, activityLabels, eventForActivity, isEventOpen, ratedActivityKinds } from "../lib/activity";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { canDeleteMember } from "../lib/member-deletion";
-import { committeeKinds, committeeLabels, isCommitteeKind, matchesCommittee, type CommitteeFilter } from "../lib/committees";
+import { committeeKinds, committeeLabels, memberCommittees, matchesCommittee, type CommitteeFilter } from "../lib/committees";
+import { resolveFont } from "../lib/interface-fonts";
+import { FontSettings } from "./font-settings";
 import Login from "./login";
 import MusicPlayer from "./music-player";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
@@ -15,6 +17,7 @@ import { activeAvailabilityDatasetFor, availabilityForDuty, personKey, profileAv
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -113,6 +116,7 @@ type Tab =
   | "members"
   | "reports"
   | "settings"
+  | "preferences"
   | "personal";
 type Modal = {
   title: string;
@@ -140,6 +144,7 @@ const titles: Record<Tab, string> = {
   members: "Thành viên",
   reports: "Báo cáo tháng",
   settings: "Cài đặt Đội",
+  preferences: "Cài đặt cá nhân",
   personal: "Góc thành viên",
 };
 const getForm = (e: FormEvent<HTMLFormElement>) => {
@@ -166,6 +171,10 @@ const digits = (number: number) => String(number).padStart(2, "0");
 
 export default function Workspace() {
   const [view, setView] = useState<View | null>(null);
+  const savedFont = resolveFont(view?.me?.fontPreference);
+  useLayoutEffect(() => {
+    document.documentElement.dataset.font = savedFont;
+  }, [savedFont]);
   const [loading, setLoading] = useState(true);
   const [auth, setAuth] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -191,6 +200,7 @@ export default function Workspace() {
     try {
       const r = await fetch("/api/workspace", { cache: "no-store" });
       if (r.status === 401) {
+        setView(null);
         setAuth(true);
         return;
       }
@@ -451,7 +461,7 @@ export default function Workspace() {
       </div>
     );
   const activeTab =
-    !isAdmin && !["personal", "duties", "links", "requests", "weeklyScores"].includes(tab) ? "personal" : tab;
+    !isAdmin && !["personal", "preferences", "duties", "links", "requests", "weeklyScores"].includes(tab) ? "personal" : tab;
   const week =
     club.weeks.find((w) => w.id === selectedWeek) ?? club.weeks.at(-1)!;
   const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
@@ -752,6 +762,7 @@ export default function Workspace() {
     });
   }
   function editMember(member?: Member) {
+    const selectedCommittees = member ? memberCommittees(member) : [];
     const selectedAvailability = member ? profileAvailability(club, member) : [];
     const detailedAvailability = member
       ? activeDataset?.rows.filter((row) => activeDataset.memberLinks?.[personKey(row.name)] === member.id) ?? []
@@ -764,23 +775,18 @@ export default function Workspace() {
       content: (
         <form
           onSubmit={(e) => {
-            const f = getForm(e);
+            e.preventDefault();
+            const form = new FormData(e.currentTarget);
+            const f = Object.fromEntries(form);
             act(
               "member",
               {
                 ...f,
                 memberId: member?.id,
+                committees: form.getAll("committees"),
                 ...(member ? { active: f.active === "true" } : {}),
                 extraDuties: f.extraDuties === "on",
-                ...(member
-                  ? {
-                      availability: [
-                        ...(e.currentTarget.querySelectorAll<HTMLInputElement>(
-                          'input[name="availability"]:checked',
-                        ) ?? []),
-                      ].map((i) => i.value),
-                    }
-                  : {}),
+                ...(member ? { availability: form.getAll("availability") } : {}),
               },
               "Đã lưu thành viên",
             );
@@ -813,12 +819,18 @@ export default function Workspace() {
               placeholder="Email liên hệ của thành viên"
             />
           </Field>
-          <Field label="Ban">
-            <select name="committee" defaultValue={member?.committee ?? ""}>
-              <option value="">Chưa phân ban</option>
-              {committeeKinds.map(kind => <option key={kind} value={kind}>{committeeLabels[kind]}</option>)}
-            </select>
-          </Field>
+          <fieldset className="member-committees">
+            <legend className="field-label">Ban của thành viên</legend>
+            <p className="hint">Có thể chọn nhiều ban. Để trống nếu chưa phân ban.</p>
+            <div className="committee-options">
+              {committeeKinds.map(kind => (
+                <label key={kind}>
+                  <input type="checkbox" name="committees" value={kind} defaultChecked={selectedCommittees.includes(kind)} />
+                  {committeeLabels[kind]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           {member ? (
             <Field label="Vai trò">
               <select name="role" defaultValue={member.role}>
@@ -2300,7 +2312,7 @@ export default function Workspace() {
 
   function members() {
     const result = club.members.filter((m) =>
-      matchesCommittee(m.committee, committeeFilter) && `${m.name} ${m.studentId}`
+      matchesCommittee(m, committeeFilter) && `${m.name} ${m.studentId}`
         .toLocaleLowerCase("vi")
         .includes(search.trim().toLocaleLowerCase("vi")),
     );
@@ -2393,7 +2405,7 @@ export default function Workspace() {
                     <td className="mono muted">
                       {m.studentId || "Chờ bổ sung MSSV"}
                     </td>
-                    <td>{isCommitteeKind(m.committee) ? committeeLabels[m.committee] : "Chưa phân ban"}</td>
+                    <td className="member-committee-cell">{memberCommittees(m).map(kind => committeeLabels[kind]).join(", ") || "Chưa phân ban"}</td>
                     <td>
                       {m.role === "admin" ? (
                         <span className="role-tag">
@@ -3160,6 +3172,10 @@ export default function Workspace() {
             <UserRound size={18} />
             <span>Hồ sơ của tôi</span>
           </button>
+          <button className={activeTab === "preferences" ? "active" : ""} onClick={() => go("preferences")}>
+            <Settings2 size={18} />
+            <span>Cài đặt cá nhân</span>
+          </button>
           <button onClick={() => passwordDialog()}>
             <ShieldCheck size={18} />
             <span>Đổi mật khẩu</span>
@@ -3394,6 +3410,12 @@ export default function Workspace() {
             members()
           ) : activeTab === "reports" ? (
             reports()
+          ) : activeTab === "preferences" ? (
+            <>
+              <div className="page-heading"><h1>Cài đặt cá nhân</h1></div>
+              <FontSettings key={me.id + savedFont} current={savedFont} busy={busy}
+                onSave={font => { void act("setMyFont", { font }, "Đã lưu phông chữ của bạn", false); }} />
+            </>
           ) : activeTab === "settings" ? (
             settings()
           ) : (

@@ -2,7 +2,7 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
 import { activityLabels, activityName, activityPointsFor, canAttendEvent, registrationStatusLabel, eventDescriptionLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
-import { committeeKinds, committeeLabels, isCommitteeKind, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
+import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { EvidencePanel } from "./duty-evidence";
 import { Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
@@ -230,7 +230,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
   const [deducting,setDeducting]=useState(false);
   const [search,setSearch]=useState("");
   const close=useCallback(()=>{setMember(null);setDeducting(false);},[]);
-  const roster = club.members.filter(m => (isAdmin || m.id === me.id) && matchesCommittee(m.committee, committeeFilter));
+  const roster = club.members.filter(m => (isAdmin || m.id === me.id) && matchesCommittee(m, committeeFilter));
   const rosterIds = new Set(roster.map(m => m.id));
   const deductions = (club.pointDeductions ?? []).filter(r => r.week === week && rosterIds.has(r.memberId));
   const query = search.trim().toLocaleLowerCase("vi");
@@ -258,7 +258,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
       <div className="activity-list">{deductions.map(r=><article className="activity-item" key={r.id}><div><strong>{club.members.find(m=>m.id===r.memberId)?.name} · {r.cancelledAt?"Đã hủy khoản trừ":`−${r.points} điểm`}</strong><p>{dateLabel(r.date,true)} · {r.reason}</p>{r.cancelReason?<p className="hint">Lý do hủy: {r.cancelReason}</p>:null}</div></article>)}</div>
     </section> : null}
     {member?<Dialog title={`${deducting?"Trừ điểm":"Điểm BĐH nhập"} · ${member.name}`} description={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week,6))}`} onClose={close} busy={busy}>
-      {deducting ? <DeductionForm club={club} member={member} week={week} busy={busy} onAction={onAction} onClose={close}/> : <ManualForm club={club} member={member} week={week} busy={busy} onAction={onAction} onClose={close}/>}
+      {deducting ? <DeductionForm club={club} member={member} week={week} busy={busy} onAction={onAction} onClose={close}/> : <ManualForm club={club} member={member} committeeFilter={committeeFilter} week={week} busy={busy} onAction={onAction} onClose={close}/>}
     </Dialog>:null}
   </div>;
 }
@@ -286,13 +286,15 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
     <FormFooter label={event ? "Lưu thay đổi" : "Tạo và mở đăng ký"} onCancel={onClose} busy={busy} />
   </form>;
 }
-function ManualForm({club,member,week,busy,onAction,onClose}:{club:Club;member:Member;week:string;busy:boolean;onAction:Act;onClose:()=>void}) {
+type ManualFormProps = { club: Club; member: Member; committeeFilter: CommitteeFilter; week: string; busy: boolean; onAction: Act; onClose: () => void };
+
+function ManualForm(props: ManualFormProps) {
   const [kind,setKind]=useState<ManualActivityKind>(manualKinds[0]);
   return <><Field label="Mục điểm"><select value={kind} onChange={e=>setKind(e.target.value as ManualActivityKind)}>{manualKinds.map(k=><option key={k} value={k}>{activityLabels[k]}</option>)}</select></Field>
-    <ManualEntryForm key={kind} club={club} member={member} week={week} kind={kind} busy={busy} onAction={onAction} onClose={onClose}/>
+    <ManualEntryForm key={kind} {...props} kind={kind}/>
   </>;
 }
-function ManualEntryForm({club,member,week,kind,busy,onAction,onClose}:{club:Club;member:Member;week:string;kind:ManualActivityKind;busy:boolean;onAction:Act;onClose:()=>void}) {
+function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,onClose}:ManualFormProps & {kind:ManualActivityKind}) {
   const old=club.manualActivities?.find(r=>r.memberId===member.id&&r.week===week&&r.kind===kind);
   const [date,setDate]=useState(old?.date??(week===weekId()?today():addDays(week,6)));
   const direct=kind==="special", byCommittee=kind==="committee";
@@ -300,7 +302,11 @@ function ManualEntryForm({club,member,week,kind,busy,onAction,onClose}:{club:Clu
   const [committee, setCommittee] = useState<CommitteeKind | "none" | "">(() => {
     if (isCommitteeKind(old?.committee)) return old.committee;
     if (retired) return "";
-    return !old && isCommitteeKind(member.committee) ? member.committee : "none";
+    if (old) return "none";
+    const assigned = memberCommittees(member);
+    if (isCommitteeKind(committeeFilter) && assigned.includes(committeeFilter)) return committeeFilter;
+    if (assigned.length > 1) return "";
+    return assigned[0] ?? "none";
   });
   const existingPoints = old && (!byCommittee || retired || old.committee === committee) ? activityPointsFor(club, old) : undefined;
   return <form onSubmit={async e => {
@@ -315,7 +321,7 @@ function ManualEntryForm({club,member,week,kind,busy,onAction,onClose}:{club:Clu
     {byCommittee ? (
       <Field label="Ban">
         <select name="committee" required value={committee} onChange={e => setCommittee(e.target.value as CommitteeKind | "none")}>
-          {retired && <option value="" disabled>{existingPoints} điểm đã ghi · Chọn ban để sửa</option>}
+          {(retired || !committee) && <option value="" disabled>{retired ? `${existingPoints} điểm đã ghi · Chọn ban để sửa` : "Chọn ban để ghi điểm"}</option>}
           <option value="none">Không ghi điểm theo ban</option>
           {committeeKinds.map(k => <option key={k} value={k}>{committeeLabels[k]}</option>)}
         </select>

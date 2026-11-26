@@ -12,8 +12,18 @@ export const isCommitteeKind = (value: unknown): value is CommitteeKind =>
 
 export type CommitteeFilter = CommitteeKind | "all" | "unassigned";
 
-export function matchesCommittee(committee: unknown, filter: CommitteeFilter) {
+export type CommitteeMembership = {
+  committee?: CommitteeKind;
+  committees?: CommitteeKind[];
+};
+
+export function memberCommittees({ committees, committee }: CommitteeMembership): CommitteeKind[] {
+  if (Array.isArray(committees)) return committeeKinds.filter(kind => committees.includes(kind));
+  return isCommitteeKind(committee) ? [committee] : [];
+}
+
+export function matchesCommittee(member: CommitteeMembership, filter: CommitteeFilter) {
   if (filter === "all") return true;
-  if (filter === "unassigned") return !isCommitteeKind(committee);
-  return committee === filter;
+  const committees = memberCommittees(member);
+  return filter === "unassigned" ? committees.length === 0 : committees.includes(filter);
 }

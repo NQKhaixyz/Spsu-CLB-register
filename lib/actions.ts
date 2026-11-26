@@ -38,7 +38,8 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
-import { isCommitteeKind } from "./committees";
+import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
+import { isFontId } from "./interface-fonts";
 import { planDutyWeek } from "./duty-week-plan";
 import type { AvailabilitySettings } from "./club";
 
@@ -118,6 +119,12 @@ export function applyAction(
     return;
   }
   check(me?.active, "Tài khoản chưa có hồ sơ hoặc đã ngừng hoạt động.");
+  if (action === "setMyFont") {
+    check(data.memberId === undefined || data.memberId === me.id, "Bạn chỉ có thể đổi phông chữ cho tài khoản của mình.");
+    check(isFontId(data.font), "Phông chữ không hợp lệ.");
+    me.fontPreference = data.font;
+    return;
+  }
   if (action === "register") {
     check(!me.needsStudentId, "Vui lòng bổ sung MSSV trong hồ sơ trước khi đăng ký họp.");
     const w = club.weeks.find((w) => w.id === weekId());
@@ -571,9 +578,14 @@ export function applyAction(
       note(`Bỏ ca ${shift.id}`);
     }
   } else if (action === "member") {
-    const committee = data.committee;
-    check(committee === undefined || committee === "" || isCommitteeKind(committee), "Ban của thành viên không hợp lệ.");
     let m = data.memberId ? getMember() : null;
+    let selection: unknown = data.committees;
+    if (selection === undefined && data.committee !== undefined) {
+      // A single-select client cannot safely edit a profile with multiple committees.
+      check(!m || memberCommittees(m).length <= 1, "Thành viên thuộc nhiều ban. Vui lòng tải lại trang để chỉnh sửa.");
+      selection = data.committee === "" ? [] : [data.committee];
+    }
+    check(selection === undefined || (Array.isArray(selection) && selection.every(isCommitteeKind)), "Ban của thành viên không hợp lệ.");
     if (!m) {
       const studentId = str(data.studentId, 30),
         name = str(data.name, 100);
@@ -642,8 +654,13 @@ export function applyAction(
         m.role = data.role;
       }
     }
-    if (committee === "") delete m.committee;
-    else if (committee !== undefined) m.committee = committee;
+    if (selection !== undefined) {
+      const selected = committeeKinds.filter(kind => selection.includes(kind));
+      delete m.committee;
+      delete m.committees;
+      if (selected.length === 1) m.committee = selected[0];
+      if (selected.length > 1) m.committees = selected;
+    }
     if (data.extraDuties !== undefined) m.extraDuties = !!data.extraDuties;
     if (data.availability) {
       check(

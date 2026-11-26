@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "./font-faces.css";
 import "./club.css";
 import "./theme.css";
 import "./screen-cat.css";

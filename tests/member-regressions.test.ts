@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyAction } from "../lib/actions";
-import { committeeKinds, committeeLabels, matchesCommittee } from "../lib/committees";
+import { committeeKinds, committeeLabels, memberCommittees, matchesCommittee } from "../lib/committees";
 import { workspaceView } from "../lib/workspace-view";
 import {
   addDays,
@@ -48,7 +48,7 @@ test("BĐH can assign, move, filter and clear committees on existing and new pro
   const { club, memberId } = fixture();
   const member = club.members.find(m => m.id === memberId)!;
   assert.deepEqual(committeeKinds.map(kind => committeeLabels[kind]), ["Truyền thông", "Sự kiện", "Chuyên môn", "Cán sự"]);
-  assert.ok(matchesCommittee(member.committee, "unassigned"));
+  assert.ok(matchesCommittee(member, "unassigned"));
   const memberData = { name: "Hồ sơ mới", studentId: "SV_NEW" };
   assert.throws(() => applyAction(club, admin, "member", { ...memberData, committee: "hc" }), /Ban/);
   assert.equal(club.members.length, 2);
@@ -58,8 +58,8 @@ test("BĐH can assign, move, filter and clear committees on existing and new pro
     const stored = JSON.parse(JSON.stringify(club)) as Club;
     const profiles = workspaceView(stored, admin, 1).club.members;
     assert.equal(profiles.find(m => m.id === memberId)?.committee, committee);
-    assert.equal(profiles.filter(m => matchesCommittee(m.committee, committee)).length, committee === "tt" ? 2 : 1);
-    assert.equal(profiles.filter(m => matchesCommittee(m.committee, "all")).length, 3);
+    assert.equal(profiles.filter(m => matchesCommittee(m, committee)).length, committee === "tt" ? 2 : 1);
+    assert.equal(profiles.filter(m => matchesCommittee(m, "all")).length, 3);
   }
   applyAction(club, admin, "member", { memberId, email: "member@example.test" });
   assert.throws(() => applyAction(club, admin, "member", { memberId, committee: "__proto__" }), /Ban/);
@@ -69,8 +69,46 @@ test("BĐH can assign, move, filter and clear committees on existing and new pro
   assert.equal(member.role, "member");
   assert.equal(workspaceView(club, student, 2).isAdmin, false);
   applyAction(club, admin, "member", { memberId, committee: "" });
-  assert.ok(matchesCommittee(member.committee, "unassigned"));
-  assert.ok(!matchesCommittee(member.committee, "cs"));
+  assert.ok(matchesCommittee(member, "unassigned"));
+  assert.ok(!matchesCommittee(member, "cs"));
+});
+
+test("Multiple committees round-trip with old profiles and never multiply weekly or monthly points", () => {
+  const { club, memberId, week } = fixture();
+  const member = club.members.find(m => m.id === memberId)!;
+  member.committee = "cm";
+  applyAction(club, admin, "saveManualActivity", { memberId, week: week.id, date: today(), kind: "committee", committee: "cm", points: 2.75 });
+  const month = today().slice(0, 7);
+  const before = scoreFor(club, memberId, month);
+  const scores = workspaceView(club, admin, 1).weeklyScores.filter(s => s.memberId === memberId && s.week === week.id);
+  assert.equal(scores.length, 1);
+  assert.equal(scores[0].activityCounts.committee, 2.75);
+  const set = (committees: unknown) => applyAction(club, admin, "member", { memberId, committees });
+
+  set(["cs", "tt", "cm", "tt"]);
+  applyAction(club, admin, "member", { memberId, email: "member@example.test" });
+  assert.throws(() => applyAction(club, admin, "member", { memberId, committee: "" }), /nhiều ban/);
+  for (const invalid of [null, "cm", ["tt", "hc"], [2], {}, ["__proto__"]]) {
+    assert.throws(() => set(invalid), /Ban/);
+  }
+  assert.throws(() => applyAction(club, student, "member", { memberId, committees: ["sk"] }), /BĐH/);
+  applyAction(club, student, "profile", { name: member.name, studentId: member.studentId, committees: [] });
+  const view = workspaceView(JSON.parse(JSON.stringify(club)), admin, 2);
+  const saved = view.club.members.find(m => m.id === memberId)!;
+  assert.deepEqual(memberCommittees(saved), ["tt", "cm", "cs"]);
+  for (const kind of committeeKinds) assert.equal(matchesCommittee(saved, kind), kind !== "sk");
+  assert.ok(!matchesCommittee(saved, "unassigned"));
+  assert.equal(view.club.members.filter(m => m.id === memberId && matchesCommittee(m, "all")).length, 1);
+  assert.deepEqual(view.weeklyScores.filter(s => s.memberId === memberId && s.week === week.id), scores);
+  assert.deepEqual(scoreFor(club, memberId, month), before);
+
+  set(["sk"]);
+  assert.deepEqual(memberCommittees(member), ["sk"]);
+  set([]);
+  assert.ok(matchesCommittee(member, "unassigned"));
+  assert.deepEqual(scoreFor(club, memberId, month), before);
+  applyAction(club, admin, "member", { name: "Thành viên mới", studentId: "SV_MULTI", committees: committeeKinds });
+  assert.deepEqual(memberCommittees(club.members.find(m => m.studentId === "SV_MULTI")!), committeeKinds);
 });
 
 test("Rút yêu cầu trở về vắng có phép với ô Vắng và điểm thống nhất", () => {

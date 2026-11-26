@@ -1,6 +1,7 @@
 import { activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
 import type { SharedLink } from "./shared-links";
-import type { CommitteeKind } from "./committees";
+import type { CommitteeMembership } from "./committees";
+import type { FontId } from "./interface-fonts";
 import {
   academicWeekFor,
   activeAvailabilityDatasetFor,
@@ -13,14 +14,14 @@ export type DutyResult =
   | "unexcused"
   | "excused"
   | "cancelled";
-export type Member = {
+export type Member = CommitteeMembership & {
   id: string;
   name: string;
   studentId: string;
   userId?: string;
   email?: string;
   role: "admin" | "member";
-  committee?: CommitteeKind;
+  fontPreference?: FontId;
   active: boolean;
   joined: string;
   left?: string;
