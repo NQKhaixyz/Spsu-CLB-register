@@ -1,5 +1,5 @@
 import { addDays, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, pausedForScoreWeek, reportMembers, scoreFor, type Club, type ScoreboardRow, type View } from "./club";
-import { committeeLabels } from "./committees";
+import { committeeLabels, memberCommitteeNames } from "./committees";
 import { academicWeekFor, activeAvailabilityDatasetFor, profileAvailability, profileAvailabilityRows } from "./availability";
 
 // Show current organization and role wording in the interface and reports,
@@ -30,7 +30,10 @@ function currentTerminology<T>(value: T): T {
 export function monthlyScoreboard(club: Club, month: string, asOf = today()): ScoreboardRow[] {
   return reportMembers(club, month, asOf).map(member => {
     const { points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts } = scoreFor(club, member.id, month);
-    return { memberId: member.id, name: displayText(member.name), points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts };
+    return {
+      memberId: member.id, name: displayText(member.name), committeeNames: memberCommitteeNames(member),
+      points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts,
+    };
   });
 }
 

@@ -93,8 +93,8 @@ test("Monthly workbook follows the same cutoff in every personal worksheet, warn
           [headings.getCell(col + 1).text, ws.getRow(index + 4).getCell(col + 1).text])));
     };
     const summary = rows("Tổng hợp tháng");
-    assert.deepEqual(summary.map(r => [r["Họ tên"], Number(r["Tổng điểm"])]),
-      monthlyScoreboard(club, "2026-11", day).map(r => [r.name, r.points]));
+    assert.deepEqual(summary.map(r => [r["Họ tên"], Number(r["Tổng điểm"]), r["Ban trực thuộc"]]),
+      monthlyScoreboard(club, "2026-11", day).map(r => [r.name, r.points, r.committeeNames]));
     return { rows, summary, warnings };
   }
   const before = await snapshot("2026-11-08");

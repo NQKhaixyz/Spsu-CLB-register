@@ -153,6 +153,7 @@ td,.person-cell strong { font-size:15px; }
 .score-tally { padding: 0 22px 14px; color: var(--ink); font-size: .9375rem; }
 .score-tally strong { margin-right: .45em; }
 .score-self { margin-left: .5em; color: var(--green); font-size: .8125rem; font-weight: 600; }
+.score-committee { display: block; margin-top: 3px; color: var(--muted); font-size: .8125rem; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .scoreboard-table th, .scoreboard-table td { padding-inline: 12px; }
   .scoreboard-table th:first-child, .scoreboard-table td:first-child { padding-left: 16px; }

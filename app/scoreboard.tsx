@@ -45,7 +45,12 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
             </tr></thead>
             <tbody>{visible.map(row => (
               <tr key={row.memberId}>
-                <td><span className="score-name">{row.name}{memberId === row.memberId && !onlyMine && <small className="score-self">Bạn</small>}</span></td>
+                <td>
+                  <span className="score-name">
+                    {row.name}{memberId === row.memberId && !onlyMine && <small className="score-self">Bạn</small>}
+                    {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
+                  </span>
+                </td>
                 <td><strong>{row.points}</strong></td><td>{row.completed}</td><td>{row.dutyMissed}</td>
                 <td>{row.meetingMissed}</td><td>{row.passed}</td><td>{row.lateCount}</td>
                 {visibleActivityKinds.map(kind => <td key={kind}>{row.activityCounts[kind]}</td>)}

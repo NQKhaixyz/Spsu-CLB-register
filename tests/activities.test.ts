@@ -38,14 +38,16 @@ test("Members see the same monthly totals as the admin report across a split wee
   const stored = JSON.stringify(club);
   const august = monthlyScoreboard(club, "2026-08");
   const september = monthlyScoreboard(club, "2026-09");
-  assert.deepEqual(august.map(r => [r.memberId, r.points]), [["a1", 0], ["a2", 5.25]]);
+  assert.deepEqual(august.map(r => [r.memberId, r.points, r.committeeNames]), [
+    ["a1", 0, "Chưa phân ban"], ["a2", 5.25, "Điều hành"],
+  ]);
   assert.deepEqual(september.map(r => [r.memberId, r.points]), [["a0", 0], ["a1", 3.5], ["a2", 6.75]]);
   assert.equal(weeklyScoreFor(club, "a2", week).points, 12);
   for (const row of september) {
     const report = scoreFor(club, row.memberId, "2026-09");
     assert.equal(row.points, report.points);
     assert.deepEqual(row.activityCounts, report.activityCounts);
-    assert.deepEqual(Object.keys(row).sort(), ["memberId", "name", "points", "completed", "dutyMissed", "meetingMissed", "passed", "lateCount", "activityCounts"].sort());
+    assert.deepEqual(Object.keys(row).sort(), ["memberId", "name", "committeeNames", "points", "completed", "dutyMissed", "meetingMissed", "passed", "lateCount", "activityCounts"].sort());
   }
   const published = JSON.stringify([...august, ...september]);
   for (const privateValue of [note, "ACT002", "other-activity", "aug-peer"]) assert.ok(!published.includes(privateValue));
