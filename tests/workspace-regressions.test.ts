@@ -86,7 +86,35 @@ test("Sidebar order persists privately with per-role defaults and rejects unavai
   assert.deepEqual(resolveSidebarOrder(false, adminOrder), adminOrder.filter(tab => tab !== "overview"));
   assert.deepEqual(resolveSidebarOrder(false, ["members", "overview", "members", "saved-old-tab"]),
     ["members", ...memberDefaults.filter(tab => tab !== "members")]);
+  const savedBeforeBulletin = adminOrder.filter(tab => tab !== "bulletin");
+  assert.deepEqual(resolveSidebarOrder(true, savedBeforeBulletin), [...savedBeforeBulletin, "bulletin"]);
   assert.equal(c.logs.length, originalLogs);
+});
+test("Bulletin posts are readable by members, with BĐH-only writes, safe retries and stale edit checks", () => {
+  const { c, pending } = fixture();
+  pending.userId = "bulletin-reader";
+  const reader = { userId: pending.userId, displayName: pending.name, email: "" };
+  const post = { id: "bulletin-test-one", title: "  Lịch sinh hoạt  ", content: "  Họp vào thứ Hai\nMang theo tài liệu  " };
+  const save = (data: Record<string, unknown>) => applyAction(c, owner, "saveBulletinPost", data);
+  assert.throws(() => applyAction(c, reader, "saveBulletinPost", post), /Chỉ BĐH/);
+  assert.throws(() => save({ ...post, title: "  " }), /tiêu đề/);
+  assert.throws(() => save({ ...post, content: "  " }), /nội dung/);
+  assert.equal(c.bulletinPosts, undefined);
+
+  save(post);
+  save(post);
+  const published = { id: post.id, title: post.title.trim(), content: post.content.trim(), revision: 1 };
+  assert.deepEqual(workspaceView(c, reader, 1).club.bulletinPosts, [published]);
+  const second = { id: "bulletin-test-two", title: "Nhắc lịch trực", content: "Kiểm tra lịch tuần này" };
+  save(second);
+  assert.deepEqual(c.bulletinPosts!.map(item => item.id), [second.id, post.id]);
+
+  const edit = { ...published, content: "Chuyển lịch sang thứ Tư\nXem giờ trong Lịch trực C1" };
+  assert.throws(() => applyAction(c, reader, "saveBulletinPost", edit), /Chỉ BĐH/);
+  save(edit);
+  save(edit);
+  assert.throws(() => save({ ...published, content: "Không ghi đè được" }), /vừa được cập nhật/);
+  assert.deepEqual(workspaceView(c, reader, 2).club.bulletinPosts?.[1], { ...edit, revision: 2 });
 });
 test("Member response removes both staged and active source datasets without modifying admin state",()=>{
   const {c,pending}=fixture(); pending.userId="workspace-member";

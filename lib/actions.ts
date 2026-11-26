@@ -39,6 +39,7 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
+import { bulletinContentLimit, bulletinTitleLimit } from "./bulletin";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
 import { isFontId } from "./interface-fonts";
 import { defaultSidebarOrder } from "./workspace-navigation";
@@ -213,7 +214,24 @@ export function applyAction(
       "Số người mỗi buổi trực phải là số nguyên từ 1–50.");
     return value;
   };
-  if (action === "moveSharedLink") {
+  if (action === "saveBulletinPost") {
+    const { id, revision } = data;
+    check(typeof id === "string" && /^[a-zA-Z0-9_-]{8,80}$/.test(id), "Mã bản tin không hợp lệ. Mở lại hộp thoại rồi thử lại.");
+    const title = typeof data.title === "string" ? data.title.trim() : "";
+    const content = typeof data.content === "string" ? data.content.trim() : "";
+    check(title.length > 0 && title.length <= bulletinTitleLimit, `Nhập tiêu đề từ 1 đến ${bulletinTitleLimit} ký tự.`);
+    check(content.length > 0 && content.length <= bulletinContentLimit, `Nhập nội dung từ 1 đến ${bulletinContentLimit} ký tự.`);
+    const post = club.bulletinPosts?.find(item => item.id === id);
+    if (post) {
+      if (post.title === title && post.content === content) return;
+      check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để xem nội dung mới.");
+      Object.assign(post, { title, content, revision: post.revision + 1 });
+    } else {
+      check(revision === undefined, "Không tìm thấy bản tin cần sửa.");
+      (club.bulletinPosts ??= []).unshift({ id, title, content, revision: 1 });
+    }
+    note(`${post ? "Cập nhật" : "Đăng"} bản tin ${title}`);
+  } else if (action === "moveSharedLink") {
     const links = club.links ?? [];
     const index = links.findIndex(link => link.id === data.id);
     const offset = data.offset;

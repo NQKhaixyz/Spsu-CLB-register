@@ -2,6 +2,7 @@ export const sidebarTabLabels = {
   scoreboard: "Bảng điểm",
   overview: "Tổng quan",
   activity: "Hoạt động",
+  bulletin: "Bảng tin",
   links: "Link",
   members: "Thành viên",
   personal: "Góc thành viên",

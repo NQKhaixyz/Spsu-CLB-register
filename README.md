@@ -104,6 +104,7 @@ Kiểm thử `tests/native-flow.mjs` chỉ chấp nhận máy chủ loopback. N�
 - Trong **Bảng điểm**, chọn **Điểm tuần** hoặc **Điểm tháng**. Tài khoản thành viên có thể chuyển giữa **Điểm của tôi** và **Toàn Đội**. Nút **Xem điểm toàn Đội** ở Góc thành viên mở bảng điểm tuần.
 - **Hoạt động** gồm **Đăng ký họp**, **Lịch trực C1** và **Sự kiện**. Trong tài khoản BĐH, mục sự kiện có tên **Tạo sự kiện** và dùng để quản lý, duyệt đăng ký.
 - Vào **Cài đặt cá nhân → Thứ tự tab**, dùng mũi tên để sắp xếp thanh bên rồi bấm **Lưu thứ tự**. Thứ tự đi theo tài khoản đang đăng nhập.
+- Trong **Bảng tin**, BĐH đăng hoặc sửa các cập nhật cho toàn Đội. Thành viên bấm vào tin để đọc toàn bộ nội dung.
 - Trong **Thành viên**, người đã đăng nhập có thể tìm theo tên hoặc MSSV, lọc theo ban và xem hồ sơ, lịch rảnh sáng/chiều cùng khung giờ và tuần học đã áp dụng của từng người. BĐH quản lý hồ sơ và tài khoản.
 - Trong **Thành viên → Hồ sơ**, BĐH chọn **Thêm thành viên** hoặc **Chỉnh sửa** rồi tích các ban thành viên tham gia. Một người có thể thuộc nhiều ban trong số Truyền thông, Sự kiện, Chuyên môn và Điều hành. **Lọc theo ban** có ở Hồ sơ và phần nhập điểm tuần. Bỏ hết dấu tích để đưa hồ sơ về **Chưa phân ban**. Quyền BĐH được quản lý qua trường Vai trò.
 - Trong **Cài đặt cá nhân → Phông chữ**, mỗi người có thể xem thử Inter, Nunito, Lexend hoặc Spectral. Lựa chọn được lưu riêng vào tài khoản và dùng lại khi đăng nhập trên thiết bị khác. Phông mặc định là Inter.

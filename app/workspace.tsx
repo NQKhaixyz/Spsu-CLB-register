@@ -17,6 +17,7 @@ import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
 import DutyEvidenceAction from "./duty-evidence";
 import SharedLinks from "./shared-links";
+import BulletinBoard from "./bulletin-board";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
 import { activeAvailabilityDatasetFor, availabilityForDuty, profileAvailability, profileAvailabilityRows } from "../lib/availability";
 import {
@@ -55,6 +56,7 @@ import {
   Menu,
   MessageSquare,
   MoreHorizontal,
+  Newspaper,
   Plus,
   RefreshCw,
   Search,
@@ -118,6 +120,7 @@ type Tab =
   | "meetings"
   | "requests"
   | "duties"
+  | "bulletin"
   | "links"
   | "members"
   | "reports"
@@ -134,6 +137,7 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports"] },
   overview: { icon: LayoutDashboard, sections: ["overview"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
+  bulletin: { icon: Newspaper, sections: ["bulletin"] },
   links: { icon: Link2, sections: ["links"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
@@ -189,23 +193,25 @@ export default function Workspace() {
   );
   const closeModal = useCallback(() => setModal(null), []);
   const notify = (text: string, error = false) => setToast({ text: displayMessage(text), error });
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const r = await fetch("/api/workspace", { cache: "no-store" });
+      const r = await fetch("/api/workspace", { cache: "no-store", signal });
+      if (signal?.aborted) return;
       if (r.status === 401) {
         setView(null);
         setAuth(true);
         return;
       }
       const data = (await r.json()) as View & { error?: string };
+      if (signal?.aborted) return;
       if (!r.ok) throw new Error(data.error || "Không tải được dữ liệu");
-      setView(data);
+      setView(current => signal && current && current.revision > data.revision ? current : data);
       setAuth(false);
       setLoadError("");
     } catch (e) {
-      setLoadError(displayMessage(e instanceof Error ? e.message : "Không tải được dữ liệu"));
+      if (!signal?.aborted) setLoadError(displayMessage(e instanceof Error ? e.message : "Không tải được dữ liệu"));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -355,7 +361,7 @@ export default function Workspace() {
       });
       const result = (await r.json()) as View & { error?: string; notice?: string };
       if (!r.ok) throw new Error(result.error || "Không lưu được dữ liệu");
-      setView(result);
+      setView(current => current && current.me?.id === result.me?.id && current.revision > result.revision ? current : result);
       if (close) closeModal();
       notify(result.notice ?? message);
       return true;
@@ -383,7 +389,7 @@ export default function Workspace() {
       <div className="welcome">
         <Brand />
         <Empty title="Chưa kết nối được dữ liệu">{loadError}</Empty>
-        <Button onClick={load}>
+        <Button onClick={() => void load()}>
           <RefreshCw size={16} /> Thử lại
         </Button>
       </div>
@@ -3458,6 +3464,9 @@ export default function Workspace() {
             </>
           ) : activeTab === "duties" ? (
             duties()
+          ) : activeTab === "bulletin" ? (
+            <BulletinBoard posts={club.bulletinPosts ?? []} isAdmin={isAdmin} busy={busy} onOpen={load}
+              onSave={draft => act("saveBulletinPost", draft, draft.revision === undefined ? "Đã đăng bản tin" : "Đã cập nhật bản tin", false)} />
           ) : activeTab === "links" ? (
             <SharedLinks
               links={club.links ?? []}
