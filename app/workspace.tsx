@@ -7,7 +7,9 @@ import { committeeKinds, committeeLabels, memberCommittees, memberCommitteeNames
 import { availableDays, MemberProfile } from "./member-profile";
 import { displayMessage } from "../lib/display-message";
 import { resolveFont } from "../lib/interface-fonts";
+import { defaultSidebarOrder, resolveSidebarOrder, sidebarTabLabels, type SidebarTab } from "../lib/workspace-navigation";
 import { FontSettings } from "./font-settings";
+import { SidebarOrderSettings } from "./sidebar-order-settings";
 import { MemberMonthlyScoreboard, Scoreboard, type ScoreScope } from "./scoreboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
@@ -69,6 +71,7 @@ import {
   WandSparkles,
   X,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 import {
   addDays,
@@ -121,35 +124,19 @@ type Tab =
   | "settings"
   | "preferences"
   | "personal";
-const memberTabs = new Set<Tab>(["personal", "preferences", "weeklyScores", "reports", "duties", "links", "requests", "members"]);
 type Modal = {
   title: string;
   description?: string;
   content: ReactNode;
   wide?: boolean;
 };
-const tabs = [
-  { id: "weeklyScores", name: "Điểm hàng tuần", icon: ClipboardCheck },
-  { id: "overview", name: "Tổng quan", icon: LayoutDashboard },
-  { id: "meetings", name: "Họp hằng tuần", icon: CalendarCheck2 },
-  { id: "requests", name: "Tạo sự kiện", icon: MessageSquare },
-  { id: "duties", name: "Lịch trực C1", icon: CalendarDays },
-  { id: "links", name: "Link", icon: Link2 },
-  { id: "members", name: "Thành viên", icon: Users },
-  { id: "reports", name: "Báo cáo tháng", icon: FileSpreadsheet },
-] as const;
-const titles: Record<Tab, string> = {
-  weeklyScores: "Điểm hàng tuần",
-  overview: "Tổng quan",
-  meetings: "Họp hằng tuần",
-  requests: "Tạo sự kiện",
-  duties: "Lịch trực C1",
-  links: "Link",
-  members: "Thành viên",
-  reports: "Báo cáo tháng",
-  settings: "Cài đặt Đội",
-  preferences: "Cài đặt cá nhân",
-  personal: "Góc thành viên",
+const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
+  scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports"] },
+  overview: { icon: LayoutDashboard, sections: ["overview"] },
+  activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
+  links: { icon: Link2, sections: ["links"] },
+  members: { icon: Users, sections: ["members"] },
+  personal: { icon: UserRound, sections: ["personal"] },
 };
 const getForm = (e: FormEvent<HTMLFormElement>) => {
   e.preventDefault();
@@ -183,7 +170,8 @@ export default function Workspace() {
   const [auth, setAuth] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
-  const [memberSection,setMemberSection]=useState<"profiles"|"points"|"availability">("profiles");
+  const [memberSection, setMemberSection] = useState<"profiles" | "availability">("profiles");
+  const [editingWeeklyPoints, setEditingWeeklyPoints] = useState(false);
   const [committeeFilter, setCommitteeFilter] = useState<CommitteeFilter>("all");
   const [scoreScope, setScoreScope] = useState<ScoreScope>("team");
   const [mobileNav, setMobileNav] = useState(false);
@@ -381,10 +369,12 @@ export default function Workspace() {
   }
   const go = (next: Tab) => {
     setTab(next);
+    setEditingWeeklyPoints(false);
     setFilter("all");
     setSearch("");
     setPage(0);
     setMobileNav(false);
+    window.scrollTo(0, 0);
   };
   if (loading) return <Loading />;
   if (auth) return <Login onSuccess={load} />;
@@ -465,7 +455,11 @@ export default function Workspace() {
         </Button>
       </div>
     );
-  const activeTab = !isAdmin && !memberTabs.has(tab) ? "personal" : tab;
+  const activeTab = !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
+  const sidebarOrder = resolveSidebarOrder(isAdmin, me.sidebarOrder);
+  const activeSidebarTab = sidebarOrder.find(id => sidebarGroups[id].sections.includes(activeTab));
+  const headerTitle = activeSidebarTab ? sidebarTabLabels[activeSidebarTab]
+    : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
   const week =
     club.weeks.find((w) => w.id === selectedWeek) ?? club.weeks.at(-1)!;
   const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
@@ -485,6 +479,14 @@ export default function Workspace() {
     return !!event && (event.requiresEvidence ? eventEvidenceView(row, event, me).canReview : isEventOpen(event, currentDay));
   }).length;
   const pendingTotal = pending.length + activityPending;
+  const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "scoreboard" ? [
+    { id: "weeklyScores", label: "Điểm tuần" },
+    { id: "reports", label: "Điểm tháng" },
+  ] : activeSidebarTab === "activity" ? [
+    { id: "meetings", label: "Đăng ký họp", pending: pending.length },
+    { id: "duties", label: "Lịch trực C1" },
+    { id: "requests", label: isAdmin ? "Tạo sự kiện" : "Sự kiện", pending: activityPending },
+  ] : [];
   const count = (s: Registration) =>
     week.entries.filter((e) => e.status === s).length;
   const liveMembers = club.members.filter((m) => m.active);
@@ -1324,7 +1326,7 @@ export default function Workspace() {
         )}
         {!full && pending.length ? (
           <div className="panel-link">
-            <LinkButton onClick={() => go("requests")}>
+            <LinkButton onClick={() => go("meetings")}>
               Xem tất cả yêu cầu
             </LinkButton>
           </div>
@@ -1610,7 +1612,7 @@ export default function Workspace() {
             description="Đang chờ BĐH phê duyệt"
             icon={Clock3}
             color="amber"
-            onClick={() => go("requests")}
+            onClick={() => go("meetings")}
           />
           <Stat
             title="Đăng ký xin vắng"
@@ -2319,6 +2321,43 @@ export default function Workspace() {
       memberId={isAdmin ? undefined : me!.id} scope={scoreScope} onScopeChange={setScoreScope} />;
   }
 
+  function committeeSelect() {
+    return (
+      <label className="member-committee-filter">
+        Lọc theo ban
+        <select className="week-select" value={committeeFilter} onChange={e => setCommitteeFilter(e.target.value as CommitteeFilter)}>
+          <option value="all">Tất cả ban</option>
+          {committeeKinds.map(kind => <option key={kind} value={kind}>{committeeLabels[kind]}</option>)}
+          <option value="unassigned">Chưa phân ban</option>
+        </select>
+      </label>
+    );
+  }
+
+  function weeklyScorePage() {
+    return (
+      <>
+        <div className="page-heading">
+          <h1>Điểm tuần</h1>
+          <div className="heading-actions">
+            {weekSelect}
+            {isAdmin && <Button variant="secondary" onClick={() => setEditingWeeklyPoints(value => !value)}>
+              {editingWeeklyPoints ? "Xem bảng điểm tuần" : "Nhập điểm / trừ điểm"}
+            </Button>}
+          </div>
+        </div>
+        {isAdmin && editingWeeklyPoints ? <>
+          <div className="member-section-tools">{committeeSelect()}</div>
+          <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin week={week.id}
+            weeklyScores={weeklyScores} committeeFilter={committeeFilter} busy={busy} onAction={act} />
+        </> : <>
+          <p className="notice green weekly-score-note">Tuần mới bắt đầu từ 0, điểm đã ghi được cộng vào báo cáo tháng theo ngày tính điểm, điểm sự kiện chỉ cộng sau khi BĐH duyệt</p>
+          {weekScoreTable()}
+        </>}
+      </>
+    );
+  }
+
   function members() {
     const scheduleOnly = !isAdmin && memberSection === "availability";
     const inCommittee = club.members.filter(m => matchesCommittee(m, committeeFilter));
@@ -2336,7 +2375,7 @@ export default function Workspace() {
               Những người cùng nhịp
             </h1>
             <p>
-              {liveMembers.length} thành viên đang hoạt động · {isAdmin ? "Quản lý hồ sơ, điểm cộng/trừ và lịch rảnh tại đây" : "Tra cứu hồ sơ, lịch rảnh và bảng điểm của toàn Đội"}
+              {liveMembers.length} thành viên đang hoạt động · {isAdmin ? "Quản lý hồ sơ và lịch rảnh tại đây" : "Tra cứu hồ sơ và lịch rảnh của toàn Đội"}
             </p>
             {isAdmin && !club.demo && club.officialSince ? (
               <Badge status="attending">
@@ -2356,26 +2395,19 @@ export default function Workspace() {
             <Button onClick={() => editMember()}>
               <Plus size={16} /> Thêm thành viên
             </Button>
-          </div> : memberSection === "points" ? weekSelect : null}
+          </div> : null}
         </div>
         <div className="member-section-tools">
           <nav className="member-section-nav" aria-label="Các mục thành viên">
-            {([["profiles","Hồ sơ"],["points",isAdmin ? "Điểm cộng / trừ" : "Bảng điểm"],["availability","Lịch rảnh"]] as const).map(([id,label])=><Button key={id} variant={memberSection===id?"primary":"secondary"} aria-pressed={memberSection===id} onClick={()=>setMemberSection(id)}>{label}</Button>)}
+            {([["profiles", "Hồ sơ"], ["availability", "Lịch rảnh"]] as const).map(([id, label]) => (
+              <button key={id} type="button" className={`btn ${memberSection === id ? "primary" : "secondary"}`}
+                aria-pressed={memberSection === id} onClick={() => setMemberSection(id)}>{label}</button>
+            ))}
           </nav>
-          {(memberSection === "profiles" || (isAdmin ? memberSection === "points" : memberSection === "availability")) && <label className="member-committee-filter">
-            Lọc theo ban
-            <select className="week-select" value={committeeFilter} onChange={e => setCommitteeFilter(e.target.value as CommitteeFilter)}>
-              <option value="all">Tất cả ban</option>
-              {committeeKinds.map(kind => <option key={kind} value={kind}>{committeeLabels[kind]}</option>)}
-              <option value="unassigned">Chưa phân ban</option>
-            </select>
-          </label>}
+          {(!isAdmin || memberSection === "profiles") && committeeSelect()}
         </div>
-        {memberSection === "points" ? (isAdmin
-          ? <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin={isAdmin} week={week.id} weeklyScores={weeklyScores} committeeFilter={committeeFilter} busy={busy} onAction={act}/>
-          : weekScoreTable())
-          : isAdmin && memberSection === "availability" ? <>
-          <p className="notice neutral">Sửa các ô lịch rảnh của từng người trong <button className="text-button" onClick={()=>setMemberSection("profiles")}>Hồ sơ → Chỉnh sửa</button>, nhập file Excel tại tab Lịch trực C1</p>
+        {isAdmin && memberSection === "availability" ? <>
+          <p className="notice neutral">Sửa các ô lịch rảnh của từng người trong <button className="text-button" onClick={()=>setMemberSection("profiles")}>Hồ sơ → Chỉnh sửa</button>, nhập file Excel tại Hoạt động → Lịch trực C1</p>
           {memberAvailability()}
         </> : <section className="panel">
           <div className="members-toolbar">
@@ -2527,7 +2559,7 @@ export default function Workspace() {
           <div>
             <span className="eyebrow">MỖI ĐÓNG GÓP ĐỀU ĐƯỢC GHI NHẬN</span>
             <h1>
-              Báo cáo hoạt động
+              Điểm tháng
             </h1>
             <p>Tổng hợp trực C1, họp và các hoạt động trong tháng, Excel xuất theo tháng</p>
           </div>
@@ -2846,31 +2878,8 @@ export default function Workspace() {
     );
   }
 
-  function personal() {
-    const mine = view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
-    const shifts = club.schedules
-      .filter((s) => s.published)
-      .flatMap((s) => s.shifts.filter((t) => isShiftPublished(s, t)))
-      .filter(
-        (t) =>
-          t.date >= weekId() && t.assignments.some((a) => a.memberId === me!.id),
-      )
-      .sort((a, b) => a.id.localeCompare(b.id));
+  function meetingRegistration() {
     return (
-      <>
-        <div className="page-heading">
-          <div>
-            <span className="eyebrow">{me!.name}</span>
-            <h1>
-              Hoạt động của tôi
-            </h1>
-            <p>Đăng ký họp và xem những đóng góp của bạn tại đây</p>
-          </div>
-          <div className="heading-actions">
-            <Badge status="neutral">MSSV {me!.studentId}</Badge>
-            {!isAdmin && <Button variant="secondary" onClick={() => { setScoreScope("team"); go("weeklyScores"); }}>Xem điểm toàn Đội</Button>}
-          </div>
-        </div>
         <div className="personal-top" id="personal-registration">
           {meetingCard(true)}
           <section className="panel registration-panel">
@@ -2982,6 +2991,35 @@ export default function Workspace() {
             ) : null}
           </section>
         </div>
+    );
+  }
+
+  function personal() {
+    const mine = view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
+    const shifts = club.schedules
+      .filter((s) => s.published)
+      .flatMap((s) => s.shifts.filter((t) => isShiftPublished(s, t)))
+      .filter(
+        (t) =>
+          t.date >= weekId() && t.assignments.some((a) => a.memberId === me!.id),
+      )
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return (
+      <>
+        <div className="page-heading">
+          <div>
+            <span className="eyebrow">{me!.name}</span>
+            <h1>
+              Hoạt động của tôi
+            </h1>
+            <p>Đăng ký họp và xem những đóng góp của bạn tại đây</p>
+          </div>
+          <div className="heading-actions">
+            <Badge status="neutral">MSSV {me!.studentId}</Badge>
+            {!isAdmin && <Button variant="secondary" onClick={() => { setScoreScope("team"); go("weeklyScores"); }}>Xem điểm toàn Đội</Button>}
+          </div>
+        </div>
+        {meetingRegistration()}
         <div className="personal-bottom">
           <section className="panel">
             <PanelHead
@@ -3154,28 +3192,19 @@ export default function Workspace() {
         </div>
         <span className="nav-label">KHÔNG GIAN LÀM VIỆC</span>
         <nav aria-label="Điều hướng chính">
-          {(isAdmin ? tabs : tabs.filter(t => memberTabs.has(t.id))).map(
-            (item) => (
-              <button
-                key={item.id}
-                className={activeTab === item.id ? "active" : ""}
-                onClick={() => go(item.id)}
-              >
-                <item.icon size={19} />
-                <span>{item.id === "requests" && !isAdmin ? "Sự kiện" : item.name}</span>
-                {item.id === "requests" && pendingTotal ? (
-                  <b>{pendingTotal}</b>
-                ) : null}
+          {sidebarOrder.map(id => {
+            const { icon: Icon, sections } = sidebarGroups[id];
+            const active = id === activeSidebarTab;
+            return (
+              <button key={id} type="button" className={active ? "active" : ""}
+                aria-current={active ? "page" : undefined}
+                onClick={() => go(active ? activeTab : sections[0])}>
+                <Icon size={19} aria-hidden="true" />
+                <span>{sidebarTabLabels[id]}</span>
+                {id === "activity" && pendingTotal > 0 && <b aria-hidden="true">{pendingTotal}</b>}
               </button>
-            ),
-          )}
-          <button
-            className={activeTab === "personal" ? "active" : ""}
-            onClick={() => go("personal")}
-          >
-            <UserRound size={19} />
-            <span>Góc thành viên</span>
-          </button>
+            );
+          })}
         </nav>
         <div className="sidebar-week">
           <div>
@@ -3289,7 +3318,7 @@ export default function Workspace() {
             </button>
             <span>Không gian Đội</span>
             <ChevronRight size={14} />
-            <strong>{activeTab === "requests" && !isAdmin ? "Sự kiện" : titles[activeTab]}</strong>
+            <strong>{headerTitle}</strong>
           </div>
           <div className="topbar-right">
             <span className="today-label">{dateLabel(today(), true)}</span>
@@ -3309,7 +3338,7 @@ export default function Workspace() {
               <button
                 className="icon-button notification-button"
                 aria-label={`${pendingTotal} đăng ký chờ xử lý`}
-                onClick={() => go("requests")}
+                onClick={() => go(pending.length ? "meetings" : "requests")}
               >
                 <Bell size={19} />
                 {pendingTotal ? <i /> : null}
@@ -3357,10 +3386,20 @@ export default function Workspace() {
             </div>
           ) : null}
           {loadError ? <div className="notice amber">{loadError}</div> : null}
+          {sectionOptions.length > 0 && (
+            <nav className="workspace-section-nav" aria-label={`Mục trong ${headerTitle}`}>
+              {sectionOptions.map(({ id, label, pending }) => (
+                <button key={id} type="button" aria-current={activeTab === id ? "page" : undefined} onClick={() => go(id)}>
+                  <span>{label}</span>
+                  {isAdmin && !!pending && <small aria-hidden="true">{pending}</small>}
+                </button>
+              ))}
+            </nav>
+          )}
           {activeTab === "overview" ? (
             overview()
           ) : activeTab === "meetings" ? (
-            <>
+            isAdmin ? <>
               <div className="page-heading">
                 <div>
                   <span className="eyebrow">CÙNG GẶP NHAU MỖI TUẦN</span>
@@ -3380,21 +3419,19 @@ export default function Workspace() {
                   >
                     <CalendarDays size={16} /> Đặt lịch
                   </Button>
-                  {isAdmin && !week.closed ? (
+                  {!week.closed ? (
                     <Button onClick={closeWeekDialog} disabled={busy}>
                       <CheckCheck size={16} /> Chốt cuộc họp
                     </Button>
                   ) : null}
-                  {isAdmin ? (
-                    <Button
-                      onClick={reopenWeekDialog}
-                      disabled={busy || !week.closed}
-                      variant="secondary"
-                      title={week.closed ? undefined : "Tuần chưa chốt"}
-                    >
-                      <RefreshCw size={16} /> Hủy chốt cuộc họp
-                    </Button>
-                  ) : null}
+                  <Button
+                    onClick={reopenWeekDialog}
+                    disabled={busy || !week.closed}
+                    variant="secondary"
+                    title={week.closed ? undefined : "Tuần chưa chốt"}
+                  >
+                    <RefreshCw size={16} /> Hủy chốt cuộc họp
+                  </Button>
                 </div>
               </div>
               {meetingCard()}
@@ -3406,19 +3443,18 @@ export default function Workspace() {
                     ? "Tuần đã mở lại để chỉnh sửa, BĐH cần chốt lại khi hoàn tất; hệ thống không tự chốt tuần này trong lúc sửa"
                     : "Tuần chưa chốt, nút Hủy chốt sẽ bật sau khi BĐH chốt cuộc họp"}
               </div>
+              {pending.length > 0 && requestsPanel(true)}
               {meetingTable()}
+            </> : <>
+              <div className="page-heading"><h1>Đăng ký họp</h1></div>
+              {meetingRegistration()}
             </>
           ) : activeTab === "weeklyScores" ? (
-            <>
-              <div className="page-heading"><div><span className="eyebrow">CÙNG THEO DÕI ĐÓNG GÓP</span><h1>Điểm hàng tuần</h1><p>Tất cả thành viên đều xem được điểm của nhau</p></div>{weekSelect}</div>
-              <p className="notice green weekly-score-note">Tuần mới bắt đầu từ 0, điểm đã ghi được cộng vào báo cáo tháng theo ngày tính điểm, điểm sự kiện chỉ cộng sau khi BĐH duyệt</p>
-              {weekScoreTable()}
-            </>
+            weeklyScorePage()
           ) : activeTab === "requests" ? (
             <>
               <div className="page-heading"><div><span className="eyebrow">THAM GIA VÀ ĐÓNG GÓP</span><h1>{isAdmin ? "Tạo sự kiện" : "Sự kiện Đội"}</h1><p>{isAdmin ? "Tạo sự kiện, duyệt đăng ký và thêm người đã tham gia" : "Đăng ký sự kiện và xem kết quả tham gia của bạn"}</p></div></div>
               <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load}/>
-              {isAdmin ? requestsPanel(true) : null}
             </>
           ) : activeTab === "duties" ? (
             duties()
@@ -3433,15 +3469,20 @@ export default function Workspace() {
             members()
           ) : activeTab === "reports" ? (
             isAdmin ? reports() : <>
-              <div className="page-heading"><h1>Báo cáo tháng</h1>{monthSelect}</div>
+              <div className="page-heading"><h1>Điểm tháng</h1>{monthSelect}</div>
               <MemberMonthlyScoreboard key={`${me.id}:${month}:${view.revision}`} month={month} memberId={me.id}
                 scope={scoreScope} onScopeChange={setScoreScope} />
             </>
           ) : activeTab === "preferences" ? (
             <>
               <div className="page-heading"><h1>Cài đặt cá nhân</h1></div>
-              <FontSettings key={me.id + savedFont} current={savedFont} busy={busy}
-                onSave={font => { void act("setMyFont", { font }, "Đã lưu phông chữ của bạn", false); }} />
+              <div className="personal-settings-list">
+                <SidebarOrderSettings key={`${me.id}:${sidebarOrder.join(",")}`} current={sidebarOrder}
+                  defaults={defaultSidebarOrder(isAdmin)} busy={busy}
+                  onSave={order => { void act("setMySidebarOrder", { order }, "Đã lưu thứ tự tab", false); }} />
+                <FontSettings key={me.id + savedFont} current={savedFont} busy={busy}
+                  onSave={font => { void act("setMyFont", { font }, "Đã lưu phông chữ của bạn", false); }} />
+              </div>
             </>
           ) : activeTab === "settings" ? (
             settings()

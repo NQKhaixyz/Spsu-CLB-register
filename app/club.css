@@ -122,14 +122,15 @@ input[type="checkbox"]:disabled {
 .skip-link {
   position: fixed;
   z-index: 200;
-  left: 260px;
-  top: -60px;
+  left: 12px;
+  top: 0;
+  transform: translateY(-100%);
   padding: 12px 18px;
   background: white;
   border-radius: 8px;
 }
 .skip-link:focus {
-  top: 12px;
+  transform: translateY(12px);
 }
 .muted {
   color: var(--muted);

@@ -2,6 +2,7 @@ import { activityScoreFor, type ActivityRates, type ActivityRegistration, type M
 import type { SharedLink } from "./shared-links";
 import type { CommitteeMembership } from "./committees";
 import type { FontId } from "./interface-fonts";
+import type { SidebarTab } from "./workspace-navigation";
 import {
   academicWeekFor,
   activeAvailabilityDatasetFor,
@@ -22,6 +23,7 @@ export type Member = CommitteeMembership & {
   email?: string;
   role: "admin" | "member";
   fontPreference?: FontId;
+  sidebarOrder?: SidebarTab[];
   active: boolean;
   joined: string;
   left?: string;

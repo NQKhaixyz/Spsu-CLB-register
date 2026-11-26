@@ -4,6 +4,7 @@ import { applyAction } from "../lib/actions";
 import { createClub, type AvailabilityDataset } from "../lib/club";
 import { workspaceView } from "../lib/workspace-view";
 import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
+import { defaultSidebarOrder, resolveSidebarOrder } from "../lib/workspace-navigation";
 import { displayMessage } from "../lib/display-message";
 
 const owner = {userId:"workspace-regression-owner",displayName:"BĐH",email:""};
@@ -52,6 +53,41 @@ function fixture() {
   c.activeAvailabilityDataset=structuredClone(dataset);
   return {c,pending};
 }
+test("Sidebar order persists privately with per-role defaults and rejects unavailable or duplicate tabs", () => {
+  const { c, pending } = fixture();
+  pending.userId = "sidebar-order-reader";
+  const member = { userId: pending.userId, displayName: pending.name, email: "" };
+  const adminDefaults = defaultSidebarOrder(true);
+  const memberDefaults = defaultSidebarOrder(false);
+  const admin = c.members.find(m => m.userId === owner.userId)!;
+  const originalLogs = c.logs.length;
+  assert.deepEqual(resolveSidebarOrder(true, admin.sidebarOrder), adminDefaults);
+  assert.deepEqual(resolveSidebarOrder(false, pending.sidebarOrder), memberDefaults);
+  assert.ok(adminDefaults.includes("overview"));
+  assert.ok(!memberDefaults.includes("overview"));
+
+  const memberOrder = [...memberDefaults].reverse();
+  const adminOrder = [...adminDefaults].reverse();
+  applyAction(c, member, "setMySidebarOrder", { order: memberOrder });
+  applyAction(c, owner, "setMySidebarOrder", { order: adminOrder });
+  for (const order of [null, "members", ["members"], memberOrder.map(tab => tab === "links" ? "overview" : tab),
+    memberOrder.map(tab => tab === "links" ? "members" : tab)]) {
+    assert.throws(() => applyAction(c, member, "setMySidebarOrder", { order }), /Danh sách tab/);
+  }
+  assert.throws(() => applyAction(c, owner, "setMySidebarOrder", { memberId: pending.id, order: adminOrder }), /tài khoản của mình/);
+
+  const restored = JSON.parse(JSON.stringify(c)) as typeof c;
+  for (const [identity, expected] of [[owner, adminOrder], [member, memberOrder]] as const) {
+    const view = workspaceView(restored, identity, 1);
+    assert.deepEqual(view.me?.sidebarOrder, expected);
+    assert.ok(view.club.members.every(m => m.sidebarOrder === undefined));
+  }
+  assert.deepEqual(resolveSidebarOrder(true, memberOrder), [...memberOrder, "overview"]);
+  assert.deepEqual(resolveSidebarOrder(false, adminOrder), adminOrder.filter(tab => tab !== "overview"));
+  assert.deepEqual(resolveSidebarOrder(false, ["members", "overview", "members", "saved-old-tab"]),
+    ["members", ...memberDefaults.filter(tab => tab !== "members")]);
+  assert.equal(c.logs.length, originalLogs);
+});
 test("Member response removes both staged and active source datasets without modifying admin state",()=>{
   const {c,pending}=fixture(); pending.userId="workspace-member";
   const before=JSON.stringify(c);

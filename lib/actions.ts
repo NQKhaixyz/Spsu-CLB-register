@@ -41,6 +41,7 @@ import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
 import { isFontId } from "./interface-fonts";
+import { defaultSidebarOrder } from "./workspace-navigation";
 import { planDutyWeek } from "./duty-week-plan";
 import type { AvailabilitySettings } from "./club";
 
@@ -124,6 +125,17 @@ export function applyAction(
     check(data.memberId === undefined || data.memberId === me.id, "Bạn chỉ có thể đổi phông chữ cho tài khoản của mình.");
     check(isFontId(data.font), "Phông chữ không hợp lệ.");
     me.fontPreference = data.font;
+    return;
+  }
+  if (action === "setMySidebarOrder") {
+    check(data.memberId === undefined || data.memberId === me.id, "Bạn chỉ có thể đổi thứ tự tab cho tài khoản của mình.");
+    const available = defaultSidebarOrder(me.role === "admin");
+    const order = data.order;
+    check(
+      Array.isArray(order) && order.length === available.length && available.every(tab => order.includes(tab)),
+      "Danh sách tab không hợp lệ. Tải lại trang rồi thử lại.",
+    );
+    me.sidebarOrder = [...order];
     return;
   }
   if (action === "register") {
