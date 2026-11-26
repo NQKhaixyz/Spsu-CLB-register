@@ -57,10 +57,10 @@ function loadIframeAPI() {
 }
 
 const playbackErrors: Record<number, string> = {
-  100: "Video đã bị xóa hoặc đặt ở chế độ riêng tư. Chọn video khác nhé.",
-  101: "YouTube không cho phát video này trên Nhịp Đội.",
-  150: "YouTube không cho phát video này trên Nhịp Đội.",
-  153: "YouTube không nhận diện được trang trong trình duyệt này. Mở video trên YouTube để xem.",
+  100: "Video đã bị xóa hoặc đặt ở chế độ riêng tư, chọn video khác nhé",
+  101: "YouTube không cho phát video này trên Nhịp Đội",
+  150: "YouTube không cho phát video này trên Nhịp Đội",
+  153: "YouTube không nhận diện được trang trong trình duyệt này, mở video trên YouTube để xem",
 };
 
 export default function YouTubeEmbed({ playback, onChooseAnother, ref }: {
@@ -105,9 +105,9 @@ export default function YouTubeEmbed({ playback, onChooseAnother, ref }: {
           onError: ({ data }) => {
             if (stopped) return;
             if (playback.playlistId) {
-              setError("YouTube chưa phát được mục này. Hãy thử bài tiếp theo trong trình phát hoặc mở playlist trên YouTube.");
+              setError("YouTube chưa phát được mục này, hãy thử bài tiếp theo trong trình phát hoặc mở playlist trên YouTube");
             } else {
-              setError(playbackErrors[data] ?? "Video này chưa phát được. Bạn thử chọn video khác nhé.");
+              setError(playbackErrors[data] ?? "Video này chưa phát được, bạn thử chọn video khác nhé");
             }
           },
           onStateChange: ({ data }) => {

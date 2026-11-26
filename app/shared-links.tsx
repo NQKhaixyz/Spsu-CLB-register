@@ -33,7 +33,7 @@ export default function SharedLinks({ links, isAdmin, busy, onAction }: {
   return (
     <>
       <div className="page-heading">
-        <div><h1>Link<span className="heading-dot">.</span></h1><p>Tài liệu và đường dẫn BĐH chia sẻ với Đội.</p></div>
+        <div><h1>Link</h1><p>Tài liệu và đường dẫn BĐH chia sẻ với Đội</p></div>
         {isAdmin && <Button onClick={() => setEditor({ mode: "add" })}><Plus size={17} /> Thêm link</Button>}
       </div>
       {links.length ? (

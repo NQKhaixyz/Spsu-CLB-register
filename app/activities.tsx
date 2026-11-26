@@ -39,9 +39,9 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const participantEvent = eventDialog?.mode === "participant" ? events.find(event => event.id === eventDialog.eventId && !event.cancelledAt) : undefined;
   const eventChange = eventDialog && (eventDialog.mode === "cancel" || eventDialog.mode === "restore" || eventDialog.mode === "delete") ? eventDialog : null;
   return <div className="activity-sections">
-    <div className="notice green">Điểm tham gia được ghi một lần vào tuần kết thúc sự kiện. Nếu tự đăng ký sự kiện yêu cầu ảnh, hãy gửi minh chứng để BĐH duyệt. BĐH cũng có thể xác nhận trực tiếp người đã tham gia.</div>
+    <div className="notice green">Điểm tham gia được ghi một lần vào tuần kết thúc sự kiện, nếu tự đăng ký sự kiện yêu cầu ảnh, hãy gửi minh chứng để BĐH duyệt, BĐH cũng có thể xác nhận trực tiếp người đã tham gia</div>
     <section className="panel">
-      <PanelHead title="Sự kiện của Đội" description="Đăng ký được mở từ khi tạo đến hết ngày kết thúc, theo giờ Việt Nam." />
+      <PanelHead title="Sự kiện của Đội" description="Đăng ký được mở từ khi tạo đến hết ngày kết thúc, theo giờ Việt Nam" />
       <div className="event-toolbar">
         <label className="event-history">
           <input type="checkbox" checked={showHistory} onChange={e => setShowHistory(e.target.checked)} />
@@ -61,13 +61,13 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
           <div><h3>{event.name}</h3><p>{dateLabel(event.startDate,true)} – {dateLabel(event.endDate,true)}</p>
             {event.description ? <p className="event-description">{event.description}</p> : null}
             {!cancelled ? <p className="event-points">{event.points} điểm / thành viên được duyệt</p> : null}
-            {event.requiresEvidence && !cancelled && (isAdmin || !own?.confirmedDirectly) ? <p className="hint">Đăng ký cá nhân cần ảnh minh chứng · Ảnh được xóa sau 2 ngày kể từ khi kết thúc.</p> : null}
+            {event.requiresEvidence && !cancelled && (isAdmin || !own?.confirmedDirectly) ? <p className="hint">Đăng ký cá nhân cần ảnh minh chứng · Ảnh được xóa sau 2 ngày kể từ khi kết thúc</p> : null}
             <Badge status={cancelled ? "absent" : "neutral"}>{cancelled ? "Đã hủy" : ended ? "Đã kết thúc" : event.startDate > currentDay ? "Sắp diễn ra" : "Đang diễn ra"}</Badge>
             {own && !cancelled ? <span className="event-own-status"><Badge status={own.status==="confirmed"?"attending":own.status==="pending"?"pending":"neutral"}>{eventRegistrationLabel(own, evidence)}</Badge></span> : null}
             {isAdmin && !cancelled ? <p className="hint">{waitingReview} chờ duyệt · {eventRows.filter(r=>r.status==="confirmed").length} đã duyệt</p> : null}
           </div>
           <div className="activity-actions">
-            {!cancelled && !ended && (!own || own.status==="withdrawn") ? <Button disabled={busy} onClick={()=>onAction("registerEvent",{eventId:event.id},event.requiresEvidence?"Đã đăng ký. Gửi ảnh minh chứng để BĐH duyệt.":"Đã đăng ký sự kiện, chờ BĐH duyệt",false)}>Đăng ký tham gia</Button> : null}
+            {!cancelled && !ended && (!own || own.status==="withdrawn") ? <Button disabled={busy} onClick={()=>onAction("registerEvent",{eventId:event.id},event.requiresEvidence?"Đã đăng ký, gửi ảnh minh chứng để BĐH duyệt":"Đã đăng ký sự kiện, chờ BĐH duyệt",false)}>Đăng ký tham gia</Button> : null}
             {!cancelled && own && (evidence?.canUpload || evidence?.evidence) ? <Button variant="secondary" disabled={busy} onClick={() => setProof({ row: own, event })}>{eventEvidenceButton(own, evidence)}</Button> : null}
             {!cancelled && own?.status==="pending" ? <Button variant="secondary" disabled={busy} onClick={()=>onAction("withdrawActivity",{id:own.id},"Đã rút đăng ký",false)}>Rút đăng ký</Button> : null}
             {isAdmin ? <Button variant="secondary" onClick={()=>setEventFilter(event.id)}>Xem đăng ký</Button> : null}
@@ -83,9 +83,9 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
             {isAdmin && <Button variant="danger" disabled={busy} onClick={() => setEventDialog({ mode: "delete", event })}>Xóa sự kiện</Button>}
           </div>
         </article>;
-      })}</div> : <Empty title="Chưa có sự kiện đang mở">{isAdmin ? "Bấm Tạo sự kiện để nhập tên, điểm và khoảng ngày diễn ra." : "Sự kiện do BĐH tạo sẽ xuất hiện ở đây để bạn đăng ký."}</Empty>}
+      })}</div> : <Empty title="Chưa có sự kiện đang mở">{isAdmin ? "Bấm Tạo sự kiện để nhập tên, điểm và khoảng ngày diễn ra" : "Sự kiện do BĐH tạo sẽ xuất hiện ở đây để bạn đăng ký"}</Empty>}
     </section>
-    <section className="panel"><PanelHead title={isAdmin?"Duyệt đăng ký sự kiện":"Kết quả tham gia của tôi"} description="Người tham gia được tính điểm khi BĐH duyệt đăng ký hoặc xác nhận trực tiếp." />
+    <section className="panel"><PanelHead title={isAdmin?"Duyệt đăng ký sự kiện":"Kết quả tham gia của tôi"} description="Người tham gia được tính điểm khi BĐH duyệt đăng ký hoặc xác nhận trực tiếp" />
       <div className="activity-search"><Field label="Lọc theo sự kiện"><select value={selectedEvent} onChange={e=>setEventFilter(e.target.value)}><option value="">Tất cả sự kiện</option>{visibleEvents.map(event=><option key={event.id} value={event.id}>{event.name}{event.cancelledAt ? " (đã hủy)" : ""}</option>)}</select></Field></div>
       {rows.length ? <div className="activity-list">{rows.map(({ row: r, event, evidence }) => {
         const cancelled = !!event?.cancelledAt;
@@ -100,7 +100,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
           {r.status==="confirmed" || (!event?.requiresEvidence && r.status!=="declined") ? <Button variant="secondary" disabled={busy} onClick={()=>setReview({row:r,confirmed:false})}>{r.status==="confirmed"?"Hủy duyệt":"Không duyệt"}</Button>:null}
         </>:null}{!cancelled && r.memberId===me.id && r.status==="pending"?<Button variant="secondary" disabled={busy} onClick={()=>onAction("withdrawActivity",{id:r.id},"Đã rút đăng ký",false)}>Rút đăng ký</Button>:null}</div>
       </article>;
-      })}</div>:<Empty title="Chưa có người tham gia">Danh sách sẽ hiển thị khi có thành viên đăng ký hoặc được BĐH thêm vào sự kiện.</Empty>}
+      })}</div>:<Empty title="Chưa có người tham gia">Danh sách sẽ hiển thị khi có thành viên đăng ký hoặc được BĐH thêm vào sự kiện</Empty>}
     </section>
     {(eventDialog?.mode === "create" || editingEvent) ? (
       <Dialog title={editingEvent ? "Sửa sự kiện" : "Tạo sự kiện"} onClose={close} busy={busy}>
@@ -115,7 +115,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     )}
     {review?<Dialog title={review.confirmed?"Duyệt tham gia sự kiện":"Không duyệt tham gia"} description={`${activityName(club,review.row)} · ${club.members.find(m=>m.id===review.row.memberId)?.name}`} onClose={close} busy={busy}>
       <form onSubmit={async e=>{const f=formData(e);if(await onAction("reviewActivity",{id:review.row.id,confirmed:review.confirmed,reason:f.reason},"Đã cập nhật kết quả duyệt",false))close();}}>
-        <p className="dialog-copy">{review.confirmed?`Cộng ${activityPointsFor(club,review.row)} điểm vào tuần ${dateLabel(review.row.week)} – ${dateLabel(addDays(review.row.week,6))}, ngày ghi nhận ${dateLabel(review.row.date,true)}.`:"Đăng ký này không được cộng điểm và không bị trừ điểm."}</p>
+        <p className="dialog-copy">{review.confirmed?`Cộng ${activityPointsFor(club,review.row)} điểm vào tuần ${dateLabel(review.row.week)} – ${dateLabel(addDays(review.row.week,6))}, ngày ghi nhận ${dateLabel(review.row.date,true)}`:"Đăng ký này không được cộng điểm và không bị trừ điểm"}</p>
         <Field label={review.row.status==="pending"?"Ghi chú (không bắt buộc)":"Lý do điều chỉnh"}><textarea name="reason" required={review.row.status!=="pending"} minLength={review.row.status!=="pending"?3:undefined} maxLength={500}/></Field>
         <FormFooter label={review.confirmed?"Duyệt và tính điểm":"Lưu kết quả"} onCancel={close} busy={busy}/>
       </form>
@@ -162,27 +162,27 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
         </select>
       </Field>
       {previous?.status === "declined" && <Field label="Lý do thay đổi kết quả"><textarea key={memberId} name="reason" required minLength={3} maxLength={500} /></Field>}
-      <p className="hint">Xác nhận sẽ ghi {event.points} điểm vào tuần {dateLabel(weekId(event.endDate))} – {dateLabel(addDays(weekId(event.endDate), 6), true)}.{event.requiresEvidence ? " Thành viên được BĐH xác nhận trực tiếp được miễn gửi ảnh." : ""}</p>
+      <p className="hint">Xác nhận sẽ ghi {event.points} điểm vào tuần {dateLabel(weekId(event.endDate))} – {dateLabel(addDays(weekId(event.endDate), 6), true)}{event.requiresEvidence ? " Thành viên được BĐH xác nhận trực tiếp được miễn gửi ảnh" : ""}</p>
       <div className="form-footer">
         <Button variant="secondary" onClick={onClose} disabled={busy}>Quay lại</Button>
         <Button type="submit" disabled={busy || !selected}>Xác nhận tham gia</Button>
       </div>
-    </form> : <p className="dialog-copy">Không còn thành viên nào có thể thêm vào sự kiện này.</p>}
+    </form> : <p className="dialog-copy">Không còn thành viên nào có thể thêm vào sự kiện này</p>}
   </Dialog>;
 }
 
 const eventChangeCopy = {
   cancel: {
     action: "cancelEvent", title: "Hủy sự kiện", label: "Xác nhận hủy sự kiện", message: "Đã hủy sự kiện",
-    description: "Sự kiện sẽ ngừng nhận đăng ký và tạm ngừng tính điểm. BĐH có thể khôi phục sự kiện trong lịch sử.",
+    description: "Sự kiện sẽ ngừng nhận đăng ký và tạm ngừng tính điểm, BĐH có thể khôi phục sự kiện trong lịch sử",
   },
   restore: {
     action: "restoreEvent", title: "Khôi phục sự kiện", label: "Xác nhận khôi phục", message: "Đã khôi phục sự kiện",
-    description: "Điểm của các đăng ký đã duyệt sẽ được tính lại. Thành viên có thể đăng ký nếu sự kiện còn hạn.",
+    description: "Điểm của các đăng ký đã duyệt sẽ được tính lại, thành viên có thể đăng ký nếu sự kiện còn hạn",
   },
   delete: {
     action: "deleteEvent", title: "Xóa sự kiện", label: "Xóa vĩnh viễn", message: "Đã xóa sự kiện",
-    description: "Sự kiện, đăng ký, điểm và ảnh minh chứng liên quan sẽ bị xóa. Thao tác này không thể hoàn tác.",
+    description: "Sự kiện, đăng ký, điểm và ảnh minh chứng liên quan sẽ bị xóa, thao tác này không thể hoàn tác",
   },
 };
 
@@ -230,14 +230,14 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
   const [deducting,setDeducting]=useState(false);
   const [search,setSearch]=useState("");
   const close=useCallback(()=>{setMember(null);setDeducting(false);},[]);
-  const roster = club.members.filter(m => (isAdmin || m.id === me.id) && matchesCommittee(m, committeeFilter));
+  const scoresByMember = new Map(weeklyScores.map(score => [score.memberId, score]));
+  const roster = club.members.filter(m => scoresByMember.has(m.id) && (isAdmin || m.id === me.id) && matchesCommittee(m, committeeFilter));
   const rosterIds = new Set(roster.map(m => m.id));
   const deductions = (club.pointDeductions ?? []).filter(r => r.week === week && rosterIds.has(r.memberId));
   const query = search.trim().toLocaleLowerCase("vi");
-  const members = roster.filter(m => m.joined <= addDays(week,6) && (!m.left || m.left >= week) && (m.name+" "+m.studentId).toLocaleLowerCase("vi").includes(query));
-  const scoresByMember = new Map(weeklyScores.map(score => [score.memberId, score]));
+  const members = roster.filter(m => (m.name+" "+m.studentId).toLocaleLowerCase("vi").includes(query));
   return <div className="activity-sections">
-    <section className="panel"><PanelHead title={isAdmin?"Ghi nhận điểm trong tuần":"Điểm của tôi trong tuần"} description={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week,6))}. Sáng kiến, đồng đẳng viên và sự kiện hiển thị số lượt. Điểm theo ban, điểm riêng và điểm trừ hiển thị số điểm.`} />
+    <section className="panel"><PanelHead title={isAdmin?"Ghi nhận điểm trong tuần":"Điểm của tôi trong tuần"} description={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week,6))}, sáng kiến, đồng đẳng viên và sự kiện hiển thị số lượt, điểm theo ban, điểm riêng và điểm trừ hiển thị số điểm`} />
       {isAdmin?<div className="activity-search"><input aria-label="Tìm thành viên nhập điểm" placeholder="Tìm tên hoặc MSSV" value={search} onChange={e=>setSearch(e.target.value)}/></div>:null}
       <div className="table-scroll"><table><thead><tr><th>Thành viên</th><th>Đạt phiếu điểm danh</th>{visibleActivityKinds.map(k=><th key={k}>{activityLabels[k]}</th>)}</tr></thead><tbody>
         {members.map(m => {
@@ -252,9 +252,9 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
           </tr>;
         })}
       </tbody></table></div>
-      {isAdmin && !members.length && <p className="activity-search" role="status">Không có thành viên phù hợp trong tuần này.</p>}
+      {isAdmin && !members.length && <p className="activity-search" role="status">Không có thành viên phù hợp trong tuần này</p>}
     </section>
-    {deductions.length ? <section className="panel"><PanelHead title={isAdmin?"Các khoản trừ điểm trong tuần":"Các khoản trừ điểm của tôi"} description="Điểm được trừ trực tiếp. Lý do chỉ hiển thị cho BĐH và thành viên liên quan." />
+    {deductions.length ? <section className="panel"><PanelHead title={isAdmin?"Các khoản trừ điểm trong tuần":"Các khoản trừ điểm của tôi"} description="Điểm được trừ trực tiếp, lý do chỉ hiển thị cho BĐH và thành viên liên quan" />
       <div className="activity-list">{deductions.map(r=><article className="activity-item" key={r.id}><div><strong>{club.members.find(m=>m.id===r.memberId)?.name} · {r.cancelledAt?"Đã hủy khoản trừ":`−${r.points} điểm`}</strong><p>{dateLabel(r.date,true)} · {r.reason}</p>{r.cancelReason?<p className="hint">Lý do hủy: {r.cancelReason}</p>:null}</div></article>)}</div>
     </section> : null}
     {member?<Dialog title={`${deducting?"Trừ điểm":"Điểm BĐH nhập"} · ${member.name}`} description={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week,6))}`} onClose={close} busy={busy}>
@@ -281,8 +281,8 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
       <Field label="Đến hết ngày"><input name="endDate" type="date" required min={minEndDate} defaultValue={event?.endDate ?? currentDay} /></Field>
     </div>
     <label className="event-history"><input type="checkbox" name="requiresEvidence" defaultChecked={event?.requiresEvidence} /> Yêu cầu ảnh minh chứng</label>
-    <p className="hint">Khi bật, thành viên đăng ký rồi gửi ảnh để BĐH duyệt và tính điểm. Hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam.</p>
-    <p className="hint">{event ? "Điểm của các đăng ký đã duyệt sẽ được cập nhật theo mức điểm và ngày kết thúc mới." : "Mỗi thành viên được duyệt nhận số điểm đã đặt vào tuần kết thúc sự kiện."}</p>
+    <p className="hint">Khi bật, thành viên đăng ký rồi gửi ảnh để BĐH duyệt và tính điểm, hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam</p>
+    <p className="hint">{event ? "Điểm của các đăng ký đã duyệt sẽ được cập nhật theo mức điểm và ngày kết thúc mới" : "Mỗi thành viên được duyệt nhận số điểm đã đặt vào tuần kết thúc sự kiện"}</p>
     <FormFooter label={event ? "Lưu thay đổi" : "Tạo và mở đăng ký"} onCancel={onClose} busy={busy} />
   </form>;
 }
@@ -335,9 +335,9 @@ function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,on
     {!direct && !byCommittee ? <Field label={kind === "initiative" ? "Số sáng kiến trong tuần" : "Số lượt đồng đẳng viên trong tuần"}><input name="quantity" type="number" min={0} max={10000} step={1} defaultValue={old?.quantity??0} required /></Field> : null}
     <Field label="Ngày ghi nhận hoạt động"><input name="date" type="date" min={week>member.joined?week:member.joined} max={addDays(week,6)} value={date} onChange={e=>setDate(e.target.value)} required /></Field>
     <Field label="Ghi chú"><textarea name="note" defaultValue={old?.note??""} maxLength={500}/></Field>
-    <p className="hint">{direct ? "Nhập trực tiếp số điểm riêng của tuần này. Lưu lại thay thế số cũ; nhập 0 để bỏ điểm. Không nhân số lượt hay hệ số."
-      : byCommittee ? "Chọn ban và nhập số điểm của thành viên trong tuần này. Để bỏ điểm đã ghi, chọn Không ghi điểm theo ban."
-      : "Lưu số lượt mới thay thế số cũ của mục này trong tuần. Nhập 0 để bỏ điểm. Điểm = số lượt × điểm/lượt trong cài đặt."}</p>
+    <p className="hint">{direct ? "Nhập trực tiếp số điểm riêng của tuần này, lưu lại thay thế số cũ; nhập 0 để bỏ điểm, không nhân số lượt hay hệ số"
+      : byCommittee ? "Chọn ban và nhập số điểm của thành viên trong tuần này, để bỏ điểm đã ghi, chọn Không ghi điểm theo ban"
+      : "Lưu số lượt mới thay thế số cũ của mục này trong tuần, nhập 0 để bỏ điểm, điểm = số lượt × điểm/lượt trong cài đặt"}</p>
     <FormFooter onCancel={onClose} busy={busy}/>
   </form>;
 }
@@ -351,7 +351,7 @@ function DeductionForm({club,member,week,busy,onAction,onClose}:{club:Club;membe
       <Field label="Số điểm trừ"><input name="points" type="number" min="0.01" max={100000} step="0.01" required placeholder="Nhập số điểm cần trừ" /></Field>
       <Field label="Ngày ghi nhận khoản trừ"><input name="date" type="date" min={week>member.joined?week:member.joined} max={addDays(week,6)} defaultValue={week===weekId()?today():addDays(week,6)} required /></Field>
       <Field label="Lý do trừ điểm (bắt buộc)"><textarea name="reason" minLength={3} maxLength={500} required placeholder="Ghi rõ lý do trừ điểm" /></Field>
-      <p className="hint">Trừ trực tiếp số điểm đã nhập, không nhân hệ số. Mỗi lần lưu tạo một khoản trừ riêng trong tuần đang chọn.</p>
+      <p className="hint">Trừ trực tiếp số điểm đã nhập, không nhân hệ số, mỗi lần lưu tạo một khoản trừ riêng trong tuần đang chọn</p>
       <FormFooter label="Trừ điểm" onCancel={onClose} busy={busy}/>
     </form>
     {rows.length ? <div className="deduction-history"><h3>Lịch sử trừ điểm trong tuần</h3>{rows.map(row=><div className="deduction-row" key={row.id}>

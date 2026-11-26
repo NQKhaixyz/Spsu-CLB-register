@@ -12,7 +12,7 @@ export function FontSettings({ current, busy, onSave }: {
   const [selected, setSelected] = useState(current);
   return (
     <section className="panel settings-card font-settings" aria-label="Phông chữ">
-      <PanelHead title="Phông chữ" description="Chọn kiểu chữ bạn muốn dùng. Lựa chọn được lưu vào tài khoản của bạn." />
+      <PanelHead title="Phông chữ" description="Chọn kiểu chữ bạn muốn dùng, lựa chọn được lưu vào tài khoản của bạn" />
       <form onSubmit={e => { e.preventDefault(); onSave(selected); }}>
         <fieldset className="font-options" aria-label="Chọn phông chữ" disabled={busy}>
           {interfaceFonts.map(font => (

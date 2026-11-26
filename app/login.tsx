@@ -5,6 +5,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { Brand, Field } from "./ui";
+import { displayMessage } from "../lib/display-message";
 
 export default function Login({
   onSuccess,
@@ -19,7 +20,7 @@ export default function Login({
     if (busy) return;
     const data = Object.fromEntries(new FormData(event.currentTarget));
     if (register && data.password !== data.confirm) {
-      setError("Hai mật khẩu chưa trùng nhau.");
+      setError("Hai mật khẩu chưa trùng nhau");
       return;
     }
     setBusy(true);
@@ -31,11 +32,11 @@ export default function Login({
         body: JSON.stringify({ action: register ? "register" : "login", data }),
       });
       const result = (await r.json()) as { error?: string };
-      if (!r.ok) throw new Error(result.error || "Không đăng nhập được.");
+      if (!r.ok) throw new Error(result.error || "Không đăng nhập được");
       await onSuccess();
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : "Không kết nối được. Thử lại nhé.",
+        e instanceof Error ? e.message : "Không kết nối được, thử lại nhé",
       );
     } finally {
       setBusy(false);
@@ -47,8 +48,8 @@ export default function Login({
       <div className="entry-login-layout">
       <section className="entry-intro" aria-labelledby="club-heading">
         <span className="eyebrow">KẾT NỐI · THAM GIA · ĐÓNG GÓP</span>
-        <h1 id="club-heading">Cùng một nhịp.</h1>
-        <p>Lịch họp, ca trực và hoạt động thành viên.<br />Tất cả trong một không gian chung.</p>
+        <h1 id="club-heading">Cùng một nhịp</h1>
+        <p>Lịch họp, ca trực và hoạt động thành viên<br />Tất cả trong một không gian chung</p>
       </section>
       <section className="login-form-side" aria-labelledby="login-heading">
         <div className="login-form-card">
@@ -56,8 +57,8 @@ export default function Login({
           <h2 id="login-heading">{register ? "Đăng ký thành viên" : "Đăng nhập"}</h2>
           <p>
             {register
-              ? "Tạo tài khoản thành viên bằng MSSV và họ tên."
-              : "Sử dụng tài khoản được BĐH cung cấp."}
+              ? "Tạo tài khoản thành viên bằng MSSV và họ tên"
+              : "Sử dụng tài khoản được BĐH cung cấp"}
           </p>
           <form key={String(register)} onSubmit={submit}>
             {register ? (
@@ -124,7 +125,7 @@ export default function Login({
                 type="button"
                 onClick={() =>
                   setError(
-                    "Liên hệ BĐH để được cấp lại mật khẩu, sau đó bạn có thể tự đổi trong menu tài khoản.",
+                    "Liên hệ BĐH để được cấp lại mật khẩu, sau đó bạn có thể tự đổi trong menu tài khoản",
                   )
                 }
               >
@@ -133,7 +134,7 @@ export default function Login({
             )}
             {error ? (
               <div className="login-error" role="alert">
-                {error}
+                {displayMessage(error)}
               </div>
             ) : null}
             <button

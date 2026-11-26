@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import type { EvidenceAssignment } from "../lib/duty-evidence";
 import { maxPhotoBytes, type PhotoEvidenceView } from "../lib/photo-evidence";
 import { Badge, Button, Field } from "./ui";
+import { displayMessage } from "../lib/display-message";
 
 const statusLabels = {
   attached: { badge: "neutral", label: "Ảnh đính kèm" },
@@ -27,12 +28,12 @@ async function preparePhoto(file: File) {
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
     const drawing = canvas.getContext("2d", { alpha: false });
-    if (!drawing) throw new Error("Trình duyệt chưa xử lý được ảnh. Hãy thử ảnh JPG khác.");
+    if (!drawing) throw new Error("Trình duyệt chưa xử lý được ảnh, hãy thử ảnh JPG khác");
     drawing.fillStyle = "#fff";
     drawing.fillRect(0, 0, canvas.width, canvas.height);
     drawing.drawImage(image, 0, 0, canvas.width, canvas.height);
     const photo = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.85));
-    if (!photo || photo.size > maxPhotoBytes) throw new Error("Ảnh quá lớn. Hãy chọn ảnh nhỏ hơn.");
+    if (!photo || photo.size > maxPhotoBytes) throw new Error("Ảnh quá lớn, hãy chọn ảnh nhỏ hơn");
     return photo;
   } finally {
     URL.revokeObjectURL(url);
@@ -42,7 +43,7 @@ async function preparePhoto(file: File) {
 async function evidenceRequest(url: string, options?: RequestInit) {
   const response = await fetch(url, options);
   const data = await response.json() as PhotoEvidenceView<"attached"> & { error?: string };
-  if (!response.ok) throw new Error(data.error || "Chưa tải được minh chứng.");
+  if (!response.ok) throw new Error(data.error || "Chưa tải được minh chứng");
   return data;
 }
 
@@ -93,7 +94,7 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
     const controller = new AbortController();
     loadSignal.current = controller.signal;
     evidenceRequest(endpoint, { signal: controller.signal }).then(setData).catch(reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Chưa tải được minh chứng.");
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Chưa tải được minh chứng");
     });
     return () => controller.abort();
   }, [endpoint]);
@@ -131,8 +132,8 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
       const photo = await preparePhoto(file);
       if (!signal?.aborted) setDraft({ photo, url: URL.createObjectURL(photo) });
     } catch (reason) {
-      setError(reason instanceof DOMException ? "Không đọc được ảnh. Hãy thử ảnh JPG hoặc PNG." :
-        reason instanceof Error ? reason.message : "Không đọc được ảnh.");
+      setError(reason instanceof DOMException ? "Không đọc được ảnh, hãy thử ảnh JPG hoặc PNG" :
+        reason instanceof Error ? reason.message : "Không đọc được ảnh");
     } finally {
       setBusy(false);
     }
@@ -151,7 +152,7 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
       setMessage(success);
       onSaved?.();
     } catch (reason) {
-      if (!signal?.aborted) setError(reason instanceof Error ? reason.message : "Chưa lưu được minh chứng.");
+      if (!signal?.aborted) setError(reason instanceof Error ? reason.message : "Chưa lưu được minh chứng");
     } finally {
       setBusy(false);
     }
@@ -160,7 +161,7 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
   function upload() {
     if (!draft || busy) return;
     const replacement = data?.evidence ? "&replace=" + encodeURIComponent(data.evidence.id) : "";
-    void save(endpoint + replacement, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: draft.photo }, "Đã gửi ảnh cho BĐH.");
+    void save(endpoint + replacement, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: draft.photo }, "Đã gửi ảnh cho BĐH");
   }
 
   function review(status: "approved" | "rejected") {
@@ -169,7 +170,7 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: data.evidence.id, status, note }),
-    }, status === "approved" ? (event ? "Đã duyệt minh chứng và ghi điểm sự kiện." : "Đã duyệt minh chứng.") : "Đã từ chối minh chứng.");
+    }, status === "approved" ? (event ? "Đã duyệt minh chứng và ghi điểm sự kiện" : "Đã duyệt minh chứng") : "Đã từ chối minh chứng");
   }
 
   const evidence = data?.evidence;
@@ -180,8 +181,8 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
   return (
     <div id={id} className="duty-evidence-panel">
       {!data && !error && <p className="hint" role="status">Đang tải minh chứng…</p>}
-      {data?.expired && <p className="hint">{event ? "Ảnh minh chứng của sự kiện đã hết hạn lưu." : "Ảnh minh chứng của ca này đã hết hạn lưu."}</p>}
-      {data && !data.expired && !evidence && <p className="hint">Chưa gửi minh chứng.</p>}
+      {data?.expired && <p className="hint">{event ? "Ảnh minh chứng của sự kiện đã hết hạn lưu" : "Ảnh minh chứng của ca này đã hết hạn lưu"}</p>}
+      {data && !data.expired && !evidence && <p className="hint">Chưa gửi minh chứng</p>}
       {evidence && status && (
         <>
           <div className="duty-evidence-meta">
@@ -202,10 +203,10 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
           onError={() => !draft && setPhotoFailed(true)}
         />
       )}
-      {!draft && evidence && !data.expired && photoFailed && <p className="hint">Ảnh không còn khả dụng. Mở lại minh chứng để kiểm tra.</p>}
+      {!draft && evidence && !data.expired && photoFailed && <p className="hint">Ảnh không còn khả dụng, mở lại minh chứng để kiểm tra</p>}
       {data?.canUpload && (
         <>
-          <p className="hint">{event ? `Gửi một ảnh. Hạn gửi và duyệt: ${evidenceTime.format(data.expiresAt)} (giờ Việt Nam).` : "Gửi một ảnh cho ca trực. Ảnh được lưu đến 00:00 thứ Hai."}</p>
+          <p className="hint">{event ? `Gửi một ảnh, hạn gửi và duyệt: ${evidenceTime.format(data.expiresAt)} (giờ Việt Nam)` : "Gửi một ảnh cho ca trực, ảnh được lưu đến 00:00 thứ Hai"}</p>
           <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={choosePhoto} />
           <input ref={filePicker} type="file" accept="image/*" hidden onChange={choosePhoto} />
           <div className="duty-evidence-actions">
@@ -232,7 +233,7 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
       )}
       {busy && <p className="hint" role="status">Đang xử lý ảnh…</p>}
       {message && <p className="hint" role="status">{message}</p>}
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {error && <p className="form-error" role="alert">{displayMessage(error)}</p>}
     </div>
   );
 }

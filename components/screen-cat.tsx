@@ -16,7 +16,7 @@ export function ScreenCat() {
   const [sleeping, setSleeping] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [muted, setMuted] = useState(true);
-  const [notice, setNotice] = useState("Một cục bông, rất thích được cưng.");
+  const [notice, setNotice] = useState("Một cục bông, rất thích được cưng");
   const id = useId();
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export function ScreenCat() {
         <button type="button" onClick={() => act("dry")}><Wind /><span>Sấy lông</span></button>
       </div>
       <button className="pet-rest" type="button" onClick={() => act("sleep")}>{sleeping ? <Sun size={17} /> : <Moon size={17} />}<span>{sleeping ? "Dậy chơi nào" : "Ngủ một chút"}</span></button>
-      <p className="pet-hint">Rê chuột để gọi Bông. Giữ nhẹ để bóp mềm, kéo rồi thả để tung bé lên.</p>
+      <p className="pet-hint">Rê chuột để gọi Bông, giữ nhẹ để bóp mềm, kéo rồi thả để tung bé lên</p>
       <div className="pet-panel-footer"><button type="button" onClick={sound}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}{muted ? "Bật âm thanh" : "Tắt âm thanh"}</button><button type="button" onClick={() => hide(true)}>Ẩn Bông</button></div>
     </div>}
     {hidden && <button className="pet-restore" type="button" onClick={() => hide(false)} aria-label="Gọi Bông trở lại" data-pet-ui><PawPrint size={19} /><span>Gọi Bông</span></button>}

@@ -1,4 +1,5 @@
 "use client";
+import { displayMessage } from "../lib/display-message";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, ChevronUp, Maximize2, Minimize2, Minus, Music2, X } from "lucide-react";
@@ -7,8 +8,8 @@ import { youtubePlaybackFromLink, youtubeWatchUrl, type YouTubePlayback, type Yo
 import YouTubeEmbed, { type YouTubeEmbedControls } from "./youtube-embed";
 import { Button } from "./ui";
 
-const linkOnlyMessage = "Tìm YouTube theo tên chưa bật. Hãy dán link nhạc để phát.";
-const linkHint = "Dán link playlist YouTube để phát lần lượt.";
+const linkOnlyMessage = "Tìm YouTube theo tên chưa bật, hãy dán link nhạc để phát";
+const linkHint = "Dán link playlist YouTube để phát lần lượt";
 const musicLinkPattern = /https?:\/\/|^(?:[\w-]+\.)+[a-z]{2,}\/|^[a-z][a-z\d+.-]*:\S+$/i;
 
 type Selection =
@@ -116,7 +117,7 @@ export default function MusicPlayer({ obscured }: { obscured: boolean }) {
         if (!controller.signal.aborted) select({ source: "SoundCloud", track });
       } catch {
         if (searchRequest.current === controller) {
-          setError("SoundCloud chưa mở được link này. Thử link chia sẻ của bài hát hoặc playlist công khai.");
+          setError("SoundCloud chưa mở được link này, thử link chia sẻ của bài hát hoặc playlist công khai");
         }
       } finally {
         window.clearTimeout(timeout);
@@ -125,11 +126,11 @@ export default function MusicPlayer({ obscured }: { obscured: boolean }) {
       return;
     }
     if (musicLinkPattern.test(term)) {
-      setError("Dán link YouTube hoặc SoundCloud.");
+      setError("Dán link YouTube hoặc SoundCloud");
       return;
     }
     if (!term || term.length > 120) {
-      setError("Nhập từ khóa từ 1 đến 120 ký tự.");
+      setError("Nhập từ khóa từ 1 đến 120 ký tự");
       return;
     }
     if (available === false) {
@@ -153,10 +154,10 @@ export default function MusicPlayer({ obscured }: { obscured: boolean }) {
         setAvailable(false);
         throw new Error(linkOnlyMessage);
       }
-      if (!response.ok) throw new Error(result.error || "Chưa tìm được video.");
+      if (!response.ok) throw new Error(result.error || "Chưa tìm được video");
       setResults(result.videos ?? []);
     } catch (error) {
-      if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Chưa tìm được video.");
+      if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Chưa tìm được video");
     } finally {
       if (!controller.signal.aborted) setPending(null);
     }
@@ -250,8 +251,8 @@ export default function MusicPlayer({ obscured }: { obscured: boolean }) {
                     <Button type="submit" disabled={pending !== null}>{pending === "link" ? "Đang mở…" : pending === "search" ? "Đang tìm…" : linkInput ? "Mở link" : "Tìm"}</Button>
                   </div>
                 </form>
-                {!error && <p className="music-message">{linkHint}{linkOnly ? " Tìm YouTube theo tên chưa bật." : ""}</p>}
-                {error && <p className="music-error" role="alert">{error}</p>}
+                {!error && <p className="music-message">{linkHint}{linkOnly && <><br />Tìm YouTube theo tên chưa bật</>}</p>}
+                {error && <p className="music-error" role="alert">{displayMessage(error)}</p>}
                 {results && (results.length ? (
                   <ul className="music-results" aria-label="Kết quả từ YouTube">
                     {results.map(item => <li key={item.id}>
@@ -261,7 +262,7 @@ export default function MusicPlayer({ obscured }: { obscured: boolean }) {
                       </button>
                     </li>)}
                   </ul>
-                ) : <p className="music-message" role="status">Chưa tìm thấy video được phép phát nhúng. Thử từ khóa khác nhé.</p>)}
+                ) : <p className="music-message" role="status">Chưa tìm thấy video được phép phát nhúng, thử từ khóa khác nhé</p>)}
               </>}
               {!compact && <details className="music-privacy"><summary>Điều khoản và quyền riêng tư</summary><MusicPrivacy /></details>}
             </>
@@ -279,7 +280,7 @@ export default function MusicPlayer({ obscured }: { obscured: boolean }) {
 
 function MusicPrivacy() {
   return <div className="music-privacy-copy">
-    <p>Nhịp Đội gửi từ khóa hoặc link nhạc tới YouTube hoặc SoundCloud. Các dịch vụ này có thể thu thập dữ liệu thiết bị và lượt phát, dùng cookie hoặc hiển thị quảng cáo. Lựa chọn được giữ trong phiên mở trình phát.</p>
-    <p>Xem điều khoản của <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer">YouTube</a> và <a href="https://soundcloud.com/terms-of-use" target="_blank" rel="noopener noreferrer">SoundCloud</a>. Xem chính sách quyền riêng tư của <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google</a> và <a href="https://soundcloud.com/pages/privacy" target="_blank" rel="noopener noreferrer">SoundCloud</a>.</p>
+    <p>Nhịp Đội gửi từ khóa hoặc link nhạc tới YouTube hoặc SoundCloud, các dịch vụ này có thể thu thập dữ liệu thiết bị và lượt phát, dùng cookie hoặc hiển thị quảng cáo, lựa chọn được giữ trong phiên mở trình phát</p>
+    <p>Xem điều khoản của <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer">YouTube</a> và <a href="https://soundcloud.com/terms-of-use" target="_blank" rel="noopener noreferrer">SoundCloud</a>, xem chính sách quyền riêng tư của <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google</a> và <a href="https://soundcloud.com/pages/privacy" target="_blank" rel="noopener noreferrer">SoundCloud</a></p>
   </div>;
 }

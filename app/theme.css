@@ -143,6 +143,12 @@ td,.person-cell strong { font-size:15px; }
 }
 .committee-options input { flex-shrink: 0; }
 .member-committee-cell { max-width: 18rem; white-space: normal; }
+.member-profile h3 { margin: 16px 0 8px; }
+.member-profile ul { padding-inline-start: 1.2rem; }
+.member-profile li { margin-bottom: .4rem; }
+.profile-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 12px 20px; margin: 0; }
+.profile-fields dt { color: var(--muted); font-size: .875rem; }
+.profile-fields dd { margin: 3px 0 0; overflow-wrap: anywhere; }
 .score-scope button { min-height: 44px; font-size: .9375rem; color: var(--muted); }
 .score-tally { padding: 0 22px 14px; color: var(--ink); font-size: .9375rem; }
 .score-tally strong { margin-right: .45em; }

@@ -158,9 +158,6 @@ input[type="checkbox"]:disabled {
   align-items: center;
   gap: 8px;
 }
-.heading-dot {
-  color: #638f67;
-}
 .hint {
   color: #899187;
   font-size: 15px;
@@ -216,9 +213,6 @@ input[type="checkbox"]:disabled {
 }
 .brand > span:last-child {
   display: block;
-}
-.brand-dot {
-  color: #93a56e;
 }
 .brand small {
   display: block;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import "./password.test";
 import "./member-regressions.test";
+import "./member-report-visibility.test";
 import "./bcs-regressions.test";
 import "./workspace-regressions.test";
 import "./meeting-capacity.test";

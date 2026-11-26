@@ -58,18 +58,18 @@ export function createScreenPet(host: HTMLElement, button: HTMLButtonElement, ba
     if (action === "sleep") {
       stopBall(); sleeping = !sleeping; feedback.sleeping(sleeping); until = 0;
       state(sleeping ? "sleep" : "idle"); nextWander = now + 3000;
-      feedback.notice(sleeping ? "Bông cuộn mình ngủ rồi. Chạm nhẹ để đánh thức." : "Dậy rồi! Chơi cùng Bông nhé."); return;
+      feedback.notice(sleeping ? "Bông cuộn mình ngủ rồi, chạm nhẹ để đánh thức" : "Dậy rồi! Chơi cùng Bông nhé"); return;
     }
     wake(); stopBall(); chirp();
     if (action === "ball") {
       ball = { p: clamp({ x: position.x + 140, y: position.y - 90 }, 22), v: { x: 220, y: -145 }, ends: now + 18000, catches: 0, lastCatch: 0 };
       ballEl.hidden = false; until = 0; state("chase");
-      feedback.notice("Bắt bóng nào! Chạm vào chỗ trống để ném bóng tới đó.");
+      feedback.notice("Bắt bóng nào! Chạm vào chỗ trống để ném bóng tới đó");
     } else {
       const durations = { pet: 1600, feed: 3000, roll: 1450, rain: 3200, dry: 3000 };
       state(action === "roll" && reduced ? "pet" : action); until = now + durations[action];
       if (action === "rain") { wet = true; host.dataset.wet = "true"; }
-      const messages = { pet: "Bông thích lắm, thêm chút nữa đi!", feed: "Măm măm… một miếng bánh mềm cho Bông.", roll: "Lăn một vòng, khoe chiếc bụng tròn.", rain: "Lông ướt rồi. Sấy ấm cho Bông nhé.", dry: wet ? "Sấy khô bộ lông ướt cho Bông…" : "Sấy nhẹ, lông phồng lên như mây…" };
+      const messages = { pet: "Bông thích lắm, thêm chút nữa đi!", feed: "Măm măm… một miếng bánh mềm cho Bông", roll: "Lăn một vòng, khoe chiếc bụng tròn", rain: "Lông ướt rồi, sấy ấm cho Bông nhé", dry: wet ? "Sấy khô bộ lông ướt cho Bông…" : "Sấy nhẹ, lông phồng lên như mây…" };
       feedback.notice(messages[action]);
     }
     nextWander = now + 6000;
@@ -131,7 +131,7 @@ export function createScreenPet(host: HTMLElement, button: HTMLButtonElement, ba
     else if (!reduced && now - drag.lastAt < 120 && Math.hypot(drag.v.x, drag.v.y) > 200) {
       const scale = Math.min(1, 950 / Math.hypot(drag.v.x, drag.v.y));
       throwVelocity = { x: drag.v.x * scale, y: drag.v.y * scale }; state("toss"); until = now + 1400;
-      feedback.notice("Vèo! Bông nảy một cái rồi đáp xuống.");
+      feedback.notice("Vèo! Bông nảy một cái rồi đáp xuống");
     } else { state("land"); until = now + 650; }
     target = { ...position }; pointerAt = 0; nextWander = now + 3000;
   }
@@ -194,12 +194,12 @@ export function createScreenPet(host: HTMLElement, button: HTMLButtonElement, ba
       position = safe; target = { ...safe };
     }
     if (until && now >= until) {
-      if (mood === "dry") { wet = false; host.dataset.wet = "false"; feedback.notice("Khô rồi! Bông lại mềm và thơm như mới."); }
-      if (mood === "feed") feedback.notice("No bụng rồi. Bông dụi đầu cảm ơn bạn.");
+      if (mood === "dry") { wet = false; host.dataset.wet = "false"; feedback.notice("Khô rồi! Bông lại mềm và thơm như mới"); }
+      if (mood === "feed") feedback.notice("No bụng rồi, Bông dụi đầu cảm ơn bạn");
       until = 0; state(sleeping ? "sleep" : "idle");
     }
     if (ball && !panel) {
-      if (now > ball.ends) { stopBall(); state("pet"); until = now + 1300; feedback.notice("Bắt được rồi! Nghỉ lấy sức một chút nào."); }
+      if (now > ball.ends) { stopBall(); state("pet"); until = now + 1300; feedback.notice("Bắt được rồi! Nghỉ lấy sức một chút nào"); }
       else {
         if (!reduced) {
           const next = { x: ball.p.x + ball.v.x * dt, y: ball.p.y + ball.v.y * dt }, safe = clamp(next, 22);

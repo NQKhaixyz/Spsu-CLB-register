@@ -144,9 +144,13 @@ export function applyAvailabilityOverrides(member: Member, slots: string[]) {
   return [...selected].sort();
 }
 
-export function profileAvailability(club: Club, member: Member) {
+export function profileAvailabilityRows(club: Club, member: Member) {
   const dataset = activeAvailabilityDatasetFor(club);
-  const rows = dataset?.rows.filter((row) => dataset.memberLinks?.[personKey(row.name)] === member.id) ?? [];
+  return dataset?.rows.filter(row => dataset.memberLinks?.[personKey(row.name)] === member.id) ?? [];
+}
+
+export function profileAvailability(club: Club, member: Member, rows = profileAvailabilityRows(club, member)) {
+  const dataset = activeAvailabilityDatasetFor(club);
   const imported = dataset?.settings && rows.length ? detailAvailabilitySlots(rows, dataset.settings) : [];
   return applyAvailabilityOverrides(member, [...member.availability, ...imported]);
 }

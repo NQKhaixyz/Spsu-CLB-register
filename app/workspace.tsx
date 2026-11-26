@@ -3,7 +3,9 @@ import Activities, { WeeklyActivityPoints } from "./activities";
 import { visibleActivityKinds, activityLabels, eventForActivity, isEventOpen, ratedActivityKinds } from "../lib/activity";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { canDeleteMember } from "../lib/member-deletion";
-import { committeeKinds, committeeLabels, memberCommittees, matchesCommittee, type CommitteeFilter } from "../lib/committees";
+import { committeeKinds, committeeLabels, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter } from "../lib/committees";
+import { availableDays, MemberProfile } from "./member-profile";
+import { displayMessage } from "../lib/display-message";
 import { resolveFont } from "../lib/interface-fonts";
 import { FontSettings } from "./font-settings";
 import { MemberMonthlyScoreboard, Scoreboard, type ScoreScope } from "./scoreboard";
@@ -14,7 +16,7 @@ import DutyRegister from "./duty-register";
 import DutyEvidenceAction from "./duty-evidence";
 import SharedLinks from "./shared-links";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
-import { activeAvailabilityDatasetFor, availabilityForDuty, personKey, profileAvailability } from "../lib/availability";
+import { activeAvailabilityDatasetFor, availabilityForDuty, profileAvailability, profileAvailabilityRows } from "../lib/availability";
 import {
   useCallback,
   useEffect,
@@ -119,7 +121,7 @@ type Tab =
   | "settings"
   | "preferences"
   | "personal";
-const memberTabs = new Set<Tab>(["personal", "preferences", "weeklyScores", "reports", "duties", "links", "requests"]);
+const memberTabs = new Set<Tab>(["personal", "preferences", "weeklyScores", "reports", "duties", "links", "requests", "members"]);
 type Modal = {
   title: string;
   description?: string;
@@ -198,7 +200,7 @@ export default function Workspace() {
     null,
   );
   const closeModal = useCallback(() => setModal(null), []);
-  const notify = (text: string, error = false) => setToast({ text, error });
+  const notify = (text: string, error = false) => setToast({ text: displayMessage(text), error });
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/workspace", { cache: "no-store" });
@@ -213,7 +215,7 @@ export default function Workspace() {
       setAuth(false);
       setLoadError("");
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Không tải được dữ liệu.");
+      setLoadError(displayMessage(e instanceof Error ? e.message : "Không tải được dữ liệu"));
     } finally {
       setLoading(false);
     }
@@ -253,16 +255,16 @@ export default function Workspace() {
         body: JSON.stringify({ action, data }),
       });
       const result = (await r.json()) as { error?: string; login?: string };
-      if (!r.ok) throw new Error(result.error || "Không lưu được mật khẩu.");
+      if (!r.ok) throw new Error(result.error || "Không lưu được mật khẩu");
       closeModal();
       notify(
         result.login
-          ? `Đã cấp mật khẩu. Tên đăng nhập: ${result.login}`
+          ? `Đã cấp mật khẩu, tên đăng nhập: ${result.login}`
           : "Đã đổi mật khẩu",
       );
       await load();
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Không lưu được mật khẩu.", true);
+      notify(e instanceof Error ? e.message : "Không lưu được mật khẩu", true);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -273,15 +275,15 @@ export default function Workspace() {
       title: member ? `Cấp mật khẩu · ${member.name}` : "Đổi mật khẩu",
       description: member
         ? member.loginName
-          ? `Tên đăng nhập: ${member.loginName}. Thành viên cũng có thể dùng MSSV sau khi bổ sung hồ sơ.`
-          : "Thành viên đăng nhập bằng MSSV/tên đăng nhập được cấp, không cần tài khoản OpenAI."
-        : "Mật khẩu mới cần ít nhất 8 ký tự.",
+          ? `Tên đăng nhập: ${member.loginName}, thành viên cũng có thể dùng MSSV sau khi bổ sung hồ sơ`
+          : "Thành viên đăng nhập bằng MSSV/tên đăng nhập được cấp, không cần tài khoản OpenAI"
+        : "Mật khẩu mới cần ít nhất 8 ký tự",
       content: (
         <form
           onSubmit={(e) => {
             const f = getForm(e);
             if (f.password !== f.confirm) {
-              notify("Hai mật khẩu chưa trùng nhau.", true);
+              notify("Hai mật khẩu chưa trùng nhau", true);
               return;
             }
             savePassword(member ? "account" : "password", {
@@ -337,7 +339,7 @@ export default function Workspace() {
   function ownProfileDialog() {
     setModal({
       title: "Hồ sơ của tôi",
-      description: "Cập nhật thông tin cá nhân. Tên đăng nhập được cấp vẫn sử dụng được sau khi bổ sung MSSV.",
+      description: "Cập nhật thông tin cá nhân, tên đăng nhập được cấp vẫn sử dụng được sau khi bổ sung MSSV",
       content: (
         <form onSubmit={(e) => act("profile", getForm(e), "Đã cập nhật hồ sơ")}>
           <Field label="Họ và tên"><input name="name" defaultValue={view?.me?.name} required minLength={2} maxLength={100} /></Field>
@@ -370,7 +372,7 @@ export default function Workspace() {
       notify(result.notice ?? message);
       return true;
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Không lưu được dữ liệu.", true);
+      notify(e instanceof Error ? e.message : "Không lưu được dữ liệu", true);
       return false;
     } finally {
       busyRef.current = false;
@@ -402,8 +404,8 @@ export default function Workspace() {
       <div className="welcome setup">
         <Brand />
         <span className="eyebrow">BẮT ĐẦU MỘT NHỊP MỚI</span>
-        <h1>Hoàn tất hồ sơ của bạn.</h1>
-        <p>Bổ sung MSSV để bắt đầu. Lịch trực đã được gắn với hồ sơ của bạn.</p>
+        <h1>Hoàn tất hồ sơ của bạn</h1>
+        <p>Bổ sung MSSV để bắt đầu, lịch trực đã được gắn với hồ sơ của bạn</p>
         <form
           onSubmit={(e) => {
             const f = getForm(e);
@@ -456,7 +458,7 @@ export default function Workspace() {
       <div className="welcome">
         <Brand />
         <Empty title="Tài khoản đã ngừng hoạt động">
-          Liên hệ BĐH để mở lại tài khoản của bạn.
+          Liên hệ BĐH để mở lại tài khoản của bạn
         </Empty>
         <Button variant="secondary" onClick={logoutAccount}>
           Đăng xuất
@@ -493,7 +495,7 @@ export default function Workspace() {
     setModal({
       title: week.closed ? "Bổ sung ngày họp" : "Lịch họp tuần này",
       description:
-        "Tuần tự mở từ thứ Hai đến Chủ nhật. Ngày họp quyết định tháng thống kê.",
+        "Tuần tự mở từ thứ Hai đến Chủ nhật, ngày họp quyết định tháng thống kê",
       content: (
         <form
           onSubmit={(e) => {
@@ -566,14 +568,14 @@ export default function Workspace() {
               <strong>{n} thành viên sẽ chuyển sang vắng</strong>
               <p>
                 Gồm {count("pending")} yêu cầu chưa xử lý và{" "}
-                {count("unregistered")} người chưa đăng ký. Lý do xin vắng đã có
-                vẫn được giữ lại.
+                {count("unregistered")} người chưa đăng ký, lý do xin vắng đã có
+                vẫn được giữ lại
               </p>
             </div>
           </div>
           <p className="dialog-copy">
-            Hãy rà soát ô vắng thực tế, có phép và đạt phiếu điểm danh trước khi chốt.
-            Sau khi chốt, thành viên không thể tự sửa đăng ký.
+            Hãy rà soát ô vắng thực tế, có phép và đạt phiếu điểm danh trước khi chốt,
+            sau khi chốt, thành viên không thể tự sửa đăng ký
           </p>
           <div className="form-footer">
             <Button variant="secondary" onClick={closeModal}>
@@ -599,13 +601,13 @@ export default function Workspace() {
       content: (
         <form onSubmit={(e) => act("reopen", { ...getForm(e), week: week.id }, "Đã hủy chốt cuộc họp")}>
           <p className="dialog-copy">
-            Cuộc họp sẽ mở lại để điều chỉnh. Điểm vắng họp tạm ngừng tính cho đến khi chốt lại.
+            Cuộc họp sẽ mở lại để điều chỉnh, điểm vắng họp tạm ngừng tính cho đến khi chốt lại
             {week.closingSnapshot
-              ? " Các đăng ký chưa được BĐH sửa sẽ được khôi phục về trước khi chốt; kết quả BĐH đã xác minh được giữ lại."
-              : " Cuộc họp này chưa có bản lưu trước khi chốt; dữ liệu điểm danh hiện tại sẽ được giữ nguyên để BĐH rà soát."}
+              ? " Các đăng ký chưa được BĐH sửa sẽ được khôi phục về trước khi chốt; kết quả BĐH đã xác minh được giữ lại"
+              : " Cuộc họp này chưa có bản lưu trước khi chốt; dữ liệu điểm danh hiện tại sẽ được giữ nguyên để BĐH rà soát"}
             {week.id < weekId()
-              ? " Đây là tuần đã qua: BĐH cần chốt lại sau khi chỉnh sửa; hệ thống không tự chốt lại tuần đang mở để sửa."
-              : " Tuần hiện tại vẫn được tự chốt khi hết tuần."}
+              ? " Đây là tuần đã qua: BĐH cần chốt lại sau khi chỉnh sửa; hệ thống không tự chốt lại tuần đang mở để sửa"
+              : " Tuần hiện tại vẫn được tự chốt khi hết tuần"}
           </p>
           <Field label="Lý do hủy chốt">
             <textarea name="note" required minLength={3} maxLength={500} placeholder="Ví dụ: Cần rà soát lại danh sách điểm danh" />
@@ -628,7 +630,7 @@ export default function Workspace() {
             <input name="peoplePerShift" type="number" min={1} max={50} step={1} required defaultValue={capacity ?? club.peoplePerShift ?? 2} />
           </Field>
           <p className="hint">
-            Nếu không đủ người rảnh, lịch sẽ hiển thị vị trí còn thiếu. Người đã thêm thủ công vẫn có trong ca.
+            Nếu không đủ người rảnh, lịch sẽ hiển thị vị trí còn thiếu, người đã thêm thủ công vẫn có trong ca
           </p>
           <div className="form-footer">
             <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
@@ -726,8 +728,8 @@ export default function Workspace() {
         status === "absent" ? "Xin vắng buổi họp" : "Xin chuyển sang tham gia",
       description:
         status === "absent"
-          ? "Lý do sẽ được gửi riêng đến BĐH."
-          : "Yêu cầu được đưa vào nhóm chưa xử lý để BĐH duyệt.",
+          ? "Lý do sẽ được gửi riêng đến BĐH"
+          : "Yêu cầu được đưa vào nhóm chưa xử lý để BĐH duyệt",
       content: (
         <form
           onSubmit={(e) =>
@@ -765,14 +767,12 @@ export default function Workspace() {
   }
   function editMember(member?: Member) {
     const selectedCommittees = member ? memberCommittees(member) : [];
-    const selectedAvailability = member ? profileAvailability(club, member) : [];
-    const detailedAvailability = member
-      ? activeDataset?.rows.filter((row) => activeDataset.memberLinks?.[personKey(row.name)] === member.id) ?? []
-      : [];
+    const detailedAvailability = member ? profileAvailabilityRows(club, member) : [];
+    const selectedAvailability = member ? profileAvailability(club, member, detailedAvailability) : [];
     setModal({
       title: member ? "Hồ sơ thành viên" : "Thêm thành viên",
       description:
-        "Email là thông tin liên hệ. Thành viên dùng MSSV và mật khẩu để đăng nhập.",
+        "Email là thông tin liên hệ, thành viên dùng MSSV và mật khẩu để đăng nhập",
       wide: true,
       content: (
         <form
@@ -823,7 +823,7 @@ export default function Workspace() {
           </Field>
           <fieldset className="member-committees">
             <legend className="field-label">Ban của thành viên</legend>
-            <p className="hint">Có thể chọn nhiều ban. Để trống nếu chưa phân ban.</p>
+            <p className="hint">Có thể chọn nhiều ban, để trống nếu chưa phân ban</p>
             <div className="committee-options">
               {committeeKinds.map(kind => (
                 <label key={kind}>
@@ -845,8 +845,9 @@ export default function Workspace() {
             <Field label="Trạng thái hoạt động">
               <select name="active" defaultValue={String(member.active)}>
                 <option value="true">Đang hoạt động</option>
-                <option value="false">Ngừng hoạt động</option>
+                <option value="false">Tạm nghỉ</option>
               </select>
+              <small className="hint">Thành viên vẫn có tên trong bảng điểm tuần bấm tạm nghỉ, từ thứ Hai kế tiếp, bảng điểm và Excel sẽ ẩn thành viên này</small>
             </Field>
           ) : null}
           <label className="checkbox-label">
@@ -860,7 +861,7 @@ export default function Workspace() {
           {member ? (
             <div className="availability-editor">
               <span className="field-label">Lịch rảnh sáng / chiều</span>
-              <p className="hint">Tích hoặc bỏ tích rồi lưu để cập nhật dữ liệu xếp lịch. Các khung từ Excel áp dụng theo giờ và tuần học trong file.</p>
+              <p className="hint">Tích hoặc bỏ tích rồi lưu để cập nhật dữ liệu xếp lịch, các khung từ Excel áp dụng theo giờ và tuần học trong file</p>
               <div className="availability-grid">
                 <span />
                 <strong>Sáng</strong>
@@ -912,8 +913,8 @@ export default function Workspace() {
           : "Nhập danh sách thành viên",
       description:
         kind === "availability"
-          ? "Hỗ trợ mẫu MSSV hoặc file chi tiết gồm Họ và tên, Thứ, Buổi, Tuần học."
-          : "Dùng file .xlsx theo mẫu để hệ thống ghép đúng MSSV.",
+          ? "Hỗ trợ mẫu MSSV hoặc file chi tiết gồm Họ và tên, Thứ, Buổi, Tuần học"
+          : "Dùng file .xlsx theo mẫu để hệ thống ghép đúng MSSV",
       content: (
         <form
           onSubmit={async (e) => {
@@ -1005,7 +1006,7 @@ export default function Workspace() {
                 const { downloadTemplate } = await import("../lib/excel");
                 await downloadTemplate(kind);
               } catch {
-                notify("Chưa tải được file mẫu.", true);
+                notify("Chưa tải được file mẫu", true);
               }
             }}
           >
@@ -1013,10 +1014,10 @@ export default function Workspace() {
           </Button>
           {kind === "availability" ? (
             <p className="dialog-copy">
-              Điền 1 hoặc x vào ca rảnh, để trống ca bận. Lịch mới áp dụng khi
-              xếp lịch nháp tiếp theo; lịch đã công bố vẫn giữ nguyên. File theo
+              Điền 1 hoặc x vào ca rảnh, để trống ca bận, lịch mới áp dụng khi
+              xếp lịch nháp tiếp theo; lịch đã công bố vẫn giữ nguyên, file theo
               tuần học và khung giờ cụ thể sẽ được lưu tại Thành viên → Lịch rảnh để đối
-              chiếu trước khi áp dụng.
+              chiếu trước khi áp dụng
             </p>
           ) : null}
           <FormFooter label="Nhập dữ liệu" onCancel={closeModal} busy={busy} />
@@ -1060,7 +1061,7 @@ export default function Workspace() {
     );
     setModal({
       title: current ? "Đổi người phụ trách ca" : "Bổ sung người trực",
-      description: `${dateLabel(shift.date, true)} · Ca ${shift.period === "am" ? "sáng" : "chiều"}. Người thay được cộng điểm khi đã xác minh đi trực.`,
+      description: `${dateLabel(shift.date, true)} · Ca ${shift.period === "am" ? "sáng" : "chiều"}, người thay được cộng điểm khi đã xác minh đi trực`,
       content: (
         <form
           onSubmit={(e) =>
@@ -1096,7 +1097,7 @@ export default function Workspace() {
           </Field>
           {!candidates.length ? (
             <div className="notice amber">
-              Chưa có người phù hợp. Kiểm tra lịch rảnh trước.
+              Chưa có người phù hợp, kiểm tra lịch rảnh trước
             </div>
           ) : null}
           <FormFooter label="Lưu phân công" onCancel={closeModal} busy={busy} />
@@ -1122,10 +1123,10 @@ export default function Workspace() {
               {candidates.map(member => <option key={member.id} value={member.id}>{member.name}{member.studentId ? ` · ${member.studentId}` : ""}</option>)}
             </select>
           </Field>
-          <p className="hint">Điểm được ghi theo kết quả xác minh của ca trực.</p>
+          <p className="hint">Điểm được ghi theo kết quả xác minh của ca trực</p>
           <FormFooter label="Thêm người" onCancel={closeModal} busy={busy} />
         </form>
-      ) : <p className="dialog-copy">Tất cả thành viên đang hoạt động đã có trong ca này.</p>,
+      ) : <p className="dialog-copy">Tất cả thành viên đang hoạt động đã có trong ca này</p>,
     });
   }
   function confirmDutyMemberRemoval(shift: Shift, shiftMonth: string, memberId: string, memberName: string) {
@@ -1136,7 +1137,7 @@ export default function Workspace() {
       content: (
         <>
           <p className="dialog-copy">
-            Phân công, điểm đã ghi và ảnh minh chứng của lượt trực này sẽ bị xóa.
+            Phân công, điểm đã ghi và ảnh minh chứng của lượt trực này sẽ bị xóa
           </p>
           <div className="form-footer">
             <Button variant="secondary" onClick={() => setModal(previous)}>Quay lại</Button>
@@ -1157,7 +1158,7 @@ export default function Workspace() {
       content: (
         <>
           <p className="dialog-copy">
-            Hồ sơ, tài khoản, lịch trực, điểm, đăng ký và ảnh minh chứng của {member.name} sẽ bị xóa. Thao tác này không thể hoàn tác.
+            Hồ sơ, tài khoản, lịch trực, điểm, đăng ký và ảnh minh chứng của {member.name} sẽ bị xóa, thao tác này không thể hoàn tác
           </p>
           <div className="form-footer">
             <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
@@ -1241,7 +1242,7 @@ export default function Workspace() {
         <h2>
           {w.cancelled ? "Không tổ chức họp" : "Thông tin buổi họp"}
         </h2>
-        <p>{w.cancelled ? "Tuần này không yêu cầu đăng ký." : w.closed ? "Đăng ký tuần này đã được chốt." : "Đăng ký tham gia hoặc xin vắng trước khi chốt tuần."}</p>
+        <p>{w.cancelled ? "Tuần này không yêu cầu đăng ký" : w.closed ? "Đăng ký tuần này đã được chốt" : "Đăng ký tham gia hoặc xin vắng trước khi chốt tuần"}</p>
         <div className="meeting-info">
           <span>
             <CalendarDays size={16} />
@@ -1318,7 +1319,7 @@ export default function Workspace() {
           </div>
         ) : (
           <Empty title="Đã xử lý hết rồi" icon={CheckCheck}>
-            Mọi yêu cầu đã được cập nhật.
+            Mọi yêu cầu đã được cập nhật
           </Empty>
         )}
         {!full && pending.length ? (
@@ -1540,7 +1541,7 @@ export default function Workspace() {
           </table>
           {!rows.length ? (
             <Empty title="Chưa có thành viên phù hợp" icon={Users}>
-              Thử bộ lọc khác hoặc thêm thành viên vào Đội.
+              Thử bộ lọc khác hoặc thêm thành viên vào Đội
             </Empty>
           ) : null}
         </div>
@@ -1580,7 +1581,7 @@ export default function Workspace() {
             <h1>
               Tổng quan
             </h1>
-            <p>Tình hình đăng ký họp, lịch trực và yêu cầu cần xử lý.</p>
+            <p>Tình hình đăng ký họp, lịch trực và yêu cầu cần xử lý</p>
           </div>
           {weekSelect}
         </div>
@@ -1671,7 +1672,7 @@ export default function Workspace() {
               <div className="compact-empty">
                 <CalendarDays size={20} />
                 <span>
-                  Chưa có ca trực sắp tới. Xếp lịch cho tháng mới nhé.
+                  Chưa có ca trực sắp tới, xếp lịch cho tháng mới nhé
                 </span>
               </div>
             ) : null}
@@ -1681,13 +1682,13 @@ export default function Workspace() {
               <Leaf size={23} />
             </div>
             <h3>
-              Đều đặn một chút.
+              Đều đặn một chút
               <br />
-              Gắn kết nhiều hơn.
+              Gắn kết nhiều hơn
             </h3>
             <p>
               Mỗi ca trực, mỗi buổi họp đều là một phần đóng góp của bạn cho
-              Đội.
+              Đội
             </p>
             <span>
               GIỮ NHỊP, CÙNG NHAU <ArrowRight size={15} />
@@ -1751,11 +1752,11 @@ export default function Workspace() {
               CHIA SẺ TRÁCH NHIỆM, GIỮ NHỊP MỖI NGÀY
             </span>
             <h1>
-              Lịch trực C1<span className="heading-dot">.</span>
+              Lịch trực C1
             </h1>
             <p>
               {capacityLabel} · Sáng và chiều · Ưu tiên 2 ca/người, có thể trực
-              thêm.
+              thêm
             </p>
           </div>
           <div className="heading-actions">
@@ -1780,13 +1781,13 @@ export default function Workspace() {
           <div className="notice green">
             <Sparkles size={19} />
             <div>
-              <strong>Hai ca là mức ưu tiên, không phải giới hạn.</strong>
+              <strong>Hai ca là mức ưu tiên, không phải giới hạn</strong>
               <p>
                 Chia lượt đầu cho mọi người, hướng tới hai ca, sau đó ưu tiên
-                người muốn trực thêm.{" "}
+                người muốn trực thêm{" "}
                 {club.availabilityVersion
-                  ? `Lịch rảnh cập nhật ${dateLabel(club.availabilityVersion.slice(0, 10))}.`
-                  : "Hãy nhập lịch rảnh để bắt đầu."}
+                  ? `Lịch rảnh cập nhật ${dateLabel(club.availabilityVersion.slice(0, 10))}`
+                  : "Hãy nhập lịch rảnh để bắt đầu"}
               </p>
             </div>
             {activeDataset?.settings ? (
@@ -1796,7 +1797,7 @@ export default function Workspace() {
                 {activeDataset.settings.pmStart}–
                 {activeDataset.settings.pmEnd} · Cho phép đến muộn
                 tối đa {activeDataset.settings.allowedLateMinutes}{" "}
-                phút khi xếp lịch.
+                phút khi xếp lịch
               </p>
             ) : null}
             <Button
@@ -1835,7 +1836,7 @@ export default function Workspace() {
                     content: (
                       <>
                         <p className="dialog-copy">
-                          Đưa {publishedCount} ca đã công bố của tuần về bản nháp. Thành viên sẽ thấy lại lịch khi BĐH công bố. Điểm đã xác minh được giữ.
+                          Đưa {publishedCount} ca đã công bố của tuần về bản nháp, thành viên sẽ thấy lại lịch khi BĐH công bố, điểm đã xác minh được giữ
                         </p>
                         <div className="form-footer">
                           <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
@@ -1863,7 +1864,7 @@ export default function Workspace() {
                       description: weekLabel(dutyWeek),
                       content: (
                         <>
-                        {publishShortage > 0 && <p className="dialog-copy">Lịch tuần này còn thiếu {publishShortage} lượt phân công.</p>}
+                        {publishShortage > 0 && <p className="dialog-copy">Lịch tuần này còn thiếu {publishShortage} lượt phân công</p>}
                         <div className="form-footer">
                           <Button variant="secondary" onClick={closeModal}>
                             Kiểm tra lại
@@ -1927,7 +1928,7 @@ export default function Workspace() {
                                     {shift.cancelled ? (
                                       <div className="notice neutral">
                                         Ca này đã hủy cho tất cả người được phân công, không
-                                        cộng/trừ điểm. {shift.cancelReason}
+                                        cộng/trừ điểm {shift.cancelReason}
                                       </div>
                                     ) : null}
                                     {Array.from({ length: Math.max(shiftCapacity(shift), shift.assignments.length) }, (_, position) => {
@@ -2067,12 +2068,12 @@ export default function Workspace() {
                                                   />{" "}
                                                   Đến muộn{" "}
                                                   <small>
-                                                    Không tích = không đến muộn.
-                                                    Tích ô sẽ trừ{" "}
+                                                    Không tích = không đến muộn,
+                                                    tích ô sẽ trừ{" "}
                                                     {rulesFor(club, schedule.month).D ??
                                                       0}{" "}
-                                                    điểm. Lý do hợp lệ thì để
-                                                    trống.
+                                                    điểm, lý do hợp lệ thì để
+                                                    trống
                                                   </small>
                                                 </label>
                                               ) : null}
@@ -2240,8 +2241,8 @@ export default function Workspace() {
                       ))}
                   </div>
                   <p className="distribution-note">
-                    Số ca có thể hơn 2 theo nhu cầu và lịch rảnh. Các ca chưa đủ
-                    người được đánh dấu trong lịch.
+                    Số ca có thể hơn 2 theo nhu cầu và lịch rảnh, các ca chưa đủ
+                    người được đánh dấu trong lịch
                   </p>
                 </aside>
               ) : null}
@@ -2266,8 +2267,8 @@ export default function Workspace() {
               icon={CalendarDays}
             >
               {isAdmin
-                ? "Bấm Xếp lịch tuần để hệ thống gợi ý phân công."
-                : "BĐH sẽ công bố lịch trực sau khi kiểm tra bản nháp."}
+                ? "Bấm Xếp lịch tuần để hệ thống gợi ý phân công"
+                : "BĐH sẽ công bố lịch trực sau khi kiểm tra bản nháp"}
             </Empty>
           </section>
         )}
@@ -2312,9 +2313,17 @@ export default function Workspace() {
     );
   }
 
+  function weekScoreTable() {
+    return <Scoreboard title={`Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6))}`} period="tuần"
+      rows={weeklyScores.map(r => ({ ...r, name: findMember(r.memberId)?.name ?? "" }))}
+      memberId={isAdmin ? undefined : me!.id} scope={scoreScope} onScopeChange={setScoreScope} />;
+  }
+
   function members() {
-    const result = club.members.filter((m) =>
-      matchesCommittee(m, committeeFilter) && `${m.name} ${m.studentId}`
+    const scheduleOnly = !isAdmin && memberSection === "availability";
+    const inCommittee = club.members.filter(m => matchesCommittee(m, committeeFilter));
+    const result = inCommittee.filter((m) =>
+      `${m.name} ${m.studentId}`
         .toLocaleLowerCase("vi")
         .includes(search.trim().toLocaleLowerCase("vi")),
     );
@@ -2324,12 +2333,12 @@ export default function Workspace() {
           <div>
             <span className="eyebrow">MỖI NGƯỜI LÀ MỘT PHẦN CỦA TẬP THỂ</span>
             <h1>
-              Những người cùng nhịp<span className="heading-dot">.</span>
+              Những người cùng nhịp
             </h1>
             <p>
-              {liveMembers.length} thành viên đang hoạt động · Quản lý hồ sơ, điểm cộng/trừ và lịch rảnh tại đây.
+              {liveMembers.length} thành viên đang hoạt động · {isAdmin ? "Quản lý hồ sơ, điểm cộng/trừ và lịch rảnh tại đây" : "Tra cứu hồ sơ, lịch rảnh và bảng điểm của toàn Đội"}
             </p>
-            {!club.demo && club.officialSince ? (
+            {isAdmin && !club.demo && club.officialSince ? (
               <Badge status="attending">
                 Danh sách chính thức ·{" "}
                 {
@@ -2340,7 +2349,7 @@ export default function Workspace() {
               </Badge>
             ) : null}
           </div>
-          {memberSection === "profiles" ? <div className="heading-actions">
+          {isAdmin && memberSection === "profiles" ? <div className="heading-actions">
             <Button variant="secondary" onClick={() => importDialog("members")}>
               <Upload size={16} /> Nhập danh sách Excel
             </Button>
@@ -2350,10 +2359,10 @@ export default function Workspace() {
           </div> : memberSection === "points" ? weekSelect : null}
         </div>
         <div className="member-section-tools">
-          <nav className="member-section-nav" aria-label="Quản lý thành viên">
-            {([["profiles","Hồ sơ"],["points","Điểm cộng / trừ"],["availability","Lịch rảnh"]] as const).map(([id,label])=><Button key={id} variant={memberSection===id?"primary":"secondary"} aria-pressed={memberSection===id} onClick={()=>setMemberSection(id)}>{label}</Button>)}
+          <nav className="member-section-nav" aria-label="Các mục thành viên">
+            {([["profiles","Hồ sơ"],["points",isAdmin ? "Điểm cộng / trừ" : "Bảng điểm"],["availability","Lịch rảnh"]] as const).map(([id,label])=><Button key={id} variant={memberSection===id?"primary":"secondary"} aria-pressed={memberSection===id} onClick={()=>setMemberSection(id)}>{label}</Button>)}
           </nav>
-          {memberSection !== "availability" && <label className="member-committee-filter">
+          {(memberSection === "profiles" || (isAdmin ? memberSection === "points" : memberSection === "availability")) && <label className="member-committee-filter">
             Lọc theo ban
             <select className="week-select" value={committeeFilter} onChange={e => setCommitteeFilter(e.target.value as CommitteeFilter)}>
               <option value="all">Tất cả ban</option>
@@ -2362,8 +2371,11 @@ export default function Workspace() {
             </select>
           </label>}
         </div>
-        {memberSection === "points" ? <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin={isAdmin} week={week.id} weeklyScores={weeklyScores} committeeFilter={committeeFilter} busy={busy} onAction={act}/> : memberSection === "availability" ? <>
-          <p className="notice neutral">Sửa các ô lịch rảnh của từng người trong <button className="text-button" onClick={()=>setMemberSection("profiles")}>Hồ sơ → Chỉnh sửa</button>. Nhập file Excel tại tab Lịch trực C1.</p>
+        {memberSection === "points" ? (isAdmin
+          ? <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin={isAdmin} week={week.id} weeklyScores={weeklyScores} committeeFilter={committeeFilter} busy={busy} onAction={act}/>
+          : weekScoreTable())
+          : isAdmin && memberSection === "availability" ? <>
+          <p className="notice neutral">Sửa các ô lịch rảnh của từng người trong <button className="text-button" onClick={()=>setMemberSection("profiles")}>Hồ sơ → Chỉnh sửa</button>, nhập file Excel tại tab Lịch trực C1</p>
           {memberAvailability()}
         </> : <section className="panel">
           <div className="members-toolbar">
@@ -2385,10 +2397,12 @@ export default function Workspace() {
                   <th>THÀNH VIÊN</th>
                   <th>MSSV</th>
                   <th>BAN</th>
+                  {scheduleOnly ? <><th>RẢNH BUỔI SÁNG</th><th>RẢNH BUỔI CHIỀU</th></> : <>
                   <th>VAI TRÒ</th>
                   <th>LỊCH RẢNH</th>
                   <th>TRỰC THÊM</th>
                   <th>TRẠNG THÁI</th>
+                  </>}
                   <th />
                 </tr>
               </thead>
@@ -2407,7 +2421,11 @@ export default function Workspace() {
                     <td className="mono muted">
                       {m.studentId || "Chờ bổ sung MSSV"}
                     </td>
-                    <td className="member-committee-cell">{memberCommittees(m).map(kind => committeeLabels[kind]).join(", ") || "Chưa phân ban"}</td>
+                    <td className="member-committee-cell">{memberCommitteeNames(m)}</td>
+                    {scheduleOnly ? <>
+                      <td className="member-committee-cell">{availableDays(m.availability, "am")}</td>
+                      <td className="member-committee-cell">{availableDays(m.availability, "pm")}</td>
+                    </> : <>
                     <td>
                       {m.role === "admin" ? (
                         <span className="role-tag">
@@ -2429,10 +2447,12 @@ export default function Workspace() {
                     </td>
                     <td>
                       <Badge status={m.active ? "attending" : "neutral"}>
-                        {m.active ? "Hoạt động" : "Tạm dừng"}
+                        {m.active ? "Hoạt động" : "Tạm nghỉ"}
                       </Badge>
                     </td>
+                    </>}
                     <td>
+                      {isAdmin ? <>
                       <button
                         className="text-button"
                         onClick={() => editMember(m)}
@@ -2455,6 +2475,12 @@ export default function Workspace() {
                           <Trash2 size={15} /> Xóa
                         </Button>
                       )}
+                      </> : <button className="text-button" onClick={() => setModal({
+                        title: m.name,
+                        description: scheduleOnly ? "Lịch rảnh" : "Hồ sơ thành viên",
+                        wide: true,
+                        content: <MemberProfile member={m} details={view?.directoryAvailability?.[m.id] ?? []} scheduleOnly={scheduleOnly} />,
+                      })}>{scheduleOnly ? "Xem lịch rảnh" : "Xem hồ sơ"} <ChevronRight size={14} /></button>}
                     </td>
                   </tr>
                 ))}
@@ -2463,19 +2489,19 @@ export default function Workspace() {
           </div>
           {!result.length && club.members.length > 0 ? (
             <Empty title="Không có thành viên phù hợp" icon={Users}>
-              Hãy đổi ban hoặc từ khóa tìm kiếm.
+              Hãy đổi ban hoặc từ khóa tìm kiếm
             </Empty>
           ) : !result.length ? (
             <Empty
               title="Danh sách đang chờ những cái tên đầu tiên"
               icon={Users}
-              action={
+              action={isAdmin &&
                 <Button onClick={() => editMember()}>
                   <Plus size={16} /> Thêm thành viên
                 </Button>
               }
             >
-              Thêm thủ công hoặc nhập danh sách từ Excel.
+              {isAdmin && "Thêm thủ công hoặc nhập danh sách từ Excel"}
             </Empty>
           ) : null}
         </section>}
@@ -2484,7 +2510,9 @@ export default function Workspace() {
   }
 
   function reports() {
-    const total = reportMembers(club, month).map((m) => ({
+    const participants = reportMembers(club, month);
+    const participantIds = new Set(participants.map(m => m.id));
+    const total = participants.map((m) => ({
       m,
       ...scoreFor(club, m.id, month),
     }));
@@ -2492,16 +2520,16 @@ export default function Workspace() {
     const waiting = club.schedules
       .filter((s) => s.month === month)
       .flatMap((s) => s.shifts.filter((t) => isDutyReportShift(s, t)).flatMap((t) => t.assignments))
-      .filter((a) => a.result === "unverified").length;
+      .filter((a) => participantIds.has(a.memberId) && a.result === "unverified").length;
     return (
       <>
         <div className="page-heading">
           <div>
             <span className="eyebrow">MỖI ĐÓNG GÓP ĐỀU ĐƯỢC GHI NHẬN</span>
             <h1>
-              Báo cáo hoạt động<span className="heading-dot">.</span>
+              Báo cáo hoạt động
             </h1>
-            <p>Tổng hợp trực C1, họp và các hoạt động trong tháng. Excel xuất theo tháng.</p>
+            <p>Tổng hợp trực C1, họp và các hoạt động trong tháng, Excel xuất theo tháng</p>
           </div>
           <div className="heading-actions">
             {monthSelect}
@@ -2557,7 +2585,7 @@ export default function Workspace() {
         <section className="panel">
           <PanelHead
             title={monthLabel(month)}
-            description="Họp và phiếu điểm danh tính theo ngày họp; ca trực tính theo ngày trực thực tế."
+            description="Họp và phiếu điểm danh tính theo ngày họp; ca trực tính theo ngày trực thực tế"
           />
           <div className="table-scroll">
             <table>
@@ -2609,7 +2637,7 @@ export default function Workspace() {
           </div>
           <div className="table-footer">
             <span>
-              * Chỉ tính vắng không phép. Không đạt phiếu điểm danh không bị trừ điểm.
+              * Chỉ tính vắng không phép, không đạt phiếu điểm danh không bị trừ điểm
             </span>
             <FileSpreadsheet size={17} />
           </div>
@@ -2628,10 +2656,10 @@ export default function Workspace() {
               THIẾT LẬP CHO MỘT NHỊP VẬN HÀNH TỐT HƠN
             </span>
             <h1>
-              Cài đặt Đội<span className="heading-dot">.</span>
+              Cài đặt Đội
             </h1>
             <p>
-              Điều chỉnh lịch trực và hệ số điểm phù hợp với quy định của Đội.
+              Điều chỉnh lịch trực và hệ số điểm phù hợp với quy định của Đội
             </p>
           </div>
         </div>
@@ -2677,8 +2705,8 @@ export default function Workspace() {
                 ))}
               </div>
               <p className="hint">
-                Mỗi ngày có 2 ca. Chọn số người mỗi ca khi xếp lịch nháp. Thay đổi ngày trực áp dụng cho
-                lần xếp lịch nháp tiếp theo.
+                Mỗi ngày có 2 ca, chọn số người mỗi ca khi xếp lịch nháp, thay đổi ngày trực áp dụng cho
+                lần xếp lịch nháp tiếp theo
               </p>
               <Button type="submit" disabled={busy}>
                 <Check size={16} /> Lưu cấu hình
@@ -2688,7 +2716,7 @@ export default function Workspace() {
           <section className="panel settings-card">
             <PanelHead
               title="Hệ số điểm"
-              description="Mức điểm cho kết quả trực, họp và phiếu điểm danh."
+              description="Mức điểm cho kết quả trực, họp và phiếu điểm danh"
             />
             <form
               key={month + "-" + view?.revision}
@@ -2697,7 +2725,7 @@ export default function Workspace() {
                 const coefficients = Object.fromEntries(scoreRateFields.map(([key]) => [key, parseScoreRate(f[key])]));
                 const activities = Object.fromEntries(ratedActivityKinds.map(k => [k, parseScoreRate(f["activity-" + k])]));
                 if (![...Object.values(coefficients), ...Object.values(activities)].every(value => value >= 0 && value <= 100000)) {
-                  notify("Nhập hệ số điểm từ 0 đến 100.000. Ví dụ 0,25 hoặc 0.25.", true);
+                  notify("Nhập hệ số điểm từ 0 đến 100.000, ví dụ 0,25 hoặc 0.25", true);
                   return;
                 }
                 act(
@@ -2732,7 +2760,7 @@ export default function Workspace() {
                   </Field>
                 ))}
               </div>
-              <p className="hint">Sáng kiến và đồng đẳng viên lấy số lượt nhân với mức điểm tương ứng. BĐH nhập điểm riêng và điểm theo ban trực tiếp trong Thành viên.</p>
+              <p className="hint">Sáng kiến và đồng đẳng viên lấy số lượt nhân với mức điểm tương ứng, BĐH nhập điểm riêng và điểm theo ban trực tiếp trong Thành viên</p>
               <Button type="submit" disabled={busy}>
                 <Check size={16} /> Lưu hệ số
               </Button>
@@ -2754,7 +2782,7 @@ export default function Workspace() {
                     setModal({
                       title: "Bắt đầu dữ liệu thật",
                       description:
-                        "Xóa các thành viên, lịch trực và hoạt động mẫu. Giữ lại tài khoản của bạn.",
+                        "Xóa các thành viên, lịch trực và hoạt động mẫu, giữ lại tài khoản của bạn",
                       content: (
                         <form
                           onSubmit={(e) =>
@@ -2798,7 +2826,7 @@ export default function Workspace() {
                 <div key={`${l.at}-${i}`}>
                   <span className="audit-dot" />
                   <p>
-                    <strong>{l.text}</strong>
+                    <strong>{displayMessage(l.text)}</strong>
                     <small>
                       {l.actor} ·{" "}
                       {new Date(l.at).toLocaleString("vi-VN", {
@@ -2809,7 +2837,7 @@ export default function Workspace() {
                 </div>
               ))}
               {!club.logs.length ? (
-                <p className="muted">Chưa có lịch sử thay đổi.</p>
+                <p className="muted">Chưa có lịch sử thay đổi</p>
               ) : null}
             </div>
           </section>
@@ -2836,7 +2864,7 @@ export default function Workspace() {
             <h1>
               Hoạt động của tôi
             </h1>
-            <p>Đăng ký họp và xem những đóng góp của bạn tại đây.</p>
+            <p>Đăng ký họp và xem những đóng góp của bạn tại đây</p>
           </div>
           <div className="heading-actions">
             <Badge status="neutral">MSSV {me!.studentId}</Badge>
@@ -2863,7 +2891,7 @@ export default function Workspace() {
                         : "Vắng không phép"
                       : "Có mặt"}
                   </Badge>
-                  <p>{currentWeek.closed ? "Kết quả điểm danh đã chốt bởi BĐH hoặc hệ thống." : "Kết quả điểm danh đã được BĐH ghi nhận."}</p>
+                  <p>{currentWeek.closed ? "Kết quả điểm danh đã chốt bởi BĐH hoặc hệ thống" : "Kết quả điểm danh đã được BĐH ghi nhận"}</p>
                 </>
               ) : (
                 <Badge status={ownEntry?.status ?? "unregistered"} />
@@ -2871,16 +2899,16 @@ export default function Workspace() {
               {ownEntry?.reason ? (
                 <p>Lý do xin vắng đã gửi: {ownEntry.reason}</p>
               ) : !currentWeek.closed && !currentWeek.cancelled ? (
-                <p>Hãy cho BĐH biết bạn có tham gia buổi họp tuần này nhé.</p>
+                <p>Hãy cho BĐH biết bạn có tham gia buổi họp tuần này nhé</p>
               ) : null}
             </div>
             {currentWeek.closed || currentWeek.cancelled || ownEntry?.attendanceVerified || !ownEntry ? (
               <div className="notice neutral">
                 {currentWeek.cancelled
-                  ? "Tuần này không tổ chức họp."
+                  ? "Tuần này không tổ chức họp"
                   : !ownEntry
-                    ? "Bạn không thuộc danh sách buổi họp tuần này. Liên hệ BĐH nếu cần bổ sung."
-                    : "Kết quả đã được ghi nhận. Liên hệ BĐH nếu cần điều chỉnh."}
+                    ? "Bạn không thuộc danh sách buổi họp tuần này, liên hệ BĐH nếu cần bổ sung"
+                    : "Kết quả đã được ghi nhận, liên hệ BĐH nếu cần điều chỉnh"}
               </div>
             ) : (
               <div className="registration-buttons">
@@ -2903,7 +2931,7 @@ export default function Workspace() {
                   <>
                     <div className="notice amber">
                       Yêu cầu đang chờ BĐH duyệt, được thống kê trong nhóm chưa
-                      xử lý.
+                      xử lý
                     </div>
                     <Button
                       variant="secondary"
@@ -2996,7 +3024,7 @@ export default function Workspace() {
             ))}
             {!shifts.length ? (
               <Empty title="Bạn chưa có ca trực từ tuần này" icon={CalendarDays}>
-                Theo dõi tại đây sau khi BĐH công bố lịch.
+                Theo dõi tại đây sau khi BĐH công bố lịch
               </Empty>
             ) : null}
             <label className="extra-preference">
@@ -3015,7 +3043,7 @@ export default function Workspace() {
               />
               <span>
                 <strong>Tôi muốn trực thêm</strong>
-                <small>Ưu tiên phân thêm sau khi mọi người đã có lượt.</small>
+                <small>Ưu tiên phân thêm sau khi mọi người đã có lượt</small>
               </span>
               <HeartHandshake size={20} />
             </label>
@@ -3041,8 +3069,8 @@ export default function Workspace() {
               <LinkButton onClick={() => go("requests")}>Đăng ký sự kiện</LinkButton>
             </div>
             <p className="hint">
-              Trực đủ/vắng trực tính khi xác minh; họp tính khi chốt. Đi muộn
-              tính theo ô BĐH tích trên lịch đã công bố.
+              Trực đủ/vắng trực tính khi xác minh; họp tính khi chốt, đi muộn
+              tính theo ô BĐH tích trên lịch đã công bố
             </p>
           </section>
         </div>
@@ -3203,20 +3231,20 @@ export default function Workspace() {
                   <div className="help-content">
                     <p>
                       <strong>Họp tuần:</strong> tự mở thứ Hai, chốt cuối Chủ
-                      nhật. Xin vắng cần lý do; đổi sang tham gia cần BĐH duyệt.
+                      nhật, xin vắng cần lý do; đổi sang tham gia cần BĐH duyệt
                     </p>
                     <p>
                       <strong>Lịch trực:</strong> BĐH nhập lịch rảnh, xếp bản
-                      nháp rồi công bố. Hai ca/người là ưu tiên; có thể xếp
-                      thêm.
+                      nháp rồi công bố, hai ca/người là ưu tiên; có thể xếp
+                      thêm
                     </p>
                     <p>
-                      <strong>Điểm tháng:</strong> điểm trực dựa trên ca đã xác minh.
-                      Vắng họp được tính khi chốt. Phiếu được BĐH tích đạt cộng mức E theo ngày họp.
+                      <strong>Điểm tháng:</strong> điểm trực dựa trên ca đã xác minh,
+                      vắng họp được tính khi chốt, phiếu được BĐH tích đạt cộng mức E theo ngày họp
                     </p>
                     <p>
                       <strong>Báo cáo:</strong> BĐH chọn tháng rồi bấm xuất
-                      Excel. Dữ liệu thiếu được ghi rõ trong bản tạm.
+                      Excel, dữ liệu thiếu được ghi rõ trong bản tạm
                     </p>
                   </div>
                 ),
@@ -3305,7 +3333,7 @@ export default function Workspace() {
               <Sparkles size={15} />
               <span>
                 Đang xem dữ liệu mẫu · Mọi thao tác đều được lưu để bạn trải
-                nghiệm.
+                nghiệm
               </span>
               {isAdmin ? (
                 <button onClick={() => go("settings")}>
@@ -3317,8 +3345,8 @@ export default function Workspace() {
             <div className="demo-banner welcome-banner">
               <Leaf size={16} />
               <span>
-                Không gian đã sẵn sàng. Thêm thành viên hoặc xem bản mẫu để làm
-                quen.
+                Không gian đã sẵn sàng, thêm thành viên hoặc xem bản mẫu để làm
+                quen
               </span>
               <button
                 disabled={busy}
@@ -3337,10 +3365,10 @@ export default function Workspace() {
                 <div>
                   <span className="eyebrow">CÙNG GẶP NHAU MỖI TUẦN</span>
                   <h1>
-                    Họp hằng tuần<span className="heading-dot">.</span>
+                    Họp hằng tuần
                   </h1>
                   <p>
-                    Đăng ký, ghi nhận có mặt và kết quả phiếu điểm danh trong một bảng.
+                    Đăng ký, ghi nhận có mặt và kết quả phiếu điểm danh trong một bảng
                   </p>
                 </div>
                 <div className="heading-actions">
@@ -3373,24 +3401,22 @@ export default function Workspace() {
               <div className="week-notice">
                 <Clock3 size={16} />{" "}
                 {week.closed
-                  ? "Tuần đã chốt. Điều chỉnh kết quả cần ghi lý do và được lưu lịch sử."
+                  ? "Tuần đã chốt, điều chỉnh kết quả cần ghi lý do và được lưu lịch sử"
                   : week.reopenedForCorrection
-                    ? "Tuần đã mở lại để chỉnh sửa. BĐH cần chốt lại khi hoàn tất; hệ thống không tự chốt tuần này trong lúc sửa."
-                    : "Tuần chưa chốt. Nút Hủy chốt sẽ bật sau khi BĐH chốt cuộc họp."}
+                    ? "Tuần đã mở lại để chỉnh sửa, BĐH cần chốt lại khi hoàn tất; hệ thống không tự chốt tuần này trong lúc sửa"
+                    : "Tuần chưa chốt, nút Hủy chốt sẽ bật sau khi BĐH chốt cuộc họp"}
               </div>
               {meetingTable()}
             </>
           ) : activeTab === "weeklyScores" ? (
             <>
-              <div className="page-heading"><div><span className="eyebrow">CÙNG THEO DÕI ĐÓNG GÓP</span><h1>Điểm hàng tuần<span className="heading-dot">.</span></h1><p>Tất cả thành viên đều xem được điểm của nhau.</p></div>{weekSelect}</div>
-              <p className="notice green weekly-score-note">Tuần mới bắt đầu từ 0. Điểm đã ghi được cộng vào báo cáo tháng theo ngày tính điểm. Điểm sự kiện chỉ cộng sau khi BĐH duyệt.</p>
-              <Scoreboard title={`Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6))}`} period="tuần"
-                rows={weeklyScores.map(r => ({ ...r, name: findMember(r.memberId)?.name ?? "" }))}
-                memberId={isAdmin ? undefined : me.id} scope={scoreScope} onScopeChange={setScoreScope} />
+              <div className="page-heading"><div><span className="eyebrow">CÙNG THEO DÕI ĐÓNG GÓP</span><h1>Điểm hàng tuần</h1><p>Tất cả thành viên đều xem được điểm của nhau</p></div>{weekSelect}</div>
+              <p className="notice green weekly-score-note">Tuần mới bắt đầu từ 0, điểm đã ghi được cộng vào báo cáo tháng theo ngày tính điểm, điểm sự kiện chỉ cộng sau khi BĐH duyệt</p>
+              {weekScoreTable()}
             </>
           ) : activeTab === "requests" ? (
             <>
-              <div className="page-heading"><div><span className="eyebrow">THAM GIA VÀ ĐÓNG GÓP</span><h1>{isAdmin ? "Tạo sự kiện" : "Sự kiện Đội"}<span className="heading-dot">.</span></h1><p>{isAdmin ? "Tạo sự kiện, duyệt đăng ký và thêm người đã tham gia." : "Đăng ký sự kiện và xem kết quả tham gia của bạn."}</p></div></div>
+              <div className="page-heading"><div><span className="eyebrow">THAM GIA VÀ ĐÓNG GÓP</span><h1>{isAdmin ? "Tạo sự kiện" : "Sự kiện Đội"}</h1><p>{isAdmin ? "Tạo sự kiện, duyệt đăng ký và thêm người đã tham gia" : "Đăng ký sự kiện và xem kết quả tham gia của bạn"}</p></div></div>
               <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load}/>
               {isAdmin ? requestsPanel(true) : null}
             </>
@@ -3424,7 +3450,7 @@ export default function Workspace() {
           )}
           <footer className="page-footer">
             <span>
-              <Leaf size={13} /> nhịp. · Cùng nhau giữ nhịp hoạt động
+              <Leaf size={13} /> nhịp · Cùng nhau giữ nhịp hoạt động
             </span>
             <span>Tuần từ thứ Hai đến Chủ nhật · Giờ Việt Nam</span>
           </footer>

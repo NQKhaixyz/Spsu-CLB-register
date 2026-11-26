@@ -29,19 +29,19 @@ export function AvailabilityPreview({ rows }: { rows: AvailabilityDetail[] }) {
         <strong>
           {rows.length} dòng lịch rảnh của {peopleCount(rows)} người
         </strong>
-        . File không có MSSV. Khung giờ, tuần học và ghi chú được lưu nguyên văn
-        để BĐH đối chiếu.
+        , file không có MSSV, khung giờ, tuần học và ghi chú được lưu nguyên văn
+        để BĐH đối chiếu
       </div>
       <DetailTable rows={rows.slice(0, 8)} />
       {rows.length > 8 ? (
         <p className="hint">
-          Xem trước 8/{rows.length} dòng. Toàn bộ dữ liệu sẽ hiện trong Thành viên → Lịch rảnh sau khi lưu.
+          Xem trước 8/{rows.length} dòng, toàn bộ dữ liệu sẽ hiện trong Thành viên → Lịch rảnh sau khi lưu
         </p>
       ) : null}
       <p className="dialog-copy">
-        Bản chi tiết được lưu để xem và đối chiếu. Đặt mốc tuần học và giờ ca để
-        áp dụng xếp lịch. Những tên chưa có trong danh sách được tạo hồ sơ chờ
-        BĐH bổ sung MSSV trước khi cấp tài khoản.
+        Bản chi tiết được lưu để xem và đối chiếu, đặt mốc tuần học và giờ ca để
+        áp dụng xếp lịch, những tên chưa có trong danh sách được tạo hồ sơ chờ
+        BĐH bổ sung MSSV trước khi cấp tài khoản
       </p>
     </>
   );
@@ -116,9 +116,9 @@ export default function AvailabilityPage({
         <div>
           <span className="eyebrow">LỊCH RẢNH CỦA THÀNH VIÊN</span>
           <h2>
-            Lịch rảnh chi tiết<span className="heading-dot">.</span>
+            Lịch rảnh chi tiết
           </h2>
-          <p>Đối chiếu khung giờ, tuần học và ghi chú từ file Excel của Đội.</p>
+          <p>Đối chiếu khung giờ, tuần học và ghi chú từ file Excel của Đội</p>
         </div>
         <Button variant="secondary" onClick={onDuty}>
           <CalendarDays size={16} /> Lịch trực C1
@@ -128,7 +128,7 @@ export default function AvailabilityPage({
         <section className="panel">
           <Empty title="Chưa có bản lịch rảnh chi tiết" icon={CalendarDays}>
             Vào Lịch trực C1 để nhập file có các cột Họ và tên, Thứ, Buổi, Tuần học; cột ghi chú có
-            thể để trống.
+            thể để trống
           </Empty>
         </section>
       ) : (
@@ -170,8 +170,8 @@ export default function AvailabilityPage({
             </strong>
             <p>
               {dataset.settings
-                ? `Tuần ${dataset.settings.anchorWeek} bắt đầu ${dataset.settings.anchorDate}. Ca sáng ${dataset.settings.amStart}–${dataset.settings.amEnd}, ca chiều ${dataset.settings.pmStart}–${dataset.settings.pmEnd}. Cho phép đến muộn tối đa ${dataset.settings.allowedLateMinutes} phút.`
-                : "Đặt mốc tuần học và giờ ca bên dưới để xếp lịch. Người chưa có MSSV được tạo hồ sơ theo tên, chờ BĐH bổ sung MSSV trước khi cấp tài khoản."}
+                ? `Tuần ${dataset.settings.anchorWeek} bắt đầu ${dataset.settings.anchorDate}, ca sáng ${dataset.settings.amStart}–${dataset.settings.amEnd}, ca chiều ${dataset.settings.pmStart}–${dataset.settings.pmEnd}, cho phép đến muộn tối đa ${dataset.settings.allowedLateMinutes} phút`
+                : "Đặt mốc tuần học và giờ ca bên dưới để xếp lịch, người chưa có MSSV được tạo hồ sơ theo tên, chờ BĐH bổ sung MSSV trước khi cấp tài khoản"}
             </p>
           </div>
           {dataset.memberLinks ? (
@@ -187,7 +187,7 @@ export default function AvailabilityPage({
                 <>
                   <p>
                     Chuyển sang vận hành chính thức sẽ giữ danh sách thật và
-                    lịch trực từ file, lưu riêng phần dữ liệu mẫu.
+                    lịch trực từ file, lưu riêng phần dữ liệu mẫu
                   </p>
                   <Button disabled={busy} onClick={onOfficial}>
                     Dùng danh sách này làm chính thức
@@ -196,7 +196,7 @@ export default function AvailabilityPage({
               ) : (
                 <p>
                   BĐH bổ sung MSSV trong mục Thành viên trước khi cấp tài khoản
-                  cho người chưa có MSSV.
+                  cho người chưa có MSSV
                 </p>
               )}
             </div>
@@ -204,7 +204,7 @@ export default function AvailabilityPage({
           <section className="panel availability-settings">
             <PanelHead
               title="Áp dụng và xếp lịch nháp"
-              description="Bản nháp dành cho BĐH kiểm tra trước khi công bố."
+              description="Bản nháp dành cho BĐH kiểm tra trước khi công bố"
             />
             <form
               onSubmit={async (e) => {
@@ -302,10 +302,10 @@ export default function AvailabilityPage({
                 </Field>
               </div>
               <p className="hint">
-                Cột ghi chú cuối file không dùng để xếp lịch. BĐH nhập ghi chú
-                ca và tích Đến muộn trong bảng theo dõi trực. Chỉ các khung rảnh
+                Cột ghi chú cuối file không dùng để xếp lịch, BĐH nhập ghi chú
+                ca và tích Đến muộn trong bảng theo dõi trực, chỉ các khung rảnh
                 đủ đến hết ca và bắt đầu không muộn quá mức cho phép mới được
-                chọn.
+                chọn
               </p>
               <Button type="submit" disabled={busy}>
                 Áp dụng và xếp lịch nháp
@@ -355,7 +355,7 @@ export default function AvailabilityPage({
               />
             ) : (
               <Empty title="Không có dòng phù hợp">
-                Thử đổi từ khóa hoặc bộ lọc.
+                Thử đổi từ khóa hoặc bộ lọc
               </Empty>
             )}
             <div className="table-footer">

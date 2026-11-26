@@ -19,7 +19,7 @@ export function Brand() {
         <Clover size={27} strokeWidth={1.9} />
       </span>
       <span>
-        nhịp<span className="brand-dot">.</span>
+        nhịp
         <small>KHÔNG GIAN ĐỘI</small>
       </span>
     </div>

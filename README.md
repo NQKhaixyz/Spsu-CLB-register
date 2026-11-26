@@ -13,7 +13,7 @@ Website quản lý họp tuần, phiếu điểm danh, lịch trực C1 và báo
 7. Trong **Họp hằng tuần**, đặt ngày họp trong tuần tự mở; BĐH tích vắng thực tế/có phép/đạt phiếu điểm danh và chốt.
 8. Sau khi xác minh với thầy cô, mở từng ca để ghi nhận kết quả trực hoặc đổi người thay. Người trực thay chỉ được cộng A sau khi xác minh đã trực.
    Nếu buổi trực không diễn ra, BĐH mở ca và bấm **Hủy cả ca** một lần cho tất cả người được phân công. Ca hủy không cộng/trừ điểm; **Khôi phục ca** đưa lại đúng phân công và kết quả trước khi hủy. Cách này áp dụng cho cả lịch nháp và lịch đã công bố.
-9. Vào **Báo cáo tháng → Xuất Excel**. Có dữ liệu thiếu thì tệp ghi rõ BẢN TẠM. Tệp gồm Tổng hợp tháng, Chi tiết họp, Chi tiết trực, Quy tắc điểm.
+9. Vào **Báo cáo tháng → Xuất Excel**. Tệp có các trang tổng hợp, chi tiết họp, trực, hoạt động và quy tắc điểm. Mỗi dòng thành viên ghi đủ các ban trong hồ sơ tại thời điểm xuất. Khi có người trực thay, trang chi tiết trực ghi ban của cả người được phân ban đầu và người thực tế trực.
 
 ## Quy tắc đã triển khai
 
@@ -32,7 +32,7 @@ Website quản lý họp tuần, phiếu điểm danh, lịch trực C1 và báo
 - Mốc đang áp dụng: tuần học 11 là 09–15/11/2026; sáng 08:30–11:30, chiều 14:00–17:30. Đọc tuần theo khoảng, danh sách hoặc trừ tuần. Chỉ chọn người rảnh tới hết ca và bắt đầu không muộn quá 30 phút; các khoảng liên tiếp trong cùng ngày được gộp. Không coi 08:00–10:00 là rảnh cả ca sáng. Cột ghi chú cuối file được bỏ qua khi xếp lịch theo yêu cầu BĐH.
 - Bảng **Theo dõi trực và đến muộn** cho BĐH nhập ghi chú và tích Đến muộn sau khi công bố. Tích ô sẽ trừ D điểm; bỏ tích sẽ hoàn lại khoản trừ đó. Không có ô miễn trừ: nếu lý do hợp lệ, BĐH xem ghi chú và không tích Đến muộn. Nội dung ghi chú không tự thay đổi điểm hoặc ô tích. Ghi chú dự kiến cho người rảnh từ 14:30 không tự tích kết quả đến muộn thực tế.
 - Điểm = A × trực đủ − B × vắng trực không phép − C × vắng họp không phép − D × đi muộn. Điểm A/B tính theo kết quả xác minh; D tính riêng ngay khi BĐH tích trên lịch đã công bố. Bản nháp không tính điểm. Ca vắng hoặc hủy sẽ bỏ ô đến muộn để tránh trừ chồng. Excel có số lượt và số điểm trừ đi muộn ở cả tổng hợp và chi tiết.
-- Thành viên mới không bị tính vắng các tuần trước. Ngừng hoạt động vẫn giữ lịch sử và báo cáo tháng liên quan.
+- Thành viên mới không bị tính vắng các tuần trước. Thành viên tạm nghỉ vẫn xuất hiện trong bảng điểm của tuần bấm tạm nghỉ. Từ thứ Hai kế tiếp, bảng tuần, báo cáo tháng đang xem và Excel ẩn thành viên đó. Báo cáo tháng đã qua dùng tuần chứa ngày cuối tháng để xác định danh sách. Khi thành viên trở lại, tên xuất hiện từ tuần hoạt động lại.
 - Sửa kết quả họp đã chốt cần lý do. BĐH không thể hạ quyền hoặc ngừng hoạt động chủ quản trị.
 - Dữ liệu lưu ở Cloudflare D1, không phụ thuộc trình duyệt. Cập nhật có kiểm tra phiên bản để tránh hai BĐH ghi đè.
 
@@ -102,6 +102,7 @@ Kiểm thử `tests/native-flow.mjs` chỉ chấp nhận máy chủ loopback. N�
 
 - Tab Thành viên có Hồ sơ, Điểm cộng / trừ và Lịch rảnh. Phần ghi điểm tuần và lịch sử khoản trừ nằm ở Điểm cộng / trừ; chọn tuần trước khi nhập. Tab Tạo sự kiện dùng để quản lý sự kiện và duyệt đăng ký. Thành viên thường xem điểm riêng và lý do trừ của mình tại Góc thành viên.
 - Tài khoản thành viên có hai chế độ xem trong **Điểm hàng tuần** và **Báo cáo tháng**. Chọn **Điểm của tôi** để xem dòng của mình hoặc **Toàn Đội** để xem điểm từng người trong kỳ. Trong **Góc thành viên**, nút **Xem điểm toàn Đội** mở bảng điểm tuần.
+- Trong **Thành viên**, người đã đăng nhập có thể tìm theo tên hoặc MSSV, lọc theo ban và xem hồ sơ, lịch rảnh sáng/chiều cùng khung giờ và tuần học đã áp dụng của từng người. BĐH quản lý hồ sơ và tài khoản.
 - Trong **Thành viên → Hồ sơ**, BĐH chọn **Thêm thành viên** hoặc **Chỉnh sửa** rồi tích các ban thành viên tham gia. Một người có thể thuộc nhiều ban trong số Truyền thông, Sự kiện, Chuyên môn và Điều hành. **Lọc theo ban** hiển thị người đó trong từng ban đã chọn ở cả Hồ sơ và Điểm cộng / trừ. Bỏ hết dấu tích để đưa hồ sơ về **Chưa phân ban**. Quyền BĐH được quản lý qua trường Vai trò.
 - Trong **Cài đặt cá nhân → Phông chữ**, mỗi người có thể xem thử Inter, Nunito, Lexend hoặc Spectral. Lựa chọn được lưu riêng vào tài khoản và dùng lại khi đăng nhập trên thiết bị khác. Phông mặc định là Inter.
 - Nhập lịch rảnh từ Excel chỉ mở tại Lịch trực C1. Sau khi nhập bản chi tiết, đối chiếu tại Thành viên → Lịch rảnh; chỉnh ô lịch rảnh lặt vặt tại Hồ sơ → Chỉnh sửa. Luồng đồng bộ Excel/ô tick và xếp lịch giữ nguyên.

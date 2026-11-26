@@ -50,7 +50,7 @@ export function SiteUpdateNotice() {
   if (!updateAvailable) return null;
   return (
     <aside className="site-update-notice" role="status">
-      <span>Có bản mới của Nhịp Đội.</span>
+      <span>Có bản mới của Nhịp Đội</span>
       <button className="btn primary" type="button" onClick={() => window.location.reload()}>
         Tải bản mới
       </button>

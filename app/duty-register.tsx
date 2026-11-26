@@ -46,7 +46,7 @@ export default function DutyRegister({
     <section className="panel duty-register">
       <PanelHead
         title="Theo dõi trực và đến muộn"
-        description={`${monthLabel(schedule.month)} · Đến muộn trừ ${rule.D ?? 0} điểm/lượt.`}
+        description={`${monthLabel(schedule.month)} · Đến muộn trừ ${rule.D ?? 0} điểm/lượt`}
       />
       <div className="availability-toolbar">
         <input
@@ -61,8 +61,8 @@ export default function DutyRegister({
       </div>
       {!schedule.shifts.some(shift => isShiftPublished(schedule, shift)) ? (
         <p className="hint duty-register-hint">
-          Lịch còn là bản nháp. Công bố trước khi ghi nhận kết quả thực tế và
-          đến muộn.
+          Lịch còn là bản nháp, công bố trước khi ghi nhận kết quả thực tế và
+          đến muộn
         </p>
       ) : null}
       <div className="table-scroll">

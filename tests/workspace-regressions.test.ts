@@ -4,8 +4,16 @@ import { applyAction } from "../lib/actions";
 import { createClub, type AvailabilityDataset } from "../lib/club";
 import { workspaceView } from "../lib/workspace-view";
 import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
+import { displayMessage } from "../lib/display-message";
 
 const owner = {userId:"workspace-regression-owner",displayName:"BĐH",email:""};
+
+test("Displayed notices keep decimal points, domains, file extensions, question marks and ellipses", () => {
+  assert.equal(displayMessage("Đã lưu 0.25 điểm. Bạn muốn mở tệp diem.v2.xlsx?"), "Đã lưu 0.25 điểm, bạn muốn mở tệp diem.v2.xlsx?");
+  assert.equal(displayMessage("Xem https://example.org/nhom.v2 hoặc lienhe@doi.vn."), "Xem https://example.org/nhom.v2 hoặc lienhe@doi.vn");
+  assert.equal(displayMessage("Đang tải..."), "Đang tải...");
+  assert.equal(displayMessage("Đã lưu. BĐH có thể xem."), "Đã lưu, BĐH có thể xem");
+});
 
 test("Members and admins save independent typefaces that follow their own account", () => {
   const { c, pending } = fixture();
@@ -54,6 +62,44 @@ test("Member response removes both staged and active source datasets without mod
   assert.deepEqual(member.club.logs,[]);
   assert.equal(JSON.stringify(c),before);
   assert.ok(workspaceView(c,owner,5).club.activeAvailabilityDataset);
+});
+test("Signed-in members see peer profiles and applied availability with overrides, without administrative or private scoring data", () => {
+  const { c, pending } = fixture();
+  const observer = { userId: "directory-reader", displayName: "Người xem lịch", email: "" };
+  applyAction(c, observer, "profile", { name: observer.displayName, studentId: "VIEW001" });
+  Object.assign(pending, {
+    email: "mai@example.test", loginName: "mai-lan", committees: ["cm", "sk"], extraDuties: true,
+    availability: ["2-am"], availabilityOverrides: { "1-am": false, "3-pm": true }, userId: "native:private-peer", fontPreference: "nunito",
+  });
+  const dataset = c.activeAvailabilityDataset!;
+  dataset.settings = { anchorDate: "2026-11-09", anchorWeek: 11, startDate: "2026-11-09", amStart: "07:00", amEnd: "11:00", pmStart: "13:00", pmEnd: "17:00", allowedLateMinutes: 5, ignoreSourceNotes: true };
+  dataset.rows.push(
+    { ...dataset.rows[0], day: "Thứ 5", period: "13:30–16:45", weeks: "12-14", note: "Rảnh sau giờ học" },
+    { ...dataset.rows[0], name: "Chưa khớp", note: "Dòng chưa khớp riêng tư" },
+  );
+  c.availabilityDataset!.rows[0].note = "Bản nháp chưa áp dụng";
+  c.pointDeductions = [{ id: "d", memberId: pending.id, date: "2026-11-09", week: "2026-11-09", points: 2, reason: "Lý do nội bộ", createdAt: "", createdBy: "owner" }];
+  const before = JSON.stringify(c);
+  const view = workspaceView(c, observer, 2);
+  const profile = view.club.members.find(m => m.id === pending.id)!;
+  assert.equal(view.isAdmin, false);
+  assert.equal(profile.email, pending.email);
+  assert.equal(profile.loginName, pending.loginName);
+  assert.equal(profile.extraDuties, true);
+  assert.deepEqual(profile.committees, pending.committees);
+  assert.deepEqual(profile.availability, ["2-am", "3-pm", "4-pm"]);
+  assert.equal(view.club.members[0].role, "admin");
+  assert.equal(view.club.members[0].studentId, "BCS001");
+  assert.equal(profile.userId, undefined);
+  assert.equal(profile.fontPreference, undefined);
+  assert.deepEqual(view.directoryAvailability?.[pending.id][1], { day: "Thứ 5", period: "13:30–16:45", weeks: "12-14", note: "Rảnh sau giờ học" });
+  const json = JSON.stringify(view);
+  for (const secret of ["native:private-peer", "Dòng chưa khớp riêng tư", "Bản nháp chưa áp dụng", "Lý do nội bộ", "source.xlsx"])
+    assert.ok(!json.includes(secret));
+  assert.equal(JSON.stringify(c), before);
+  const guest = workspaceView(c, { ...observer, userId: "unlinked" }, 2);
+  assert.equal(guest.directoryAvailability, undefined);
+  assert.ok(!JSON.stringify(guest).includes(pending.email!));
 });
 test("BĐH roster imports and manual additions cannot duplicate a source profile pending MSSV",()=>{
   const {c,pending}=fixture();

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { activityLabels, visibleActivityKinds } from "../lib/activity";
 import { monthLabel, type ScoreboardRow } from "../lib/club";
 import { Button, Empty, PanelHead } from "./ui";
+import { displayMessage } from "../lib/display-message";
 
 const scopes = [
   { id: "mine", label: "Điểm của tôi" },
@@ -19,7 +20,7 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
   return (
     <section className="panel">
       <PanelHead title={title}
-        description="Sáng kiến, đồng đẳng viên và sự kiện hiển thị số lượt. Điểm theo ban, điểm riêng và điểm trừ hiển thị số điểm."
+        description="Sáng kiến, đồng đẳng viên và sự kiện hiển thị số lượt, điểm theo ban, điểm riêng và điểm trừ hiển thị số điểm"
         action={memberId && (
           <div className="table-tabs score-scope" role="group" aria-label="Phạm vi bảng điểm">
             {scopes.map(item => (
@@ -52,7 +53,7 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
             ))}</tbody>
           </table>
         </div>
-      ) : <Empty title={onlyMine ? `Bạn chưa có trong bảng điểm ${period} này.` : `Chưa có thành viên trong ${period} này.`} />}
+      ) : <Empty title={onlyMine ? `Bạn chưa có trong bảng điểm ${period} này` : `Chưa có thành viên trong ${period} này`} />}
     </section>
   );
 }
@@ -69,10 +70,10 @@ export function MemberMonthlyScoreboard({ month, ...scopeProps }: ScopeProps & {
         });
         const data = await response.json() as { month?: string; rows?: ScoreboardRow[]; error?: string };
         if (!response.ok || data.month !== month || !Array.isArray(data.rows))
-          throw new Error(data.error || "Không tải được bảng điểm tháng.");
+          throw new Error(data.error || "Không tải được bảng điểm tháng");
         if (!controller.signal.aborted) setResult({ rows: data.rows });
       } catch (error) {
-        if (!controller.signal.aborted) setResult({ error: error instanceof Error ? error.message : "Không tải được bảng điểm tháng." });
+        if (!controller.signal.aborted) setResult({ error: error instanceof Error ? error.message : "Không tải được bảng điểm tháng" });
       }
     }
     void load();
@@ -80,7 +81,7 @@ export function MemberMonthlyScoreboard({ month, ...scopeProps }: ScopeProps & {
   }, [month, attempt]);
   if (!result) return <p className="notice neutral" role="status">Đang tải bảng điểm tháng…</p>;
   if ("error" in result) return (
-    <div className="notice amber" role="alert">{result.error}
+    <div className="notice amber" role="alert">{displayMessage(result.error)}
       <Button variant="secondary" onClick={() => { setResult(null); setAttempt(n => n + 1); }}>Thử lại</Button>
     </div>
   );

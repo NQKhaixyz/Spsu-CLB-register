@@ -1,6 +1,6 @@
-import { addDays, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, reportMembers, scoreFor, type Club, type ScoreboardRow } from "./club";
+import { addDays, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, pausedForScoreWeek, reportMembers, scoreFor, type Club, type ScoreboardRow, type View } from "./club";
 import { committeeLabels } from "./committees";
-import { academicWeekFor, activeAvailabilityDatasetFor } from "./availability";
+import { academicWeekFor, activeAvailabilityDatasetFor, profileAvailability, profileAvailabilityRows } from "./availability";
 
 // Show current organization and role wording in the interface and reports,
 // while keeping logins, IDs, and stored history as recorded.
@@ -27,8 +27,8 @@ function currentTerminology<T>(value: T): T {
   ])) as T;
 }
 
-export function monthlyScoreboard(club: Club, month: string): ScoreboardRow[] {
-  return reportMembers(club, month).map(member => {
+export function monthlyScoreboard(club: Club, month: string, asOf = today()): ScoreboardRow[] {
+  return reportMembers(club, month, asOf).map(member => {
     const { points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts } = scoreFor(club, member.id, month);
     return { memberId: member.id, name: displayText(member.name), points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts };
   });
@@ -56,8 +56,8 @@ export function workspaceView(
     }
   }
   const weeklyScores = club.weeks.flatMap(w => club.members
-    .filter(m => assignedByWeek.get(w.id)?.has(m.id) ||
-      (m.joined <= addDays(w.id, 6) && (!m.left || m.left >= w.id)))
+    .filter(m => !pausedForScoreWeek(m, w.id) &&
+      (assignedByWeek.get(w.id)?.has(m.id) || m.joined <= addDays(w.id, 6)))
     .map(m => weeklyScoreFor(club, m.id, w.id)));
   const me = club.members.find((m) => m.userId === user.userId) ?? null;
   const isAdmin = me?.role === "admin" && me.active;
@@ -65,13 +65,19 @@ export function workspaceView(
     ? Object.fromEntries([...new Set([today().slice(0, 7), ...club.schedules.map(schedule => schedule.month)])]
         .map(month => [month, scoreFor(club, me.id, month)]))
     : undefined;
+  const directoryAvailability: View["directoryAvailability"] = !isAdmin && me?.active ? {} : undefined;
   if (!isAdmin) {
     club = structuredClone(club);
-    club.members = club.members.map((m) =>
-      m.id === me?.id
-        ? m
-        : { id: m.id, name: m.name, studentId: "", role: "member", active: m.active, joined: m.joined, availability: [], extraDuties: false },
-    );
+    club.members = club.members.map(m => {
+      if (!directoryAvailability)
+        return m.id === me?.id ? m : { id: m.id, name: m.name, studentId: "", role: "member", active: m.active, joined: m.joined, availability: [], extraDuties: false };
+      const rows = profileAvailabilityRows(club, m);
+      if (rows.length) directoryAvailability[m.id] = rows.map(({ day, period, weeks, note }) => ({ day, period, weeks, note }));
+      const availability = profileAvailability(club, m, rows);
+      if (m.id === me?.id) return { ...m, availability };
+      const { id, name, studentId, email, role, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId } = m;
+      return { id, name, studentId, email, role, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId, availability };
+    });
     club.weeks = club.weeks.map(({ closingSnapshot, ...w }) => ({ ...w, entries: w.entries.filter((e) => e.memberId === me?.id) }));
     club.schedules = club.schedules.filter((s) => s.shifts.some(shift => isShiftPublished(s, shift))).map(({ pendingDutyWeek, ...s }) => ({
       ...s,
@@ -90,7 +96,7 @@ export function workspaceView(
     delete club.demoArchive;
     delete club.dutyWithdrawal;
   }
-  const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, currentAcademicWeek });
+  const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, directoryAvailability, currentAcademicWeek });
   // The signed-in account gets its preference on `me`; rosters do not need personal settings.
   for (const member of view.club.members) delete member.fontPreference;
   for (const member of view.club.demoArchive?.members ?? []) delete member.fontPreference;

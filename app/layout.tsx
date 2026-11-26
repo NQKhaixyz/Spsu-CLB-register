@@ -11,7 +11,7 @@ import { SiteUpdateNotice } from "./site-update";
 export const metadata: Metadata = {
   title: "Nhịp Đội · Họp & lịch trực",
   description:
-    "Cùng một nhịp. Quản lý họp tuần, lịch trực C1 và hoạt động thành viên.",
+    "Cùng một nhịp, quản lý họp tuần, lịch trực C1 và hoạt động thành viên",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

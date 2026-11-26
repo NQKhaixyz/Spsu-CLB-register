@@ -17,6 +17,7 @@ import {
   newEntry,
   rulesFor,
   syncWeeks,
+  setMemberActive,
   today,
   uid,
   weekId,
@@ -642,8 +643,7 @@ export function applyAction(
           m.userId !== club.ownerId,
           "Không thể ngừng hoạt động tài khoản chủ quản trị.",
         );
-        m.active = !!data.active;
-        m.left = m.active ? undefined : today();
+        setMemberActive(m, !!data.active);
       }
       if (data.role) {
         check(["admin", "member"].includes(data.role), "Vai trò không hợp lệ.");

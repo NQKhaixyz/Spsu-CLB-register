@@ -25,6 +25,7 @@ export type Member = CommitteeMembership & {
   active: boolean;
   joined: string;
   left?: string;
+  pastPauses?: { pausedOn: string; resumedOn: string }[];
   availability: string[];
   availabilityOverrides?: Record<string, boolean>;
   extraDuties: boolean;
@@ -167,6 +168,7 @@ export type View = {
   revision: number;
   weeklyScores?: WeeklyScore[];
   personalMonthlyScores?: Record<string, ReturnType<typeof scoreFor>>;
+  directoryAvailability?: Record<string, Pick<AvailabilityDetail, "day" | "period" | "weeks" | "note">[]>;
   currentAcademicWeek?: number;
 };
 export const statusNames: Record<Registration, string> = {
@@ -261,7 +263,7 @@ export function syncWeeks(club: Club, date = today()) {
         cancelled: false,
         entries: club.members
           .filter(
-            (m) => m.joined <= addDays(id, 6) && (!m.left || m.left >= id),
+            (m) => m.joined <= addDays(id, 6) && !pausedForScoreWeek(m, id),
           )
           .map((m) => newEntry(m.id)),
       });
@@ -322,17 +324,34 @@ export function syncWeeks(club: Club, date = today()) {
   return changed;
 }
 export function isMemberOnDate(member: Member, date: string) {
-  return member.joined <= date && (!member.left || member.left >= date);
+  return member.joined <= date && (!member.left || member.left >= date) &&
+    !member.pastPauses?.some(pause => pause.pausedOn < date && date < pause.resumedOn);
 }
-export function reportMembers(club: Club, month: string) {
+export function setMemberActive(member: Member, active: boolean, date = today()) {
+  if (member.active === active) return;
+  if (active && member.left && member.left < date)
+    (member.pastPauses ??= []).push({ pausedOn: member.left, resumedOn: date });
+  member.left = active ? undefined : date;
+  member.active = active;
+}
+// Weeks are identified by their Monday. Include both the week of the pause and the week of return.
+export function pausedForScoreWeek(member: Member, monday: string, through?: string) {
+  return (!!member.left && member.left < monday) ||
+    !!member.pastPauses?.some(pause => pause.pausedOn < monday && (through ?? addDays(monday, 6)) < pause.resumedOn);
+}
+export function monthlyReportRoster(club: Club, month: string, asOf = today()) {
   const end = monthDays(month).at(-1)!;
+  const through = asOf.slice(0, 7) === month ? asOf : end;
+  const monday = weekId(through);
+  const hidden = new Set(club.members.filter(m => pausedForScoreWeek(m, monday, through)).map(m => m.id));
   const assigned = new Set(club.schedules.filter(s => s.month === month).flatMap(s =>
     s.shifts.filter(shift => isDutyReportShift(s, shift) && !shift.cancelled)
       .flatMap(shift => shift.assignments.map(a => a.memberId)),
   ));
-  return club.members.filter(
-    (m) => assigned.has(m.id) || (m.joined <= end && (!m.left || m.left >= month + "-01")),
-  );
+  return { hidden, members: club.members.filter(m => !hidden.has(m.id) && (assigned.has(m.id) || m.joined <= end)) };
+}
+export function reportMembers(club: Club, month: string, asOf = today()) {
+  return monthlyReportRoster(club, month, asOf).members;
 }
 export function newEntry(memberId: string): Entry {
   return {

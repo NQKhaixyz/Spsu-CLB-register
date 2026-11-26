@@ -27,3 +27,8 @@ export function matchesCommittee(member: CommitteeMembership, filter: CommitteeF
   const committees = memberCommittees(member);
   return filter === "unassigned" ? committees.length === 0 : committees.includes(filter);
 }
+
+export function memberCommitteeNames(member?: CommitteeMembership) {
+  if (!member) return "";
+  return memberCommittees(member).map(kind => committeeLabels[kind]).join(", ") || "Chưa phân ban";
+}

@@ -4,33 +4,38 @@ import {
   dateLabel,
   dutyNames,
   monthLabel,
-  reportMembers,
+  monthlyReportRoster,
   rulesFor,
   scoreFor,
   dutyPointsFor,
   latePenaltyFor,
   statusNames,
   isDutyReportShift,
+  today,
   type Club,
   type AvailabilityDetail,
 } from "./club";
+import { memberCommitteeNames } from "./committees";
 import type { Worksheet } from "exceljs";
 
-export async function makeReport(club: Club, month: string) {
+export async function makeReport(club: Club, month: string, asOf = today()) {
   const { default: ExcelJS } = await import("exceljs");
   const book = new ExcelJS.Workbook();
   book.creator = "Nhịp Đội";
   book.created = new Date();
+  const { hidden, members: participants } = monthlyReportRoster(club, month, asOf);
+  const membersById = new Map(club.members.filter(m => !hidden.has(m.id)).map(m => [m.id, m]));
+  const member = (id: string) => membersById.get(id);
   const weeks = club.weeks.filter(
     (w) => !w.cancelled && w.meetingDate.slice(0, 7) === month,
-  );
+  ).map(w => ({ ...w, entries: w.entries.filter(e => !hidden.has(e.memberId)) }));
   const schedules = club.schedules.filter(
     (s) => s.month === month,
-  ).map((s) => ({ ...s, shifts: s.shifts.filter((shift) => isDutyReportShift(s, shift)) }));
-  const member = (id: string) => club.members.find((m) => m.id === id);
+  ).map(s => ({ ...s, shifts: s.shifts.filter(shift => isDutyReportShift(s, shift))
+    .map(shift => ({ ...shift, assignments: shift.assignments.filter(a => !hidden.has(a.memberId)) })) }));
   const eventIds = new Set((club.events ?? []).map(event => event.id));
   const activityRegistrations = (club.activityRegistrations ?? [])
-    .filter(r => r.kind === "event" && eventIds.has(r.eventId ?? "") && r.date.slice(0, 7) === month);
+    .filter(r => !hidden.has(r.memberId) && r.kind === "event" && eventIds.has(r.eventId ?? "") && r.date.slice(0, 7) === month);
   const pendingDuties = schedules
     .flatMap((s) => s.shifts.flatMap((t) => t.assignments))
     .filter((a) => a.result === "unverified").length;
@@ -66,7 +71,7 @@ export async function makeReport(club: Club, month: string) {
     sheet.addRow(columns);
     rows.forEach((r) => sheet.addRow(r));
     sheet.columns.forEach((col, i) => {
-      col.width = Math.min(48, Math.max(16, columns[i]?.length + 5 || 16));
+      col.width = columns[i]?.startsWith("Ban ") ? 52 : Math.min(48, Math.max(16, columns[i]?.length + 5 || 16));
     });
     sheet.getRow(1).font = {
       bold: true,
@@ -103,7 +108,6 @@ export async function makeReport(club: Club, month: string) {
         });
     });
   };
-  const participants = reportMembers(club, month);
   addSheet(
     "Tổng hợp tháng",
     [
@@ -118,6 +122,7 @@ export async function makeReport(club: Club, month: string) {
       "Tổng điểm",
       "Lượt đi muộn trừ điểm",
       "Điểm trừ đi muộn",
+      "Ban trực thuộc",
       ...visibleActivityKinds.map(k => activityLabels[k] + (["deduction", "special", "committee"].includes(k) ? "" : " (lượt)")),
     ],
     participants.map((m, i) => {
@@ -134,6 +139,7 @@ export async function makeReport(club: Club, month: string) {
         s.points,
         s.lateCount,
         s.lateDeduction,
+        memberCommitteeNames(m),
         ...visibleActivityKinds.map(k => s.activityCounts[k]),
       ];
     }),
@@ -151,6 +157,7 @@ export async function makeReport(club: Club, month: string) {
       "Lý do",
       "Đạt phiếu điểm danh",
       "Đã chốt",
+      "Ban trực thuộc",
     ],
     weeks.flatMap((w) =>
       w.entries.map((e) => [
@@ -168,6 +175,7 @@ export async function makeReport(club: Club, month: string) {
         e.reason,
         e.passed ? "Có" : "Không",
         w.closed ? "Có" : "Không",
+        memberCommitteeNames(member(e.memberId)),
       ]),
     ),
   );
@@ -188,6 +196,8 @@ export async function makeReport(club: Club, month: string) {
       "Điểm trừ đi muộn",
       "Trạng thái ca",
       "Lý do hủy ca",
+      "Ban của người được phân ban đầu",
+      "Ban của người thực tế phụ trách",
     ],
     schedules.flatMap((s) =>
       s.shifts.flatMap((t) =>
@@ -206,6 +216,8 @@ export async function makeReport(club: Club, month: string) {
           t.cancelled ? 0 : latePenaltyFor(a, rulesFor(club, month)),
           t.cancelled ? "Đã hủy" : "Hoạt động",
           t.cancelReason ?? "",
+          memberCommitteeNames(member(a.originalId ?? a.memberId)),
+          memberCommitteeNames(member(a.memberId)),
         ]),
       ),
     ),
@@ -225,14 +237,14 @@ export async function makeReport(club: Club, month: string) {
       .filter(r => isManualActivityKind(r.kind) && r.date.slice(0, 7) === month)
       .map(r => ({ ...r, state: "BĐH nhập", credited: true, actor: r.updatedBy, decision: "" })),
     ...(club.pointDeductions ?? []).filter(r => r.date.slice(0, 7) === month).map(r => ({ ...r, kind: "deduction" as const, quantity: r.points, note: r.reason, state: r.cancelledAt ? "Đã hủy khoản trừ" : "BĐH trừ điểm", credited: !r.cancelledAt, actor: r.createdBy, decision: r.cancelReason ?? "" })),
-  ].sort((a, b) => a.date.localeCompare(b.date) || a.memberId.localeCompare(b.memberId));
+  ].filter(r => !hidden.has(r.memberId)).sort((a, b) => a.date.localeCompare(b.date) || a.memberId.localeCompare(b.memberId));
   addSheet("Chi tiết hoạt động",
-    ["Tuần", "Ngày hoạt động / tính điểm", "MSSV", "Họ tên", "Hoạt động / tên sự kiện", "Số lượt / số điểm trừ", "Điểm/lượt", "Điểm", "Trạng thái", "Ghi chú / lý do trừ điểm", "Người xác nhận / nhập", "Lý do điều chỉnh", "Sự kiện từ ngày", "Sự kiện đến hết ngày"],
+    ["Tuần", "Ngày hoạt động / tính điểm", "MSSV", "Họ tên", "Hoạt động / tên sự kiện", "Số lượt / số điểm trừ", "Điểm/lượt", "Điểm", "Trạng thái", "Ghi chú / lý do trừ điểm", "Người xác nhận / nhập", "Lý do điều chỉnh", "Sự kiện từ ngày", "Sự kiện đến hết ngày", "Ban trực thuộc"],
     activityRows.map(r => {
       const event = eventForActivity(club, r);
       const count = r.kind === "committee" ? "" : r.quantity;
       const rate = r.kind === "committee" ? "" : activityUnitPoints(club, r);
-      return [r.week, dateLabel(r.date, true), member(r.memberId)?.studentId ?? "", member(r.memberId)?.name ?? "", activityName(club, r), count, rate, r.credited ? activityPointsFor(club, r) : 0, r.state, r.note, member(r.actor)?.name ?? "", r.decision, event?.startDate ?? "", event?.endDate ?? ""];
+      return [r.week, dateLabel(r.date, true), member(r.memberId)?.studentId ?? "", member(r.memberId)?.name ?? "", activityName(club, r), count, rate, r.credited ? activityPointsFor(club, r) : 0, r.state, r.note, member(r.actor)?.name ?? "", r.decision, event?.startDate ?? "", event?.endDate ?? "", memberCommitteeNames(member(r.memberId))];
     }),
   );
   const rule = rulesFor(club, month);
@@ -246,10 +258,10 @@ export async function makeReport(club: Club, month: string) {
       ["D", rule.D ?? 0, "Trừ mỗi lượt BĐH tích Đến muộn trên lịch đã công bố"],
       ["E", rule.E, "Cộng cho mỗi phiếu được BĐH tích đạt, theo ngày họp"],
       ...ratedActivityKinds.map(k => [activityLabels[k], rule.activities?.[k] ?? 0, "Nhân số lượt do BĐH nhập với mức điểm mỗi lượt"]),
-      ["Sự kiện", "Điểm riêng theo từng sự kiện", "BĐH duyệt: cộng một lần/người vào ngày kết thúc. Sự kiện đã hủy không tính điểm."],
+      ["Sự kiện", "Điểm riêng theo từng sự kiện", "BĐH duyệt: cộng một lần/người vào ngày kết thúc, sự kiện đã hủy không tính điểm"],
       ["Điểm theo ban", "Nhập trực tiếp", "BĐH chọn một ban và nhập số điểm cho mỗi thành viên trong tuần"],
       ["Điểm riêng", "Nhập trực tiếp", "BĐH nhập số điểm cho từng thành viên trong tuần, không nhân số lượt; dữ liệu cũ giữ cách tính đã lưu"],
-      ["Điểm trừ", "Nhập trực tiếp", "BĐH nhập số điểm trừ và lý do; trừ đúng số điểm vào tuần/tháng của ngày ghi nhận. Khoản đã hủy không tính điểm."],
+      ["Điểm trừ", "Nhập trực tiếp", "BĐH nhập số điểm trừ và lý do; trừ đúng số điểm vào tuần/tháng của ngày ghi nhận, khoản đã hủy không tính điểm"],
       [
         "Công thức",
         "A × trực đủ − B × vắng trực − C × vắng họp − D × đi muộn + E × phiếu điểm danh đạt + điểm sáng kiến + điểm đồng đẳng viên + điểm sự kiện + điểm theo ban + điểm riêng − điểm trừ",
@@ -307,12 +319,12 @@ export async function downloadTemplate(kind: "members" | "availability") {
   );
 }
 async function loadImportSheet(file: File) {
-  if (file.size > 3_000_000) throw new Error("File cần nhỏ hơn 3 MB.");
+  if (file.size > 3_000_000) throw new Error("File cần nhỏ hơn 3 MB");
   const { default: ExcelJS } = await import("exceljs");
   const b = new ExcelJS.Workbook();
   await b.xlsx.load(await file.arrayBuffer());
   const s = b.worksheets[0];
-  if (!s) throw new Error("File không có trang dữ liệu.");
+  if (!s) throw new Error("File không có trang dữ liệu");
   return s;
 }
 function parseTemplate(s: Worksheet, kind: "members" | "availability") {
@@ -321,7 +333,7 @@ function parseTemplate(s: Worksheet, kind: "members" | "availability") {
     text(1, 1).toUpperCase() !== "MSSV" ||
     text(1, 2).toLowerCase() !== "họ tên"
   )
-    throw new Error("Dùng file mẫu với hai cột đầu là MSSV, Họ tên.");
+    throw new Error("Dùng file mẫu với hai cột đầu là MSSV, Họ tên");
   if (kind === "availability") {
     const expected = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"].flatMap((d) => [
       `${d} sáng`,
@@ -329,7 +341,7 @@ function parseTemplate(s: Worksheet, kind: "members" | "availability") {
     ]);
     expected.forEach((name, i) => {
       if (text(1, 4 + i).toLowerCase() !== name.toLowerCase())
-        throw new Error("Các cột lịch rảnh cần theo thứ tự trong file mẫu.");
+        throw new Error("Các cột lịch rảnh cần theo thứ tự trong file mẫu");
     });
   }
   const truthy = (v: string) =>
@@ -367,7 +379,7 @@ export async function readAvailabilityUpload(file: File) {
     header(4) === "tuần học"
   ) {
     if (s.rowCount > 5001)
-      throw new Error("File chi tiết cần có tối đa 5.000 dòng lịch rảnh.");
+      throw new Error("File chi tiết cần có tối đa 5.000 dòng lịch rảnh");
     const rows: AvailabilityDetail[] = [];
     for (let r = 2; r <= s.rowCount; r++) {
       if (![1, 2, 3, 4, 5].some((c) => text(r, c))) continue;
@@ -377,7 +389,7 @@ export async function readAvailabilityUpload(file: File) {
         weeks = text(r, 4),
         note = text(r, 5);
       if (!name || !day || !period || !weeks)
-        throw new Error(`Dòng ${r} thiếu họ tên, thứ, buổi hoặc tuần học.`);
+        throw new Error(`Dòng ${r} thiếu họ tên, thứ, buổi hoặc tuần học`);
       if (
         name.length > 100 ||
         day.length > 30 ||
@@ -385,10 +397,10 @@ export async function readAvailabilityUpload(file: File) {
         weeks.length > 200 ||
         note.length > 1000
       )
-        throw new Error(`Nội dung dòng ${r} quá dài. Kiểm tra lại các cột.`);
+        throw new Error(`Nội dung dòng ${r} quá dài, kiểm tra lại các cột`);
       rows.push({ sourceRow: r, name, day, period, weeks, note });
     }
-    if (!rows.length) throw new Error("File không có dòng lịch rảnh nào.");
+    if (!rows.length) throw new Error("File không có dòng lịch rảnh nào");
     return { format: "details" as const, filename: file.name, rows };
   }
   return {
