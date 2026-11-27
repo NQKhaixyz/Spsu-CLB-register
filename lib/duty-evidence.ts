@@ -1,7 +1,12 @@
 import { addDays, isRosterMember, isShiftPublished, today, weekId, type Club, type Member, type Shift } from "./club";
+import type { PhotoEvidence } from "./photo-evidence";
 export { maxPhotoBytes as maxDutyPhotoBytes, type PhotoEvidence as DutyEvidence, type PhotoEvidenceView as DutyEvidenceView } from "./photo-evidence";
 
 export type EvidenceAssignment = { month: string; shiftId: string; memberId: string };
+export type DutyEvidenceSummary = {
+  week: string;
+  rows: (EvidenceAssignment & { status: PhotoEvidence["status"] })[];
+};
 export function evidenceExpiry(date: string) {
   return Date.parse(addDays(weekId(date), 7) + "T00:00:00+07:00");
 }

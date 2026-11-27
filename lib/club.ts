@@ -1,4 +1,4 @@
-import { activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
+import { activityKinds, activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
 import type { SharedLink } from "./shared-links";
 import type { BulletinPost, BulletinPostView } from "./bulletin";
 import type { BulletinUpload } from "./bulletin-media";
@@ -456,6 +456,9 @@ export const latePenaltyFor = (a: Assignment, rule: Rule) =>
 export const dutyPointsFor = (a: Assignment, rule: Rule) =>
   (a.result === "completed" ? rule.A : a.result === "unexcused" ? -rule.B : 0) -
   latePenaltyFor(a, rule);
+
+type AttendancePoints = Record<"completed" | "dutyMissed" | "meetingMissed" | "lateCount" | "passed", number>;
+
 export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?: string) {
   const rule = rulesFor(club, month);
   const member = club.members.find((m) => m.id === memberId);
@@ -493,10 +496,17 @@ export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?:
   ).length;
   const passed = entries.filter(({ e }) => e?.passed && !e.absent).length;
   const activities = activityScoreFor(club, memberId, month, false, onlyWeek);
-  const points = completed * rule.A - dutyMissed * rule.B - meetingMissed * rule.C -
-    lateDeduction + passed * rule.E + activities.activityTotal;
+  const attendancePoints: AttendancePoints = {
+    completed: completed * rule.A,
+    dutyMissed: -(dutyMissed * rule.B) || 0,
+    meetingMissed: -(meetingMissed * rule.C) || 0,
+    lateCount: -lateDeduction || 0,
+    passed: passed * rule.E,
+  };
+  const points = Object.values(attendancePoints).reduce((sum, value) => sum + value, 0) + activities.activityTotal;
   return {
     ...activities,
+    attendancePoints,
     completed,
     dutyMissed,
     meetingMissed,
@@ -764,16 +774,16 @@ export function demoClub(ownerId: string, owner?: Member): Club {
   return club;
 }
 
-export type WeeklyScore = {
+export type WeeklyScore = ReturnType<typeof activityScoreFor> & {
   week: string;
   memberId: string;
   completed: number;
   dutyMissed: number;
   meetingMissed: number;
+  attended: number;
   passed: number;
   lateCount: number;
-  activityCounts: Record<import("./activity").ActivityKind, number>;
-  activityTotal: number;
+  attendancePoints: AttendancePoints;
   points: number;
 };
 export type ScoreboardRow = Omit<WeeklyScore, "week" | "activityTotal"> & {
@@ -784,16 +794,31 @@ export type ScoreboardRow = Omit<WeeklyScore, "week" | "activityTotal"> & {
 export function weeklyScoreFor(club: Club, memberId: string, week: string): WeeklyScore {
   const months = [...new Set([week.slice(0, 7), addDays(week, 6).slice(0, 7)])];
   const parts = months.map(month => scoreFor(club, memberId, month, week));
-  const activities = activityScoreFor(club, memberId, week, true);
+  const { activityCounts, activityPoints } = activityScoreFor(club, memberId, week, true);
+  for (const kind of activityKinds) {
+    activityPoints[kind] = Number(parts.reduce((sum, score) => sum + score.activityPoints[kind], 0).toFixed(10));
+  }
+  const sumPoints = (kind: keyof AttendancePoints) =>
+    Number(parts.reduce((sum, score) => sum + score.attendancePoints[kind], 0).toFixed(10));
   return {
     week,
     memberId,
-    ...activities,
+    activityCounts,
+    activityPoints,
+    activityTotal: Number(parts.reduce((sum, score) => sum + score.activityTotal, 0).toFixed(10)),
     completed: parts.reduce((sum, score) => sum + score.completed, 0),
     dutyMissed: parts.reduce((sum, score) => sum + score.dutyMissed, 0),
     meetingMissed: parts.reduce((sum, score) => sum + score.meetingMissed, 0),
+    attended: parts.reduce((sum, score) => sum + score.attended, 0),
     passed: parts.reduce((sum, score) => sum + score.passed, 0),
     lateCount: parts.reduce((sum, score) => sum + score.lateCount, 0),
+    attendancePoints: {
+      completed: sumPoints("completed"),
+      dutyMissed: sumPoints("dutyMissed"),
+      meetingMissed: sumPoints("meetingMissed"),
+      lateCount: sumPoints("lateCount"),
+      passed: sumPoints("passed"),
+    },
     points: Number(parts.reduce((sum, score) => sum + score.points, 0).toFixed(10)),
   };
 }

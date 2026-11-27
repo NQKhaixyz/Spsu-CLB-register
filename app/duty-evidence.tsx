@@ -25,27 +25,31 @@ async function evidenceRequest(url: string, options?: RequestInit) {
   return data;
 }
 
-export default function DutyEvidenceAction({ target, canSend, isAdmin }: {
+export default function DutyEvidenceAction({ target, canSend, isAdmin, label, variant = "secondary", defaultExpanded = false, onSaved }: {
   target: EvidenceAssignment;
   canSend: boolean;
   isAdmin: boolean;
+  label?: string;
+  variant?: "primary" | "secondary";
+  defaultExpanded?: boolean;
+  onSaved?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const id = useId();
   const endpoint = "/api/duty-evidence?" + new URLSearchParams(target).toString();
   return (
     <div className="duty-evidence">
       <button
         type="button"
-        className="btn secondary"
+        className={`btn ${variant}`}
         aria-expanded={expanded}
         aria-controls={expanded ? id : undefined}
         onClick={() => setExpanded(value => !value)}
       >
         <ImageIcon size={16} aria-hidden="true" />
-        {canSend && !isAdmin ? "Gửi minh chứng" : "Xem minh chứng"}
+        {label ?? (canSend && !isAdmin ? "Gửi minh chứng" : "Xem minh chứng")}
       </button>
-      {expanded && <EvidencePanel key={endpoint} id={id} endpoint={endpoint} />}
+      {expanded && <EvidencePanel key={endpoint} id={id} endpoint={endpoint} onSaved={onSaved} />}
     </div>
   );
 }

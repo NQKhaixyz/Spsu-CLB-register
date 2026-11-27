@@ -1,7 +1,8 @@
 "use client";
+import { CalendarDays, ChevronDown, ImageIcon, MapPin, Plus } from "lucide-react";
 import { useCallback, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
-import { activityLabels, activityName, activityPointsFor, canAttendEvent, registrationStatusLabel, eventDescriptionLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
+import { activityLabels, activityName, activityPointsFor, canAttendEvent, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { EvidencePanel } from "./duty-evidence";
@@ -19,6 +20,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const [review, setReview] = useState<{row:ActivityRegistration; confirmed:boolean} | null>(null);
   const [proof, setProof] = useState<{ row: ActivityRegistration; event: ClubEvent } | null>(null);
   const requestsByEvent = useRef(new Map<string, string>());
+  const results = useRef<HTMLElement>(null);
   const close = useCallback(() => { setReview(null); setEventDialog(null); setProof(null); }, []);
   const currentDay = today();
   const events = [...(club.events ?? [])].sort((a,b) => a.startDate.localeCompare(b.startDate) || a.name.localeCompare(b.name));
@@ -26,6 +28,19 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const visibleEventIds = new Set(visibleEvents.map(event => event.id));
   const selectedEvent = visibleEventIds.has(eventFilter) ? eventFilter : "";
   const registrations = (club.activityRegistrations ?? []).filter(r => r.kind === "event" && (isAdmin || r.memberId === me.id));
+  const cards = visibleEvents.map(event => {
+    const eventRows = registrations.filter(row => row.eventId === event.id);
+    const ownRows = eventRows.filter(row => row.memberId === me.id && row.status !== "withdrawn");
+    const proofRows = (isAdmin ? eventRows : ownRows).filter(row => {
+      const evidence = eventEvidenceView(row, event, me);
+      return isAdmin ? evidence.canReview : evidence.canUpload && (!evidence.evidence || row.status === "declined");
+    });
+    const awaitingRegistration = isAdmin && !event.cancelledAt && !event.requiresEvidence
+      ? eventRows.filter(row => row.status === "pending").length : 0;
+    return { event, eventRows, ownRows, proofRows, awaitingRegistration };
+  }).sort((a, b) => Number(!!b.proofRows.length) - Number(!!a.proofRows.length) ||
+    Number(!!b.awaitingRegistration) - Number(!!a.awaitingRegistration) ||
+    Number(isEventOpen(b.event, currentDay)) - Number(isEventOpen(a.event, currentDay)));
   const rows = registrations
     .filter(row => selectedEvent ? row.eventId === selectedEvent : visibleEventIds.has(row.eventId ?? ""))
     .map(row => {
@@ -43,6 +58,14 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     .filter(item => item.eventId === row.eventId && item.memberId === row.memberId)
     .findIndex(item => item.id === row.id) + 1;
 
+  function showRegistrations(eventId: string) {
+    setEventFilter(eventId);
+    requestAnimationFrame(() => {
+      results.current?.focus({ preventScroll: true });
+      results.current?.scrollIntoView({ block: "start" });
+    });
+  }
+
   async function register(event: ClubEvent) {
     const requests = requestsByEvent.current;
     const registrationId = event.participationMultiplier !== undefined ? requests.get(event.id) ?? uid() : undefined;
@@ -51,60 +74,89 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     if (await onAction("registerEvent", { eventId: event.id, registrationId }, message, false)) requests.delete(event.id);
   }
 
-  return <div className="activity-sections">
-    <div className="notice green">Điểm các lượt đã duyệt được ghi vào tuần kết thúc sự kiện · Với sự kiện yêu cầu ảnh, gửi minh chứng cho từng lượt đăng ký</div>
-    <section className="panel">
-      <PanelHead title="Sự kiện của Đội" description="Đăng ký được mở từ khi tạo đến hết ngày kết thúc, theo giờ Việt Nam" />
+  return <div className="activity-sections event-sections">
+    <section className="panel activity-panel event-index">
       <div className="event-toolbar">
+        <h1>Sự kiện của Đội</h1>
+        {isAdmin && <Button disabled={busy} onClick={() => setEventDialog({ mode: "create" })}>
+          <Plus size={17} aria-hidden="true" /> Tạo sự kiện
+        </Button>}
         <label className="event-history">
           <input type="checkbox" checked={showHistory} onChange={e => setShowHistory(e.target.checked)} />
           Hiện cả sự kiện đã kết thúc hoặc đã hủy
         </label>
-        {isAdmin ? <Button disabled={busy} onClick={() => setEventDialog({ mode: "create" })}>Tạo sự kiện</Button> : null}
       </div>
-      {visibleEvents.length ? <div className="activity-list">{visibleEvents.map(event => {
-        const own = registrations.find(r => r.eventId === event.id && r.memberId === me.id && r.status !== "withdrawn");
+      {cards.length ? <div className="activity-list">{cards.map(({ event, eventRows, ownRows, proofRows, awaitingRegistration }) => {
+        const own = ownRows[0];
         const multiple = event.participationMultiplier !== undefined;
         const ended = event.endDate < currentDay;
         const cancelled = !!event.cancelledAt;
-        const eventRows = registrations.filter(r=>r.eventId===event.id);
         const evidence = own && event.requiresEvidence ? eventEvidenceView(own, event, me) : null;
-        const waitingReview = eventRows.filter(row => row.status === "pending" &&
-          (!event.requiresEvidence || eventEvidenceView(row, event, me).canReview)).length;
+        const eventDates = event.startDate === event.endDate ? dateLabel(event.startDate, true) :
+          `${dateLabel(event.startDate, true)} – ${dateLabel(event.endDate, true)}`;
+        const actionableProof = proofRows[0];
         return <article className="activity-item event-card" key={event.id}>
-          <div><h3>{event.name}</h3><p>{dateLabel(event.startDate,true)} – {dateLabel(event.endDate,true)}</p>
-            {event.description ? <p className="event-description">{event.description}</p> : null}
-            {!cancelled && <p className="event-points">{multiple
-              ? `${event.points} điểm lượt đầu · Hệ số ×${event.participationMultiplier}`
-              : `${event.points} điểm / thành viên được duyệt`}</p>}
-            {event.requiresEvidence && !cancelled && (multiple || isAdmin || !own?.confirmedDirectly) ? <p className="hint">Đăng ký cá nhân cần ảnh minh chứng · Ảnh được xóa sau 2 ngày kể từ khi kết thúc</p> : null}
+          <header className="event-card-header">
+            <div>
+              <h3>{event.name}</h3>
+              <div className="activity-meta">
+                <span><CalendarDays size={16} aria-hidden="true" /> {eventDates}</span>
+                <span><MapPin size={16} aria-hidden="true" /> {event.location || "Chưa cập nhật địa điểm"}</span>
+              </div>
+            </div>
             <Badge status={cancelled ? "absent" : "neutral"}>{cancelled ? "Đã hủy" : ended ? "Đã kết thúc" : event.startDate > currentDay ? "Sắp diễn ra" : "Đang diễn ra"}</Badge>
-            {own && !multiple && !cancelled ? <span className="event-own-status"><Badge status={own.status==="confirmed"?"attending":own.status==="pending"?"pending":"neutral"}>{eventRegistrationLabel(own, evidence)}</Badge></span> : null}
-            {multiple && own && !cancelled && <p className="hint">{eventRows.filter(row => row.memberId === me.id && row.status !== "withdrawn").length} lượt của bạn · Xem từng lượt bên dưới</p>}
-            {isAdmin && !cancelled ? <p className="hint">{waitingReview} chờ duyệt · {eventRows.filter(r=>r.status==="confirmed").length} đã duyệt</p> : null}
-          </div>
-          <div className="activity-actions">
-            {!cancelled && !ended && (!own || multiple) && <Button disabled={busy} onClick={() => void register(event)}>
+          </header>
+          <div className="activity-actions event-card-actions">
+            {actionableProof && <Button disabled={busy} onClick={() => {
+              if (multiple || (isAdmin && proofRows.length > 1)) showRegistrations(event.id);
+              else setProof({ row: actionableProof, event });
+            }}>
+              <ImageIcon size={16} aria-hidden="true" />
+              {isAdmin ? "Duyệt minh chứng" : actionableProof.status === "declined" ? "Gửi lại minh chứng" : "Gửi minh chứng"}
+              {(isAdmin || multiple) && <span className="activity-count">{proofRows.length}</span>}
+            </Button>}
+            {awaitingRegistration > 0 && <Button disabled={busy} onClick={() => showRegistrations(event.id)}>
+              Duyệt đăng ký <span className="activity-count">{awaitingRegistration}</span>
+            </Button>}
+            {!cancelled && !ended && (!own || multiple) && <Button disabled={busy}
+              variant={actionableProof || awaitingRegistration ? "secondary" : "primary"} onClick={() => void register(event)}>
               {own && multiple ? "Đăng ký thêm lượt" : "Đăng ký tham gia"}
             </Button>}
-            {!multiple && !cancelled && own && (evidence?.canUpload || evidence?.evidence) ? <Button variant="secondary" disabled={busy} onClick={() => setProof({ row: own, event })}>{eventEvidenceButton(own, evidence)}</Button> : null}
+            {!multiple && !cancelled && own && evidence?.evidence && !actionableProof && <Button variant="secondary"
+              disabled={busy} onClick={() => setProof({ row: own, event })}>Xem minh chứng</Button>}
+            {multiple && ownRows.length > 0 && !actionableProof && <Button variant="secondary" onClick={() => showRegistrations(event.id)}>Xem lượt của tôi</Button>}
             {!multiple && !cancelled && own?.status==="pending" ? <Button variant="secondary" disabled={busy} onClick={()=>onAction("withdrawActivity",{id:own.id},"Đã rút đăng ký",false)}>Rút đăng ký</Button> : null}
-            {isAdmin ? <Button variant="secondary" onClick={()=>setEventFilter(event.id)}>Xem đăng ký</Button> : null}
-            {isAdmin && (cancelled ? (
-              <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "restore", event })}>Khôi phục sự kiện</Button>
-            ) : (
-              <>
-                <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "participant", eventId: event.id })}>Thêm người đã tham gia</Button>
-                <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "edit", event })}>Sửa sự kiện</Button>
-                <Button variant="danger" disabled={busy} onClick={() => setEventDialog({ mode: "cancel", event })}>Hủy sự kiện</Button>
-              </>
-            ))}
-            {isAdmin && <Button variant="danger" disabled={busy} onClick={() => setEventDialog({ mode: "delete", event })}>Xóa sự kiện</Button>}
+            {isAdmin && <details className="event-management">
+              <summary className="btn secondary">Quản lý <ChevronDown size={15} aria-hidden="true" /></summary>
+              <div className="event-management-menu">
+                <Button variant="secondary" onClick={() => showRegistrations(event.id)}>Xem đăng ký</Button>
+                {cancelled ? <Button variant="secondary" disabled={busy}
+                  onClick={() => setEventDialog({ mode: "restore", event })}>Khôi phục sự kiện</Button> : <>
+                  <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "participant", eventId: event.id })}>Thêm người đã tham gia</Button>
+                  <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "edit", event })}>Sửa sự kiện</Button>
+                  <Button variant="danger" disabled={busy} onClick={() => setEventDialog({ mode: "cancel", event })}>Hủy sự kiện</Button>
+                </>}
+                <Button variant="danger" disabled={busy} onClick={() => setEventDialog({ mode: "delete", event })}>Xóa sự kiện</Button>
+              </div>
+            </details>}
+          </div>
+          {event.description && <p className="event-description">{event.description}</p>}
+          <div className="event-card-meta">
+            {!cancelled && <span className="event-points">{multiple
+              ? `${event.points} điểm lượt đầu · Hệ số ×${event.participationMultiplier}`
+              : `${event.points} điểm mỗi thành viên được duyệt`}</span>}
+            {!cancelled && event.requiresEvidence && (multiple || isAdmin || !own?.confirmedDirectly) && <span>Cần ảnh minh chứng</span>}
+            {own && !multiple && !cancelled && <Badge status={own.status === "confirmed" ? "attending" : own.status === "pending" ? "pending" : "neutral"}>
+              {eventRegistrationLabel(own, evidence)}
+            </Badge>}
+            {multiple && ownRows.length > 0 && !cancelled && <span>{ownRows.length} lượt của bạn</span>}
+            {isAdmin && !cancelled && <span>{eventRows.filter(row => row.status === "confirmed").length} lượt đã duyệt</span>}
           </div>
         </article>;
       })}</div> : <Empty title="Chưa có sự kiện đang mở">{isAdmin ? "Bấm Tạo sự kiện để nhập tên, điểm và khoảng ngày diễn ra" : "Sự kiện do BĐH tạo sẽ xuất hiện ở đây để bạn đăng ký"}</Empty>}
     </section>
-    <section className="panel"><PanelHead title={isAdmin?"Duyệt đăng ký sự kiện":"Kết quả tham gia của tôi"} description="Người tham gia được tính điểm khi BĐH duyệt đăng ký hoặc xác nhận trực tiếp" />
+    <section className="panel activity-panel event-results" ref={results} tabIndex={-1}>
+      <PanelHead title={isAdmin ? "Duyệt đăng ký sự kiện" : "Kết quả tham gia của tôi"} description="Lượt được BĐH duyệt tính điểm vào tuần kết thúc sự kiện" />
       <div className="activity-search"><Field label="Lọc theo sự kiện"><select value={selectedEvent} onChange={e=>setEventFilter(e.target.value)}><option value="">Tất cả sự kiện</option>{visibleEvents.map(event=><option key={event.id} value={event.id}>{event.name}{event.cancelledAt ? " (đã hủy)" : ""}</option>)}</select></Field></div>
       {rows.length ? <div className="activity-list">{rows.map(({ row: r, event, evidence }) => {
         const cancelled = !!event?.cancelledAt;
@@ -114,7 +166,9 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         <Badge status={cancelled ? "absent" : r.status==="confirmed"?"attending":r.status==="pending"?"pending":"neutral"}>{cancelled ? "Sự kiện đã hủy" : eventRegistrationLabel(r, evidence)}</Badge>
         {participant?.role !== "admin" && <p className="hint">{!cancelled && r.status==="confirmed" ? activityPointsFor(club,r) : 0} điểm đã ghi nhận{r.decision?` · ${r.decision}`:""}</p>}</div>
         <div className="activity-actions">
-        {event && !cancelled && r.status !== "withdrawn" && (evidence?.canUpload || evidence?.evidence) ? <Button variant="secondary" disabled={busy} onClick={() => setProof({ row: r, event })}>{eventEvidenceButton(r, evidence)}</Button> : null}
+        {event && !cancelled && r.status !== "withdrawn" && (evidence?.canUpload || evidence?.evidence) ? <Button
+          variant={evidence.canReview || (evidence.canUpload && (!evidence.evidence || r.status === "declined")) ? "primary" : "secondary"}
+          disabled={busy} onClick={() => setProof({ row: r, event })}>{eventEvidenceButton(r, evidence)}</Button> : null}
         {isAdmin && !cancelled && r.status!=="withdrawn" ? <>
           {!event?.requiresEvidence && r.status!=="confirmed"?<Button disabled={busy} onClick={()=>setReview({row:r,confirmed:true})}>Duyệt tham gia</Button>:null}
           {r.status==="confirmed" || (!event?.requiresEvidence && r.status!=="declined") ? <Button variant="secondary" disabled={busy} onClick={()=>setReview({row:r,confirmed:false})}>{r.status==="confirmed"?"Hủy duyệt":"Không duyệt"}</Button>:null}
@@ -260,6 +314,7 @@ function eventRegistrationLabel(row: ActivityRegistration, evidence: ReturnType<
 }
 
 function eventEvidenceButton(row: ActivityRegistration, evidence: ReturnType<typeof eventEvidenceView>) {
+  if (evidence.canReview) return "Duyệt minh chứng";
   if (row.status === "declined" && evidence.canUpload) return "Gửi lại minh chứng";
   return evidence.evidence ? "Xem minh chứng" : "Gửi minh chứng";
 }
@@ -314,6 +369,7 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
       participationMultiplier: multiple ? Number(fields.participationMultiplier) : null }, message, false)) onClose();
   }}>
     <Field label="Tên sự kiện"><input name="name" defaultValue={event?.name} required minLength={2} maxLength={160} placeholder="Ví dụ: Hỗ trợ ngày hội sinh viên" autoFocus /></Field>
+    <Field label="Địa điểm (không bắt buộc)"><input name="location" defaultValue={event?.location} maxLength={eventLocationLimit} /></Field>
     <Field label="Mô tả sự kiện (không bắt buộc)"><textarea name="description" defaultValue={event?.description ?? ""} maxLength={eventDescriptionLimit} rows={3} /></Field>
     <Field label={multiple ? "Điểm lượt đầu" : "Điểm mỗi thành viên được duyệt"}><input name="points" type="number" min={0} max={100000} step="0.01" defaultValue={event?.points} required placeholder="Nhập điểm" /></Field>
     <label className="event-history"><input type="checkbox" checked={multiple} onChange={e => setMultiple(e.target.checked)} /> Cho phép tham gia nhiều lần</label>

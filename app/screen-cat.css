@@ -49,6 +49,7 @@
 .pet-menu-toggle { position:absolute; right:0; bottom:0; width:36px; height:32px; border:1px solid #dbe5dc; border-radius:20px; background:#fffffff0; color:#638076; display:flex; align-items:center; justify-content:center; cursor:pointer; pointer-events:auto; box-shadow:0 3px 12px #2f4b3910; opacity:.65; transition:opacity .2s,background .2s; }
 .screen-cat:hover .pet-menu-toggle,.screen-cat:focus-within .pet-menu-toggle,.pet-menu-toggle[aria-expanded=true] { opacity:1; }
 .pet-menu-toggle:hover { background:#e9f1e9; }
+.screen-cat[data-over-control] .pet-menu-toggle { pointer-events:none; }
 .pet-panel { position:fixed; z-index:70; width:300px; max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); overflow:auto; padding:20px; border:1px solid #dfe8dd; border-radius:24px; background:#fffef9f7; color:#355447; box-shadow:0 18px 60px #203f2a24,0 3px 12px #203f2a08; backdrop-filter:blur(20px); animation:pet-panel-in .18s ease-out both; }
 .pet-panel-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .pet-eyebrow { font-size:9px; font-weight:600; letter-spacing:1.6px; color:#829786; }

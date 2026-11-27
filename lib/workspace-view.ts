@@ -30,10 +30,14 @@ function currentTerminology<T>(value: T): T {
 
 export function monthlyScoreboard(club: Club, month: string, asOf = today()): ScoreboardRow[] {
   return reportMembers(club, month, asOf).map(member => {
-    const { points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts } = scoreFor(club, member.id, month);
+    const {
+      points, completed, dutyMissed, meetingMissed, attended, passed, lateCount,
+      activityCounts, activityPoints, attendancePoints,
+    } = scoreFor(club, member.id, month);
     return {
       memberId: member.id, name: displayText(member.name), committeeNames: memberCommitteeNames(member),
-      points, completed, dutyMissed, meetingMissed, passed, lateCount, activityCounts,
+      points, completed, dutyMissed, meetingMissed, attended, passed, lateCount,
+      activityCounts, activityPoints, attendancePoints,
     };
   });
 }

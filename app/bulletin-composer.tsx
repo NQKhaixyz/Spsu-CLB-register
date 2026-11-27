@@ -23,7 +23,28 @@ type DraftMedia = {
 };
 
 const videoExtensions = { mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime" } as const;
-const mediaAccept = [...bulletinVideoTypes, ".mp4", ".webm", ".mov"].join(",");
+export const bulletinVideoAccept = [...bulletinVideoTypes, ".mp4", ".webm", ".mov"].join(",");
+export type BulletinMediaSelection = { files: File[]; kind: "image" | "video" };
+
+async function prepareSelection({ files, kind }: BulletinMediaSelection) {
+  if (files.length > bulletinMediaLimit)
+    throw new Error(`Mỗi bản tin đính kèm tối đa ${bulletinMediaLimit} tệp`);
+  const prepared: { label: string; type: BulletinMediaType; body: Blob }[] = [];
+  for (const file of files) {
+    if (kind === "image") {
+      if (file.size > 24 * 1024 * 1024) throw new Error("Ảnh đã chọn vượt quá 24 MB");
+      prepared.push({ label: file.name, type: "image/jpeg", body: await preparePhoto(file) });
+    } else {
+      const extension = file.name.split(".").at(-1)?.toLowerCase() as keyof typeof videoExtensions;
+      const type = isBulletinVideo(file.type) ? file.type : videoExtensions[extension];
+      if (!isBulletinVideo(type)) throw new Error("Chọn video MP4, WebM hoặc MOV");
+      if (file.size > bulletinMediaByteLimit(type)) throw new Error(`Video tối đa ${bulletinVideoLimitMb} MB mỗi tệp`);
+      if (!file.size) throw new Error("Video không có dữ liệu");
+      prepared.push({ label: file.name, type, body: file });
+    }
+  }
+  return prepared;
+}
 
 async function sendFile(postId: string, draft: DraftMedia) {
   if (!draft.body) throw new Error("Tệp đã hết hạn, hãy chọn lại");
@@ -38,9 +59,10 @@ async function sendFile(postId: string, draft: DraftMedia) {
   return file;
 }
 
-export function BulletinComposer({ postId, original, isAdmin, busy, onSave, onClose }: {
+export function BulletinComposer({ postId, original, initialSelection, isAdmin, busy, onSave, onClose }: {
   postId: string;
   original?: BulletinPostView;
+  initialSelection?: BulletinMediaSelection;
   isAdmin: boolean;
   busy: boolean;
   onSave: (form: FormData, mediaIds: string[]) => Promise<boolean>;
@@ -52,16 +74,38 @@ export function BulletinComposer({ postId, original, isAdmin, busy, onSave, onCl
   })));
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [selection, setSelection] = useState(initialSelection);
   const photos = useRef<HTMLInputElement>(null);
   const videos = useRef<HTMLInputElement>(null);
   const previews = useRef(new Set<string>());
-  const waiting = busy || !!status;
+  const waiting = busy || !!status || !!selection;
   useEffect(() => {
     const owned = previews.current;
     return () => { for (const url of owned) URL.revokeObjectURL(url); };
   }, []);
 
-  async function choose(event: ChangeEvent<HTMLInputElement>, kind: "image" | "video") {
+  useEffect(() => {
+    if (!selection) return;
+    let cancelled = false;
+    void prepareSelection(selection).then(prepared => {
+      if (cancelled) return;
+      const newFiles = prepared.map(file => {
+        const url = URL.createObjectURL(file.body);
+        previews.current.add(url);
+        return { ...file, key: url, url };
+      });
+      setFiles(current => [...current, ...newFiles]);
+    }).catch(reason => {
+      if (cancelled) return;
+      setError(reason instanceof DOMException ? "Không đọc được ảnh, hãy thử ảnh JPG hoặc PNG"
+        : displayMessage(reason instanceof Error ? reason.message : "Không đọc được tệp đã chọn"));
+    }).finally(() => {
+      if (!cancelled) setSelection(undefined);
+    });
+    return () => { cancelled = true; };
+  }, [selection]);
+
+  function choose(event: ChangeEvent<HTMLInputElement>, kind: BulletinMediaSelection["kind"]) {
     const picked = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
     if (!picked.length || waiting) return;
@@ -70,40 +114,7 @@ export function BulletinComposer({ postId, original, isAdmin, busy, onSave, onCl
       setError(`Mỗi bản tin đính kèm tối đa ${bulletinMediaLimit} tệp`);
       return;
     }
-    setStatus("Đang chuẩn bị tệp…");
-    const newFiles: DraftMedia[] = [];
-    try {
-      for (const input of picked) {
-        const label = input.name;
-        let type: BulletinMediaType = "image/jpeg";
-        let body: Blob;
-        if (kind === "image") {
-          if (input.size > 24 * 1024 * 1024) throw new Error("Ảnh đã chọn vượt quá 24 MB");
-          body = await preparePhoto(input);
-        } else {
-          const extension = input.name.split(".").at(-1)?.toLowerCase() as keyof typeof videoExtensions;
-          const recognized = isBulletinVideo(input.type) ? input.type : videoExtensions[extension];
-          if (!isBulletinVideo(recognized)) throw new Error("Chọn video MP4, WebM hoặc MOV");
-          type = recognized;
-          if (input.size > bulletinMediaByteLimit(type)) throw new Error(`Video tối đa ${bulletinVideoLimitMb} MB mỗi tệp`);
-          if (!input.size) throw new Error("Video không có dữ liệu");
-          body = input;
-        }
-        const url = URL.createObjectURL(body);
-        previews.current.add(url);
-        newFiles.push({ key: url, url, label, type, body });
-      }
-      setFiles(current => [...current, ...newFiles]);
-    } catch (reason) {
-      for (const file of newFiles) {
-        previews.current.delete(file.url);
-        URL.revokeObjectURL(file.url);
-      }
-      setError(reason instanceof DOMException ? "Không đọc được ảnh, hãy thử ảnh JPG hoặc PNG"
-        : displayMessage(reason instanceof Error ? reason.message : "Không đọc được tệp đã chọn"));
-    } finally {
-      setStatus("");
-    }
+    setSelection({ files: picked, kind });
   }
 
   function remove(draft: DraftMedia) {
@@ -157,8 +168,8 @@ export function BulletinComposer({ postId, original, isAdmin, busy, onSave, onCl
       </Field>
       <div className="bulletin-picker">
         <div className="bulletin-picker-actions">
-          <input ref={photos} type="file" accept="image/*" multiple hidden onChange={event => void choose(event, "image")} />
-          <input ref={videos} type="file" accept={mediaAccept} multiple hidden onChange={event => void choose(event, "video")} />
+          <input ref={photos} type="file" accept="image/*" multiple hidden onChange={event => choose(event, "image")} />
+          <input ref={videos} type="file" accept={bulletinVideoAccept} multiple hidden onChange={event => choose(event, "video")} />
           <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => photos.current?.click()}>
             <ImagePlus size={16} aria-hidden="true" /> Thêm ảnh
           </Button>
@@ -187,7 +198,7 @@ export function BulletinComposer({ postId, original, isAdmin, busy, onSave, onCl
           <input name="deleteAt" type="datetime-local" defaultValue={bulletinDateInput(original?.deleteAt)} />
         </Field>
       </div>}
-      {status && <p className="hint" role="status">{status}</p>}
+      {(selection || status) && <p className="hint" role="status">{selection ? "Đang chuẩn bị tệp…" : status}</p>}
       {error && <p className="bulletin-picker-error" role="alert">{error}</p>}
       <FormFooter label={original ? "Lưu thay đổi" : "Đăng tin"} busy={waiting} onCancel={onClose} />
     </form>

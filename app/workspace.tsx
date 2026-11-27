@@ -11,12 +11,13 @@ import { sidebarTabs, sidebarTabLabels, type SidebarTab } from "../lib/workspace
 import { isMemberPosition, memberPositions, memberPositionLabels, memberRoleLabel } from "../lib/member-positions";
 import { FontSettings } from "./font-settings";
 import { AvatarEditor } from "./avatar-editor";
-import { MemberMonthlyScoreboard, Scoreboard, type ScoreScope } from "./scoreboard";
+import { formatScore, MemberMonthlyScoreboard, MobileScoreList, Scoreboard, type ScoreScope } from "./scoreboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
 import DutyEvidenceAction from "./duty-evidence";
+import DutyWeekActions from "./duty-week-actions";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
 import { isBulletinId } from "../lib/bulletin";
@@ -1259,8 +1260,8 @@ export default function Workspace() {
       </select>
     </label>
   );
-  function meetingCard(personal = false) {
-    const w = personal ? currentWeek : week;
+  function meetingCard() {
+    const w = week;
     return (
       <div className="meeting-card">
         <div className="meeting-card-top">
@@ -1299,12 +1300,10 @@ export default function Workspace() {
         <div className="meeting-card-bottom">
           <div className="avatar-stack">
             <span>
-              {personal
-                ? "Chu kỳ đăng ký: Thứ Hai – Chủ nhật"
-                : `${count("attending")} thành viên đã đăng ký`}
+              {`${count("attending")} thành viên đã đăng ký`}
             </span>
           </div>
-          {isAdmin && !personal ? (
+          {isAdmin ? (
             <Button variant="light" onClick={editMeeting} disabled={w.closed && !!w.meetingDate}>
               {w.closed ? "Bổ sung ngày họp" : "Đặt lịch họp"} <ArrowUpRightIcon />
             </Button>
@@ -1313,10 +1312,21 @@ export default function Workspace() {
       </div>
     );
   }
+
+  function meetingActivityFacts(w: Week) {
+    return <div className="activity-meta">
+      <span><CalendarDays size={17} aria-hidden="true" />
+        {w.meetingDate ? dateLabel(w.meetingDate, true) : "Chưa đặt ngày họp"}
+        {w.meetingDate && w.time ? ` · ${w.time}` : ""}
+      </span>
+      <span><MapPin size={17} aria-hidden="true" /> {w.location || "Chưa cập nhật địa điểm"}</span>
+    </div>;
+  }
+
   function requestsPanel(full = false) {
     const items = full ? pending : pending.slice(0, 2);
     return (
-      <section className="panel requests-panel">
+      <section className="panel requests-panel" id={full ? "meeting-requests" : undefined} tabIndex={full ? -1 : undefined}>
         <PanelHead
           title={full ? "Đăng ký họp chờ duyệt" : "Cần bạn xử lý"}
           action={<span className="count-pill">{pending.length}</span>}
@@ -1787,19 +1797,8 @@ export default function Workspace() {
       }));
     return (
       <>
-        <div className="page-heading">
-          <div>
-            <span className="eyebrow">
-              CHIA SẺ TRÁCH NHIỆM, GIỮ NHỊP MỖI NGÀY
-            </span>
-            <h1>
-              Lịch trực C1
-            </h1>
-            <p>
-              {capacityLabel} · Sáng và chiều · Ưu tiên 2 ca/người, có thể trực
-              thêm
-            </p>
-          </div>
+        <div className="page-heading activity-page-heading">
+          <h1>Lịch trực C1</h1>
           <div className="heading-actions">
             <div className="duty-week-nav">
               <Button variant="secondary" aria-label="Tuần trực trước" onClick={() => setDutyWeek(addDays(dutyWeek, -7))}><ChevronLeft size={16} /></Button>
@@ -1818,6 +1817,7 @@ export default function Workspace() {
             ) : null}
           </div>
         </div>
+        <DutyWeekActions key={dutyWeek} week={dutyWeek} entries={entries} club={club} me={me!} />
         {isAdmin ? (
           <div className="notice green">
             <Sparkles size={19} />
@@ -1858,7 +1858,7 @@ export default function Workspace() {
                   {draftEntries.length ? (publishedCount ? `${publishedCount} ca đã công bố · ${draftEntries.length} ca nháp` : "Bản nháp tuần") : "Tuần đã công bố"}
                 </Badge>
                 <span>
-                  {activeShifts.length} ca hoạt động
+                  {activeShifts.length} ca hoạt động · {capacityLabel}
                   {cancelledCount
                     ? ` · ${cancelledCount} ca đã hủy`
                     : ""} · {seats} lượt được phân
@@ -2019,6 +2019,7 @@ export default function Workspace() {
                                               target={{ month: schedule.month, shiftId: shift.id, memberId: a.memberId }}
                                               canSend={a.memberId === me!.id && evidenceSubmissionOpen(shift)}
                                               isAdmin={isAdmin}
+                                              onSaved={() => { void load(); }}
                                             />
                                           ) : null}
                                           {isAdmin ? (
@@ -2380,7 +2381,7 @@ export default function Workspace() {
   function weeklyScorePage() {
     return (
       <>
-        <div className="page-heading">
+        <div className="page-heading score-page-heading">
           <h1>Điểm tuần</h1>
           <div className="heading-actions">
             {weekSelect}
@@ -2596,23 +2597,8 @@ export default function Workspace() {
       .filter((s) => s.month === month)
       .flatMap((s) => s.shifts.filter((t) => isDutyReportShift(s, t)).flatMap((t) => t.assignments))
       .filter((a) => participantIds.has(a.memberId) && a.result === "unverified").length;
-    return (
-      <>
-        <div className="page-heading">
-          <div>
-            <span className="eyebrow">MỖI ĐÓNG GÓP ĐỀU ĐƯỢC GHI NHẬN</span>
-            <h1>
-              Điểm tháng
-            </h1>
-            <p>Tổng hợp trực C1, họp và các hoạt động trong tháng, Excel xuất theo tháng</p>
-          </div>
-          <div className="heading-actions">
-            {monthSelect}
-            <Button disabled={busy} onClick={exportReport}>
-              <ArrowDownToLine size={16} /> Xuất Excel
-            </Button>
-          </div>
-        </div>
+    const reportSupport = (
+      <div className="monthly-score-support">
         <div className="stats-grid">
           <Stat
             title="Lượt trực hoàn thành"
@@ -2657,12 +2643,28 @@ export default function Workspace() {
             Điều chỉnh <Settings2 size={14} />
           </button>
         </div>
-        <section className="panel">
+      </div>
+    );
+    return (
+      <>
+        <div className="page-heading score-page-heading">
+          <h1>Điểm tháng</h1>
+          <div className="heading-actions">
+            {monthSelect}
+            <Button disabled={busy} onClick={exportReport}>
+              <ArrowDownToLine size={16} aria-hidden="true" /> Xuất Excel
+            </Button>
+          </div>
+        </div>
+        <section className="panel score-panel">
           <PanelHead
             title={monthLabel(month)}
             description="Họp và phiếu điểm danh tính theo ngày họp; ca trực tính theo ngày trực thực tế"
           />
-          <div className="table-scroll">
+          {total.length ? <MobileScoreList key={month} period="tháng"
+            rows={total.map(({ m, ...score }) => ({ ...score, memberId: m.id, name: m.name, committeeNames: memberCommitteeNames(m) }))} />
+            : <Empty title="Chưa có thành viên trong tháng này" />}
+          {total.length > 0 && <div className="table-scroll score-desktop-table">
             <table className="scoreboard-table" aria-label="Bảng điểm tháng">
               <thead>
                 <tr>
@@ -2704,7 +2706,7 @@ export default function Workspace() {
                         className={`score ${s.points < 0 ? "negative" : ""}`}
                       >
                         {s.points > 0 ? "+" : ""}
-                        {s.points}
+                        {formatScore(s.points)}
                       </span>
                     </td>
                     {visibleActivityKinds.map(k => <td className="center" key={k}>{s.activityCounts[k]}</td>)}
@@ -2712,14 +2714,15 @@ export default function Workspace() {
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className="table-footer">
+          </div>}
+          <div className="table-footer score-desktop-table">
             <span>
               * Chỉ tính vắng không phép, không đạt phiếu điểm danh không bị trừ điểm
             </span>
             <FileSpreadsheet size={17} />
           </div>
         </section>
+        {reportSupport}
       </>
     );
   }
@@ -2924,120 +2927,94 @@ export default function Workspace() {
     );
   }
 
-  function meetingRegistration() {
-    return (
-        <div className="personal-top" id="personal-registration">
-          {meetingCard(true)}
-          <section className="panel registration-panel">
-            <PanelHead
-              title={
-                currentWeek.closed || ownEntry?.attendanceVerified ? "Kết quả buổi họp" : "Đăng ký của tôi"
-              }
-            />
-            <div className="registration-status">
-              {currentWeek.cancelled ? (
-                <Badge status="neutral">Không tổ chức họp</Badge>
-              ) : (currentWeek.closed || ownEntry?.attendanceVerified) && ownEntry ? (
-                <>
-                  <Badge status={ownEntry.absent ? "absent" : "attending"}>
-                    {ownEntry.absent
-                      ? ownEntry.excused
-                        ? "Vắng có phép"
-                        : "Vắng không phép"
-                      : "Có mặt"}
-                  </Badge>
-                  <p>{currentWeek.closed ? "Kết quả điểm danh đã chốt bởi BĐH hoặc hệ thống" : "Kết quả điểm danh đã được BĐH ghi nhận"}</p>
-                </>
-              ) : (
-                <Badge status={ownEntry?.status ?? "unregistered"} />
-              )}
-              {ownEntry?.reason ? (
-                <p>Lý do xin vắng đã gửi: {ownEntry.reason}</p>
-              ) : !currentWeek.closed && !currentWeek.cancelled ? (
-                <p>Hãy cho BĐH biết bạn có tham gia buổi họp tuần này nhé</p>
-              ) : null}
-            </div>
-            {currentWeek.closed || currentWeek.cancelled || ownEntry?.attendanceVerified || !ownEntry ? (
-              <div className="notice neutral">
-                {currentWeek.cancelled
-                  ? "Tuần này không tổ chức họp"
-                  : !ownEntry
-                    ? "Bạn không thuộc danh sách buổi họp tuần này, liên hệ BĐH nếu cần bổ sung"
-                    : "Kết quả đã được ghi nhận, liên hệ BĐH nếu cần điều chỉnh"}
-              </div>
-            ) : (
-              <div className="registration-buttons">
-                {ownEntry?.status === "absent" ? (
-                  <>
-                    <Button
-                      disabled={busy}
-                      onClick={() => registerDialog("pending")}
-                    >
-                      <MessageSquare size={16} /> Xin chuyển sang tham gia
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => registerDialog("absent")}
-                    >
-                      Sửa lý do vắng
-                    </Button>
-                  </>
-                ) : ownEntry?.status === "pending" ? (
-                  <>
-                    <div className="notice amber">
-                      Yêu cầu đang chờ BĐH duyệt, được thống kê trong nhóm chưa
-                      xử lý
-                    </div>
-                    <Button
-                      variant="secondary"
-                      disabled={busy}
-                      onClick={() =>
-                        act(
-                          "register",
-                          { status: "withdraw" },
-                          "Đã rút yêu cầu",
-                          false,
-                        )
-                      }
-                    >
-                      Rút yêu cầu
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      disabled={busy || ownEntry?.status === "attending"}
-                      onClick={() =>
-                        act(
-                          "register",
-                          { status: "attending" },
-                          "Đã đăng ký tham gia",
-                          false,
-                        )
-                      }
-                    >
-                      <Check size={16} />
-                      {ownEntry?.status === "attending"
-                        ? "Đã đăng ký tham gia"
-                        : "Tôi tham gia"}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      disabled={busy}
-                      onClick={() => registerDialog("absent")}
-                    >
-                      <Coffee size={16} /> Tôi xin vắng
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-            {ownEntry?.decision ? (
-              <p className="hint">Kết quả xử lý: {ownEntry.decision}</p>
-            ) : null}
-          </section>
+  function meetingRegistration(insidePersonal = false) {
+    const Heading = insidePersonal ? "h2" : "h1";
+    const { closed, cancelled } = currentWeek;
+    const recorded = closed || ownEntry?.attendanceVerified;
+    const canRegister = !cancelled && !recorded && !!ownEntry;
+    return <section className="panel activity-panel meeting-action-panel" id="personal-registration">
+      <div className="activity-panel-title">
+        <Heading>Đăng ký họp</Heading>
+        <Badge status={cancelled || closed ? "neutral" : "attending"}>
+          {cancelled ? "Không tổ chức họp" : closed ? "Đã chốt" : "Đang mở đăng ký"}
+        </Badge>
+      </div>
+      {!cancelled && meetingActivityFacts(currentWeek)}
+      {!cancelled && ownEntry && (
+        <div className="meeting-own-status">
+          {recorded ? <Badge status={ownEntry.absent ? "absent" : "attending"}>
+            {ownEntry.absent ? ownEntry.excused ? "Vắng có phép" : "Vắng không phép" : "Có mặt"}
+          </Badge> : <Badge status={ownEntry.status} />}
+          {ownEntry.reason && <span>Lý do xin vắng đã gửi: {ownEntry.reason}</span>}
         </div>
-    );
+      )}
+      {canRegister ? <div className="activity-primary-actions meeting-primary-actions">
+        {ownEntry.status === "absent" ? <>
+          <Button disabled={busy} onClick={() => registerDialog("pending")}>
+            <MessageSquare size={16} aria-hidden="true" /> Xin chuyển sang tham gia
+          </Button>
+          <Button variant="secondary" disabled={busy} onClick={() => registerDialog("absent")}>Sửa lý do vắng</Button>
+        </> : ownEntry.status === "pending" ? <>
+          <span className="activity-action-hint">Yêu cầu đang chờ BĐH duyệt</span>
+          <Button variant="secondary" disabled={busy}
+            onClick={() => act("register", { status: "withdraw" }, "Đã rút yêu cầu", false)}>Rút yêu cầu</Button>
+        </> : <>
+          {ownEntry.status !== "attending" && <Button disabled={busy}
+            onClick={() => act("register", { status: "attending" }, "Đã đăng ký tham gia", false)}>
+            Tôi tham gia
+          </Button>}
+          <Button variant="secondary" disabled={busy} onClick={() => registerDialog("absent")}>
+            Tôi xin vắng
+          </Button>
+        </>}
+      </div> : !cancelled && <p className="activity-action-hint">
+        {ownEntry ? "Kết quả đã được ghi nhận, liên hệ BĐH nếu cần điều chỉnh" : "Liên hệ BĐH nếu cần bổ sung vào danh sách họp tuần này"}
+      </p>}
+      {ownEntry?.decision && <p className="activity-action-hint">Kết quả xử lý: {ownEntry.decision}</p>}
+    </section>;
+  }
+
+  function meetingManagement() {
+    return <>
+      <section className="panel activity-panel meeting-action-panel">
+        <div className="activity-panel-title">
+          <h1>Họp hằng tuần</h1>
+          {weekSelect}
+        </div>
+        {meetingActivityFacts(week)}
+        <div className="meeting-own-status">
+          <Badge status={week.cancelled || week.closed ? "neutral" : "attending"}>
+            {week.cancelled ? "Không tổ chức họp" : week.closed ? "Đã chốt" : "Đang mở đăng ký"}
+          </Badge>
+          {!week.cancelled && <span>{count("attending")} thành viên đã đăng ký</span>}
+        </div>
+        <div className="activity-primary-actions">
+          {(!week.closed || !week.meetingDate) && <Button disabled={busy}
+            variant={week.meetingDate ? "secondary" : "primary"} onClick={editMeeting}>
+            <CalendarDays size={16} aria-hidden="true" /> {week.closed ? "Bổ sung ngày họp" : "Đặt lịch"}
+          </Button>}
+          {week.closed ? (
+            <Button disabled={busy} variant="secondary" onClick={reopenWeekDialog}>
+              <RefreshCw size={16} aria-hidden="true" /> Hủy chốt cuộc họp
+            </Button>
+          ) : (
+            <Button disabled={busy} variant={week.meetingDate ? "primary" : "secondary"} onClick={closeWeekDialog}>
+              <CheckCheck size={16} aria-hidden="true" /> Chốt cuộc họp
+            </Button>
+          )}
+          {pending.length > 0 && <Button variant="secondary" onClick={() => {
+            const requests = document.getElementById("meeting-requests");
+            requests?.focus({ preventScroll: true });
+            requests?.scrollIntoView({ block: "start" });
+          }}>Yêu cầu chờ duyệt <span className="activity-count">{pending.length}</span></Button>}
+        </div>
+        {week.reopenedForCorrection && !week.closed && <p className="activity-action-hint">
+          Tuần đã mở lại để chỉnh sửa, BĐH cần chốt lại khi hoàn tất
+        </p>}
+      </section>
+      {pending.length > 0 && requestsPanel(true)}
+      {meetingTable()}
+    </>;
   }
 
   function personal() {
@@ -3085,7 +3062,7 @@ export default function Workspace() {
     return (
       <>
         {heading}
-        {meetingRegistration()}
+        {meetingRegistration(true)}
         <div className="personal-bottom">
           <section className="panel">
             <PanelHead
@@ -3437,63 +3414,11 @@ export default function Workspace() {
           {activeTab === "overview" ? (
             overview()
           ) : activeTab === "meetings" ? (
-            isAdmin ? <>
-              <div className="page-heading">
-                <div>
-                  <span className="eyebrow">CÙNG GẶP NHAU MỖI TUẦN</span>
-                  <h1>
-                    Họp hằng tuần
-                  </h1>
-                  <p>
-                    Đăng ký, ghi nhận có mặt và kết quả phiếu điểm danh trong một bảng
-                  </p>
-                </div>
-                <div className="heading-actions">
-                  {weekSelect}
-                  <Button
-                    variant="secondary"
-                    onClick={editMeeting}
-                    disabled={week.closed}
-                  >
-                    <CalendarDays size={16} /> Đặt lịch
-                  </Button>
-                  {!week.closed ? (
-                    <Button onClick={closeWeekDialog} disabled={busy}>
-                      <CheckCheck size={16} /> Chốt cuộc họp
-                    </Button>
-                  ) : null}
-                  <Button
-                    onClick={reopenWeekDialog}
-                    disabled={busy || !week.closed}
-                    variant="secondary"
-                    title={week.closed ? undefined : "Tuần chưa chốt"}
-                  >
-                    <RefreshCw size={16} /> Hủy chốt cuộc họp
-                  </Button>
-                </div>
-              </div>
-              {meetingCard()}
-              <div className="week-notice">
-                <Clock3 size={16} />{" "}
-                {week.closed
-                  ? "Tuần đã chốt, điều chỉnh kết quả cần ghi lý do và được lưu lịch sử"
-                  : week.reopenedForCorrection
-                    ? "Tuần đã mở lại để chỉnh sửa, BĐH cần chốt lại khi hoàn tất; hệ thống không tự chốt tuần này trong lúc sửa"
-                    : "Tuần chưa chốt, nút Hủy chốt sẽ bật sau khi BĐH chốt cuộc họp"}
-              </div>
-              {pending.length > 0 && requestsPanel(true)}
-              {meetingTable()}
-            </> : <>
-              <div className="page-heading"><h1>Đăng ký họp</h1></div>
-              {meetingRegistration()}
-            </>
+            isAdmin ? meetingManagement() : meetingRegistration()
           ) : activeTab === "weeklyScores" ? (
             weeklyScorePage()
           ) : activeTab === "requests" ? (
-            <>
-              <div className="page-heading"><div><span className="eyebrow">THAM GIA VÀ ĐÓNG GÓP</span><h1>{isAdmin ? "Tạo sự kiện" : "Sự kiện Đội"}</h1><p>{isAdmin ? "Tạo sự kiện, duyệt đăng ký và thêm người đã tham gia" : "Đăng ký sự kiện và xem kết quả tham gia của bạn"}</p></div></div>
-              <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load}/>
-            </>
+            <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load} />
           ) : activeTab === "duties" ? (
             duties()
           ) : activeTab === "bulletin" ? (
@@ -3511,7 +3436,7 @@ export default function Workspace() {
             members()
           ) : activeTab === "reports" ? (
             isAdmin ? reports() : <>
-              <div className="page-heading"><h1>Điểm tháng</h1>{monthSelect}</div>
+              <div className="page-heading score-page-heading"><h1>Điểm tháng</h1>{monthSelect}</div>
               <MemberMonthlyScoreboard key={`${me.id}:${month}:${view.revision}`} month={month} memberId={me.id}
                 scope={scoreScope} onScopeChange={setScoreScope} />
             </>

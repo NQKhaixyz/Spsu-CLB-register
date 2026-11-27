@@ -49,8 +49,12 @@ test("Multi-round events use the per-event multiplier for each approved round an
   assert.equal(rounds[2].evidence, undefined);
   assert.deepEqual(rounds.map(round => activityPointsFor(c, round)), [1.75, 2.63, 3.94]);
   const month = today().slice(0, 7);
-  assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 8.32);
-  assert.equal(monthlyScoreboard(c, month).find(row => row.memberId === first.memberId)?.points, 8.32);
+  const weekScore = weeklyScoreFor(c, first.memberId, weekId());
+  const monthScore = monthlyScoreboard(c, month).find(row => row.memberId === first.memberId);
+  assert.equal(weekScore.points, 8.32);
+  assert.equal(weekScore.activityPoints.event, 8.32);
+  assert.equal(monthScore?.points, 8.32);
+  assert.equal(monthScore?.activityPoints.event, 8.32);
   const book = new ExcelJS.Workbook();
   await book.xlsx.load((await makeReport(c, month)).buffer);
   assert.deepEqual([4, 5, 6].map(row => book.getWorksheet("Chi tiết hoạt động")!.getCell(row, 8).value), [1.75, 2.63, 3.94]);
@@ -117,7 +121,12 @@ test("Members see the same monthly totals as the admin report across a split wee
     const report = scoreFor(club, row.memberId, "2026-09");
     assert.equal(row.points, report.points);
     assert.deepEqual(row.activityCounts, report.activityCounts);
-    assert.deepEqual(Object.keys(row).sort(), ["memberId", "name", "committeeNames", "points", "completed", "dutyMissed", "meetingMissed", "passed", "lateCount", "activityCounts"].sort());
+    assert.deepEqual(row.activityPoints, report.activityPoints);
+    assert.deepEqual(row.attendancePoints, report.attendancePoints);
+    assert.deepEqual(Object.keys(row).sort(), [
+      "memberId", "name", "committeeNames", "points", "completed", "dutyMissed", "meetingMissed",
+      "attended", "passed", "lateCount", "activityCounts", "activityPoints", "attendancePoints",
+    ].sort());
   }
   const published = JSON.stringify([...august, ...september]);
   for (const privateValue of [note, "ACT002", "other-activity", "aug-peer"]) assert.ok(!published.includes(privateValue));
@@ -128,6 +137,48 @@ test("Members see the same monthly totals as the admin report across a split wee
   assert.ok(boardLogs.every(log => log.text.includes("Other, Điều hành · 5.25 điểm")));
   assert.equal(workspaceView(club, { ...user, userId: "other-activity" }, 1).isAdmin, false);
   assert.equal(JSON.stringify(club), stored);
+});
+
+test("Weekly score details use each month's attendance rules and add up to the recorded total", () => {
+  const club = fixture();
+  const week = "2026-08-31";
+  const memberId = "a1";
+  club.rules = [
+    { month: "2026-08", A: 1.25, B: 0, C: 0, D: 0.25 },
+    { month: "2026-09", A: 2.25, B: 0.5, C: 0, D: 0.5, E: 0.5 },
+  ];
+  club.schedules = [
+    { month: "2026-08", published: true, shifts: [{
+      id: "aug-last", date: week, period: "am", assignments: [{ memberId, result: "completed", late: true }],
+    }] },
+    { month: "2026-09", published: true, shifts: [
+      { id: "sep-first", date: "2026-09-01", period: "am", assignments: [{ memberId, result: "completed", late: true }] },
+      { id: "sep-second", date: "2026-09-02", period: "am", assignments: [{ memberId, result: "unexcused" }] },
+    ] },
+  ];
+  club.weeks = [{
+    id: week, meetingDate: "2026-09-02", location: "Phòng họp", time: "18:00", cancelled: false, closed: true,
+    entries: [{ memberId, status: "attending", reason: "", excused: false, absent: false, passed: true }],
+  }];
+  const score = weeklyScoreFor(club, memberId, week);
+  assert.deepEqual(score.attendancePoints, {
+    completed: 3.5, dutyMissed: -0.5, meetingMissed: 0, lateCount: -0.75, passed: 0.5,
+  });
+  assert.equal(score.attended, 1);
+  assert.equal(score.points, 2.75);
+  assert.equal(Object.values(score.attendancePoints).reduce((total, value) => total + value, 0), score.points);
+});
+
+test("Event location persists when older clients omit it and clears when the form sends an empty string", () => {
+  const club = fixture();
+  const data = eventData();
+  applyAction(club, admin, "createEvent", { ...data, location: "  Hội trường C1  " });
+  const event = club.events![0];
+  assert.equal(event.location, "Hội trường C1");
+  applyAction(club, admin, "editEvent", { ...data, name: "Ngày hội của Đội" });
+  assert.equal(event.location, "Hội trường C1");
+  applyAction(club, admin, "editEvent", { ...data, location: "" });
+  assert.equal(event.location, "");
 });
 function createEvent(c:ReturnType<typeof fixture>, data: ReturnType<typeof eventData> & { requiresEvidence?: boolean } = eventData()) {
  applyAction(c,admin,"createEvent",data);return c.events!.find(e=>e.id===data.id)!;

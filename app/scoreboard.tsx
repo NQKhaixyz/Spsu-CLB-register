@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { activityLabels, visibleActivityKinds } from "../lib/activity";
 import { monthLabel, type ScoreboardRow } from "../lib/club";
 import { Button, Empty, PanelHead } from "./ui";
@@ -12,13 +13,67 @@ const scopes = [
 export type ScoreScope = (typeof scopes)[number]["id"];
 type ScopeProps = { memberId?: string; scope: ScoreScope; onScopeChange: (scope: ScoreScope) => void };
 
+const numbers = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
+export const formatScore = (value: number) => numbers.format(value);
+const signedScore = (value: number) => (value > 0 ? "+" : "") + formatScore(value);
+
+const attendanceMetrics = [
+  { key: "completed", label: "Trực đủ", unit: "ca" },
+  { key: "dutyMissed", label: "Vắng trực không phép", unit: "ca" },
+  { key: "attended", label: "Có mặt tại họp", unit: "buổi" },
+  { key: "meetingMissed", label: "Vắng họp không phép", unit: "buổi" },
+  { key: "passed", label: "Đạt phiếu điểm danh", unit: "phiếu" },
+  { key: "lateCount", label: "Đi muộn", unit: "lượt" },
+] as const;
+
+function ScoreMetric({ label, count, unit, points }: {
+  label: string; count?: number; unit?: string; points?: number;
+}) {
+  return <div className="score-metric">
+    <dt>{label}{points !== undefined && count !== undefined && <small>{formatScore(count)} {unit}</small>}</dt>
+    <dd className={points !== undefined && points < 0 ? "score-negative" : points !== undefined && points > 0 ? "score-positive" : undefined}>
+      {points !== undefined ? `${signedScore(points)} điểm` : count !== undefined ? `${formatScore(count)} ${unit}` : "—"}
+    </dd>
+  </div>;
+}
+
+export function MobileScoreList({ rows, memberId, period }: {
+  rows: ScoreboardRow[]; memberId?: string; period: "tuần" | "tháng";
+}) {
+  const group = useId();
+  return <ul className="mobile-score-list" role="list" aria-label={`Bảng điểm ${period}`}>
+    {rows.map(row => <li key={row.memberId}>
+      <details name={group}>
+        <summary>
+          <span className="mobile-score-name">
+            <strong>{row.name}</strong>
+            {memberId === row.memberId && <small className="score-self">Bạn</small>}
+            {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
+          </span>
+          <strong className={`mobile-score-total${row.points < 0 ? " score-negative" : ""}`}>
+            {formatScore(row.points)}<span> điểm</span>
+          </strong>
+          <ChevronDown className="mobile-score-chevron" size={16} aria-hidden="true" />
+        </summary>
+        <dl className="mobile-score-details">
+          {attendanceMetrics.map(({ key, label, unit }) => <ScoreMetric key={key} label={label} unit={unit}
+            count={row[key]} points={key !== "attended" ? row.attendancePoints?.[key] : undefined} />)}
+          {visibleActivityKinds.map(kind => <ScoreMetric key={kind} label={activityLabels[kind]}
+            count={kind === "initiative" || kind === "ddv" || kind === "event" ? row.activityCounts[kind] : undefined}
+            unit="lượt" points={row.activityPoints?.[kind]} />)}
+        </dl>
+      </details>
+    </li>)}
+  </ul>;
+}
+
 export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange }: ScopeProps & {
   title: string; period: "tuần" | "tháng"; rows: ScoreboardRow[];
 }) {
   const onlyMine = !!memberId && scope === "mine";
   const visible = onlyMine ? rows.filter(row => row.memberId === memberId) : rows;
   return (
-    <section className="panel">
+    <section className="panel score-panel score-panel-standard">
       <PanelHead title={title}
         description="Sáng kiến, đồng đẳng viên và sự kiện hiển thị số lượt, điểm theo ban, điểm riêng và điểm trừ hiển thị số điểm"
         action={memberId && (
@@ -33,10 +88,12 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
         )}
       />
       {memberId && !onlyMine && rows.length > 0 && (
-        <p className="score-tally"><strong>Tổng điểm toàn Đội</strong> {Number(rows.reduce((sum, row) => sum + row.points, 0).toFixed(10))} · {rows.length} thành viên</p>
+        <p className="score-tally"><strong>Tổng điểm toàn Đội</strong> {formatScore(Number(rows.reduce((sum, row) => sum + row.points, 0).toFixed(10)))} · {rows.length} thành viên</p>
       )}
       {visible.length ? (
-        <div className="table-scroll">
+        <>
+        <MobileScoreList key={`${title}:${onlyMine}`} rows={visible} period={period} memberId={onlyMine ? undefined : memberId} />
+        <div className="table-scroll score-desktop-table">
           <table className="scoreboard-table" aria-label={`Bảng điểm ${period}`}>
             <thead><tr>
               <th>Thành viên</th><th>Tổng điểm {period}</th><th>Trực đủ</th><th>Vắng trực</th>
@@ -51,13 +108,14 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
                     {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
                   </span>
                 </td>
-                <td><strong>{row.points}</strong></td><td>{row.completed}</td><td>{row.dutyMissed}</td>
+                <td><strong>{formatScore(row.points)}</strong></td><td>{row.completed}</td><td>{row.dutyMissed}</td>
                 <td>{row.meetingMissed}</td><td>{row.passed}</td><td>{row.lateCount}</td>
                 {visibleActivityKinds.map(kind => <td key={kind}>{row.activityCounts[kind]}</td>)}
               </tr>
             ))}</tbody>
           </table>
         </div>
+        </>
       ) : <Empty title={onlyMine ? `Bạn chưa có trong bảng điểm ${period} này` : `Chưa có thành viên trong ${period} này`} />}
     </section>
   );

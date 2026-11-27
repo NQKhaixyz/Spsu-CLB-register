@@ -26,10 +26,12 @@ type StoredCommitteeKind = CommitteeKind | "dh" | "hc";
 export type CommitteeRates = Partial<Record<StoredCommitteeKind, number>>;
 export type ActivityRates = Partial<Record<ActivityKind, number>>;
 export const eventDescriptionLimit = 1000;
+export const eventLocationLimit = 200;
 export type ClubEvent = {
   id: string;
   name: string;
   description?: string;
+  location?: string;
   requiresEvidence?: boolean;
   participationMultiplier?: number;
   points: number;
@@ -295,13 +297,16 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     const description = action === "editEvent" && data.description === undefined
       ? existing?.description ?? ""
       : text(data.description, eventDescriptionLimit);
+    const location = action === "editEvent" && data.location === undefined
+      ? existing?.location ?? ""
+      : text(data.location, eventLocationLimit);
     const participationMultiplier = data.participationMultiplier === undefined ? existing?.participationMultiplier
       : data.participationMultiplier === null ? undefined
       : pointAmount(data.participationMultiplier, "Hệ số nhân phải là số từ 1 đến 100.000, tối đa 2 chữ số thập phân.");
     requireValue(participationMultiplier === undefined || participationMultiplier >= 1, "Hệ số nhân phải từ 1 trở lên.");
     if (existing) {
       requireValue(!existing.cancelledAt, "Sự kiện đã hủy.");
-      const same = existing.name === name && (existing.description ?? "") === description &&
+      const same = existing.name === name && (existing.description ?? "") === description && (existing.location ?? "") === location &&
         existing.startDate === startDate && existing.endDate === endDate && existing.points === points &&
         !!existing.requiresEvidence === requiresEvidence && existing.participationMultiplier === participationMultiplier;
       if (same) return true;
@@ -328,12 +333,12 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
           if (evidenceExpired) delete row.evidence;
         }
       }
-      Object.assign(existing, { name, description, startDate, endDate, points, requiresEvidence, participationMultiplier });
+      Object.assign(existing, { name, description, location, startDate, endDate, points, requiresEvidence, participationMultiplier });
       log(`Sửa sự kiện ${name}: ${startDate} – ${endDate}, ${points} điểm/người được duyệt`);
       return true;
     }
     requireValue(endDate >= today(), "Ngày kết thúc sự kiện không được trước hôm nay.");
-    (club.events ??= []).push({ id, name, description, startDate, endDate, points, requiresEvidence, participationMultiplier, createdAt: new Date().toISOString(), createdBy: me.id });
+    (club.events ??= []).push({ id, name, description, location, startDate, endDate, points, requiresEvidence, participationMultiplier, createdAt: new Date().toISOString(), createdBy: me.id });
     log(`Tạo sự kiện ${name}: ${startDate} – ${endDate}, ${points} điểm/người được duyệt`);
     return true;
   }

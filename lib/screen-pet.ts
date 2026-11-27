@@ -8,7 +8,7 @@ export type PetController = {
   setHidden: (value: boolean) => void;
   destroy: () => void;
 };
-const CONTROL = 'input,textarea,select,button,a,[role="button"],[contenteditable="true"]';
+const CONTROL = 'input,textarea,select,button,a,summary,[role="button"],[contenteditable="true"]';
 const isPet = (el: EventTarget | null) => el instanceof Element && !!el.closest("[data-pet-ui]");
 
 /** Viewport physics and gestures are imperative; React only renders the care panel. */
@@ -105,9 +105,15 @@ export function createScreenPet(host: HTMLElement, button: HTMLButtonElement, ba
     if (dragging) return;
     if (now - lastAvoid > 100) {
       lastAvoid = now;
-      under = [[0, 0], [-42, -26], [42, -26], [-42, 34], [42, 34]].map(([x, y]) =>
+      const protectedArea = document.querySelector("[data-pet-avoid]");
+      const rect = protectedArea?.getBoundingClientRect();
+      const nearProtectedArea = rect && rect.width > 0 && rect.height > 0 &&
+        position.x + bounds.radius > rect.left && position.x - bounds.radius < rect.right &&
+        position.y + bounds.radius > rect.top && position.y - bounds.radius < rect.bottom;
+      under = nearProtectedArea ? protectedArea : [[0, 0], [-42, -26], [42, -26], [-42, 34], [42, 34]].map(([x, y]) =>
         document.elementsFromPoint(position.x + x, position.y + y).find(el => !isPet(el) && el.closest(CONTROL))?.closest(CONTROL)).find(Boolean) ?? null;
       button.style.pointerEvents = under ? "none" : "auto";
+      host.toggleAttribute("data-over-control", !!under);
     }
     if (under && !panel) { target = outside((under.closest("form") ?? under).getBoundingClientRect(), position); pointerAt = 0; }
     const active = document.activeElement;
