@@ -3399,7 +3399,8 @@ export default function Workspace() {
             members()
           ) : activeTab === "semesterScores" ? (
             isAdmin ? <SemesterScoreboard club={club} monthChoices={monthChoices} initialMonth={month} busy={busy}
-              onSave={range => act("setSemesterScoreRange", range, "Đã công bố kỳ tổng kết", false)} />
+              onSave={range => act("setSemesterScoreRange", range, "Đã công bố kỳ tổng kết", false)}
+              onUnpublish={range => act("unpublishSemesterScoreRange", range, "Đã hủy công bố kỳ tổng kết", false)} />
               : <MemberSemesterScoreboard key={view.revision} />
           ) : activeTab === "reports" ? (
             isAdmin ? reports() : <>

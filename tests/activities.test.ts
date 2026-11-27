@@ -82,6 +82,18 @@ test("Semester totals sum each monthly report across years and include members o
   applyAction(club, admin, "setSemesterScoreRange", range);
   assert.deepEqual(workspaceView(club, user, 2).club.semesterScoreRange, range);
   assert.deepEqual(publishedSemesterScores(club, "2027-01-31"), { range, ...result });
+  assert.throws(() => applyAction(club, user, "unpublishSemesterScoreRange", range), /BĐH/);
+  assert.throws(() => applyAction(club, admin, "unpublishSemesterScoreRange", { ...range, through: "2027-02" }), /vừa thay đổi/);
+  applyAction(club, admin, "unpublishSemesterScoreRange", range);
+  applyAction(club, admin, "unpublishSemesterScoreRange", range);
+  assert.equal(publishedSemesterScores(club, "2027-01-31"), null);
+  const hiddenForMember = workspaceView(club, user, 3).club;
+  assert.equal(hiddenForMember.semesterScoreRange, undefined);
+  assert.equal(hiddenForMember.semesterScoreDraft, undefined);
+  assert.deepEqual(workspaceView(club, admin, 3).club.semesterScoreDraft, range);
+  applyAction(club, admin, "setSemesterScoreRange", range);
+  assert.equal(club.semesterScoreDraft, undefined);
+  assert.deepEqual(publishedSemesterScores(club, "2027-01-31"), { range, ...result });
 });
 
 test("Multi-round events use the per-event multiplier for each approved round and keep reviews, photos and Excel aligned", async () => {

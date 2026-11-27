@@ -11,16 +11,20 @@ import { MemberName } from "./member-identity";
 const monthChoiceLabel = (month: string) => `${month.slice(5)}/${month.slice(0, 4)}`;
 const rangeLabel = (range: SemesterScoreRange) => `${monthChoiceLabel(range.from)} – ${monthChoiceLabel(range.through)}`;
 
-export default function SemesterScoreboard({ club, monthChoices, initialMonth, busy, onSave }: {
+export default function SemesterScoreboard({ club, monthChoices, initialMonth, busy, onSave, onUnpublish }: {
   club: Club; monthChoices: string[]; initialMonth: string; busy: boolean;
   onSave: (range: SemesterScoreRange) => Promise<boolean>;
+  onUnpublish: (range: SemesterScoreRange) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState<SemesterScoreRange>();
   const published = club.semesterScoreRange;
-  const { from, through } = draft ?? published ?? { from: initialMonth, through: initialMonth };
+  const { from, through } = draft ?? published ?? club.semesterScoreDraft ?? { from: initialMonth, through: initialMonth };
   const choices = [...new Set([...monthChoices, from, through])].sort();
   const valid = validSemesterScoreRange(from, through);
   const current = published?.from === from && published.through === through;
+  const publicationStatus = published ? `Đang công bố ${rangeLabel(published)}`
+    : club.semesterScoreDraft ? `Đã hủy công bố ${rangeLabel(club.semesterScoreDraft)}`
+    : "Thành viên xem được khoảng tháng sau khi BĐH công bố";
   const result = useMemo(() => semesterScores(club, from, through), [club, from, through]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,8 +50,8 @@ export default function SemesterScoreboard({ club, monthChoices, initialMonth, b
         </Field>
         <div className="semester-score-actions">
           <Button type="submit" disabled={busy || current || !valid}>Công bố kỳ tổng kết</Button>
-          <p className="hint">{!valid ? `Chọn tối đa ${semesterMonthLimit} tháng`
-            : published ? `Đang công bố ${rangeLabel(published)}` : "Thành viên xem được khoảng tháng sau khi BĐH công bố"}</p>
+          {published && <Button variant="secondary" disabled={busy} onClick={() => onUnpublish(published)}>Hủy công bố</Button>}
+          <p className="hint">{valid ? publicationStatus : `Chọn tối đa ${semesterMonthLimit} tháng`}</p>
         </div>
       </form>
       <SemesterResults key={`${from}:${through}`} {...result} />

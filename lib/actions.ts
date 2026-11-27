@@ -302,7 +302,18 @@ export function applyAction(
     check(validSemesterScoreRange(from, through), `Chọn khoảng tháng hợp lệ, tối đa ${semesterMonthLimit} tháng.`);
     if (club.semesterScoreRange?.from === from && club.semesterScoreRange.through === through) return;
     club.semesterScoreRange = { from, through };
+    delete club.semesterScoreDraft;
     note(`Công bố bảng điểm học kỳ ${from} – ${through}`);
+    return;
+  }
+  if (action === "unpublishSemesterScoreRange") {
+    const published = club.semesterScoreRange;
+    if (!published) return;
+    check(published.from === data.from && published.through === data.through,
+      "Kỳ đang công bố vừa thay đổi. Cập nhật dữ liệu rồi thử lại.");
+    club.semesterScoreDraft = published;
+    delete club.semesterScoreRange;
+    note(`Hủy công bố bảng điểm học kỳ ${published.from} – ${published.through}`);
     return;
   }
   if (action === "setAcademicWeekAnchor") {

@@ -139,6 +139,7 @@ export type AvailabilitySettings = AcademicWeekAnchor & {
 export type Club = {
   ownerId: string;
   semesterScoreRange?: SemesterScoreRange;
+  semesterScoreDraft?: SemesterScoreRange;
   academicWeekAnchors?: AcademicWeekAnchor[];
   name: string;
   demo: boolean;
