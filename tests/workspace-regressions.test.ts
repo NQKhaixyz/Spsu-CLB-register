@@ -141,6 +141,7 @@ test("Publication and expiry use Vietnam time, with private drafts and idempoten
   assert.equal(publicPost?.liked, true);
   assert.equal(publicPost?.comments.length, 1);
   assert.equal(publicPost?.comments[0].author.name, pending.name);
+  assert.equal(publicPost?.comments[0].author.memberId, pending.id);
   applyAction(c, reader, "setBulletinSaved", { postId: future.id, saved: true });
   assert.equal(bulletinView(c, pending).posts[0].saved, true);
   assert.equal(bulletinView(c, c.members[0]).posts[0].saved, false);
@@ -176,8 +177,9 @@ test("Legacy bulletin authors come from matching creation logs and survive later
   ];
   c.logs.push({ at: new Date(createdAt).toISOString(), actor: author.name, actorId: author.id, text: "Đăng bản tin Tin cũ" });
   const initial = bulletinView(c, pending).posts;
-  assert.deepEqual(initial[0].author, { name: author.name, avatarId: author.avatarId });
+  assert.deepEqual(initial[0].author, { memberId: author.id, name: author.name, avatarId: author.avatarId });
   assert.equal(initial[1].author.name, "Ban điều hành");
+  assert.equal(initial[1].author.memberId, undefined);
   applyAction(c, owner, "saveBulletinPost", { id: "legacy-post", title: "Tiêu đề mới", content: "Nội dung", revision: 1 });
   assert.equal(bulletinView(c, pending).posts[0].author.name, author.name);
   assert.ok(!("createdBy" in bulletinView(c, pending).posts[0]));

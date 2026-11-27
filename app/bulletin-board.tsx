@@ -3,11 +3,13 @@
 import { Bookmark, CalendarClock, ChevronLeft, Ellipsis, Heart, ImagePlus, MessageCircle, Newspaper, Pencil, Plus, Share2, Trash2, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { bulletinCommentLimit, parseBulletinDate, type BulletinAuthor, type BulletinPostView } from "../lib/bulletin";
-import { uid } from "../lib/club";
+import { uid, type Member } from "../lib/club";
 import { BulletinAttachments } from "./bulletin-attachments";
 import { BulletinComposer, bulletinVideoAccept, type BulletinMediaSelection } from "./bulletin-composer";
 import { Avatar, Button, Dialog, Empty, Field } from "./ui";
+import { MemberName } from "./member-identity";
 
+type BulletinViewer = Pick<Member, "id" | "name" | "avatarId">;
 type Overlay =
   | { mode: "edit"; id: string; original?: BulletinPostView; selection?: BulletinMediaSelection }
   | { mode: "delete" | "share"; original: BulletinPostView };
@@ -29,9 +31,9 @@ function Byline({ author, time, scheduled = false, small = false }: {
   author: BulletinAuthor; time?: number; scheduled?: boolean; small?: boolean;
 }) {
   return <div className="bulletin-byline">
-    <Avatar name={author.name} photoId={author.avatarId} size={small ? "small" : ""} />
+    <Avatar memberId={author.memberId} name={author.name} photoId={author.avatarId} size={small ? "small" : ""} />
     <div>
-      <strong>{author.name}</strong>
+      <MemberName as="strong" memberId={author.memberId} name={author.name} />
       {time !== undefined && <time dateTime={new Date(time).toISOString()}>
         {scheduled && "Hẹn đăng "}{bulletinClock.format(time)}
       </time>}
@@ -82,7 +84,7 @@ function PostActions({ post, busy, act, onDiscuss, onShare }: {
 }
 
 function CommentThread({ post, me, busy, act }: {
-  post: BulletinPostView; me: BulletinAuthor; busy: boolean; act: Act;
+  post: BulletinPostView; me: BulletinViewer; busy: boolean; act: Act;
 }) {
   const [draftId, setDraftId] = useState(uid);
   const [replyId, setReplyId] = useState<string>();
@@ -110,7 +112,7 @@ function CommentThread({ post, me, busy, act }: {
         const parent = comment.replyTo ? commentsById.get(comment.replyTo) : undefined;
         return <li key={comment.id} className={parent ? "bulletin-reply is-reply" : "bulletin-reply"}>
           <Byline author={comment.author} time={comment.createdAt} small />
-          {parent && <span className="bulletin-reply-label">Trả lời {parent.author.name}</span>}
+          {parent && <span className="bulletin-reply-label">Trả lời <MemberName memberId={parent.author.memberId} name={parent.author.name} /></span>}
           <p>{comment.content}</p>
           <div className="bulletin-actions">
             <button type="button" aria-pressed={comment.liked} disabled={busy}
@@ -128,10 +130,10 @@ function CommentThread({ post, me, busy, act }: {
       })}
     </ol> : <p className="hint">Chưa có bình luận</p>}
     <form className="bulletin-comment-form" onSubmit={send}>
-      <Avatar name={me.name} photoId={me.avatarId} />
+      <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} />
       <div>
         {reply && <div className="bulletin-replying">
-          <span>Đang trả lời {reply.author.name}</span>
+          <span>Đang trả lời <MemberName memberId={reply.author.memberId} name={reply.author.name} /></span>
           <button type="button" className="text-button" disabled={busy} onClick={() => setReplyId(undefined)}>Bỏ trả lời</button>
         </div>}
         <Field label={reply ? "Viết trả lời" : "Viết bình luận"}>
@@ -175,7 +177,7 @@ function SharePost({ post, onClose }: { post: BulletinPostView; onClose: () => v
 export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, linkedPostId, onDismissLink, onOpen, onAction }: {
   posts: BulletinPostView[];
   nextChangeAt?: number;
-  me: BulletinAuthor;
+  me: BulletinViewer;
   isAdmin: boolean;
   busy: boolean;
   linkedPostId?: string;
@@ -287,7 +289,7 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
     ) : <section className="panel"><Empty title="Bản tin không còn khả dụng" icon={Newspaper} /></section> : (
       <>
         <div className="bulletin-compose" data-pet-avoid>
-          <Avatar name={me.name} photoId={me.avatarId} />
+          <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} />
           <Button className="bulletin-compose-start" disabled={busy} onClick={() => setOverlay({ mode: "edit", id: uid() })}>
             <Plus size={17} aria-hidden="true" /> Đăng tin
           </Button>

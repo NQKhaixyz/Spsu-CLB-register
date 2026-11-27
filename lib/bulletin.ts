@@ -29,7 +29,7 @@ export type BulletinPost = {
   media?: BulletinMedia[];
 };
 
-export type BulletinAuthor = { name: string; avatarId?: string };
+export type BulletinAuthor = { memberId?: string; name: string; avatarId?: string };
 export type BulletinCommentView = Omit<BulletinComment, "memberId" | "likedBy"> & {
   author: BulletinAuthor;
   liked: boolean;
@@ -101,7 +101,7 @@ export function pruneBulletinState(club: Club, now = Date.now()) {
 
 export function bulletinView(club: Club, viewer: Member, now = Date.now()) {
   const posts = (club.bulletinPosts ?? []).filter(post => !hasExpired(post, now));
-  const people = new Map(club.members.map(({ id, name, avatarId }) => [id, { name, avatarId }]));
+  const people = new Map(club.members.map(({ id, name, avatarId }) => [id, { memberId: id, name, avatarId }]));
   const visible: BulletinPostView[] = posts
     .filter(post => canReadBulletin(post, viewer, now))
     .sort((a, b) => (b.publishAt ?? b.createdAt ?? 0) - (a.publishAt ?? a.createdAt ?? 0))

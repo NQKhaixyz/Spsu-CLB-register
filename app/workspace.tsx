@@ -4,7 +4,9 @@ import { activityLabels, eventForActivity, isEventOpen, ratedActivityKinds } fro
 import { eventEvidenceView } from "../lib/event-evidence";
 import { canDeleteMember } from "../lib/member-deletion";
 import { committeeKinds, committeeLabels, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter } from "../lib/committees";
-import { availableDays, MemberProfile } from "./member-profile";
+import { availableDays, MemberProfileDialog } from "./member-profile";
+import { MemberIdentityContext, MemberName, MemberNames, MemberOption } from "./member-identity";
+import { rankScoreRows } from "../lib/score-ranks";
 import { displayMessage } from "../lib/display-message";
 import { resolveFont } from "../lib/interface-fonts";
 import { sidebarTabs, sidebarTabLabels, type SidebarTab } from "../lib/workspace-navigation";
@@ -28,6 +30,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -134,13 +137,11 @@ type Tab =
   | "preferences"
   | "personal";
 type Modal = {
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   wide?: boolean;
-} & (
-  | { content: ReactNode; profile?: never }
-  | { profile: { memberId: string; scheduleOnly: boolean }; content?: never }
-);
+  content: ReactNode;
+};
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
@@ -194,7 +195,18 @@ export default function Workspace() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [modal, setModal] = useState<Modal | null>(null);
-  const profileId = modal?.profile?.memberId;
+  const [profile, setProfile] = useState<{ memberId: string; scheduleOnly: boolean } | null>(null);
+  const profileId = profile?.memberId;
+  const openProfile = useCallback((memberId: string, scheduleOnly = false) => setProfile({ memberId, scheduleOnly }), []);
+  const closeProfile = useCallback(() => setProfile(null), []);
+  const currentMonday = weekId();
+  const memberIdentity = useMemo(() => {
+    const members = new Map((view?.club.members ?? []).map(member => [member.id, member]));
+    const scores = (view?.weeklyScores ?? []).filter(row => row.week === currentMonday && members.has(row.memberId));
+    const leaders = rankScoreRows(scores.map(row => ({ ...row, name: members.get(row.memberId)?.name ?? "" }))).slice(0, 5);
+    const weeklyRanks = new Map(leaders.map(row => [row.memberId, row.rank]));
+    return { members, weeklyRanks, openProfile };
+  }, [view, currentMonday, openProfile]);
   const [avatarEditing, setAvatarEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -228,6 +240,13 @@ export default function Workspace() {
   useEffect(() => {
     load();
   }, [load]);
+  const activeSession = Boolean(view?.me?.active);
+  useEffect(() => {
+    if (!activeSession) return;
+    const monday = Date.parse(`${addDays(currentMonday, 7)}T00:00:00+07:00`);
+    const timer = setTimeout(() => { void load(); }, Math.max(1_000, monday - Date.now() + 1_000));
+    return () => clearTimeout(timer);
+  }, [activeSession, currentMonday, load]);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("tin");
     if (isBulletinId(id)) {
@@ -258,6 +277,7 @@ export default function Workspace() {
       setAuth(true);
       closeModal();
       closeAvatar();
+      closeProfile();
     }
   }
   async function savePassword(
@@ -291,7 +311,7 @@ export default function Workspace() {
   }
   function passwordDialog(member?: Member) {
     setModal({
-      title: member ? `Cấp mật khẩu · ${member.name}` : "Đổi mật khẩu",
+      title: member ? <>Cấp mật khẩu · <MemberName memberId={member.id} /></> : "Đổi mật khẩu",
       description: member
         ? member.loginName
           ? `Tên đăng nhập: ${member.loginName}, thành viên cũng có thể dùng MSSV sau khi bổ sung hồ sơ`
@@ -502,9 +522,10 @@ export default function Workspace() {
   const week =
     club.weeks.find((w) => w.id === selectedWeek) ?? club.weeks.at(-1)!;
   const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
-  const currentWeek = club.weeks.find((w) => w.id === weekId())!;
-  const findMember = (id: string) => club.members.find((m) => m.id === id);
+  const currentWeek = club.weeks.find((w) => w.id === currentMonday) ?? club.weeks.at(-1)!;
+  const findMember = (id: string) => memberIdentity.members.get(id);
   const profileMember = profileId ? findMember(profileId) : undefined;
+  const profileRows = profileMember ? view.directoryAvailability?.[profileMember.id] ?? profileAvailabilityRows(club, profileMember) : [];
   const pending = club.weeks.flatMap((w) =>
     !w.closed && !w.cancelled
       ? w.entries
@@ -696,7 +717,7 @@ export default function Workspace() {
     }
     setModal({
       title: "Từ chối yêu cầu",
-      description: `Thành viên: ${findMember(entry.memberId)?.name}`,
+      description: <>Thành viên · <MemberName memberId={entry.memberId} /></>,
       content: (
         <form
           onSubmit={(e) =>
@@ -730,7 +751,7 @@ export default function Workspace() {
     if (week.closed) {
       setModal({
         title: "Sửa kết quả đã chốt",
-        description: findMember(entry.memberId)?.name,
+        description: <MemberName memberId={entry.memberId} />,
         content: (
           <form
             onSubmit={(e) =>
@@ -1132,10 +1153,10 @@ export default function Workspace() {
                     .flatMap((s) => s.assignments)
                     .filter((a) => a.memberId === m.id).length ?? 0;
                 return (
-                  <option key={m.id} value={m.id}>
+                  <MemberOption key={m.id} memberId={m.id}>
                     {m.name} · {turns} ca
                     {m.extraDuties ? " · Muốn trực thêm" : ""}
-                  </option>
+                  </MemberOption>
                 );
               })}
             </select>
@@ -1165,7 +1186,7 @@ export default function Workspace() {
           <Field label="Thành viên">
             <select name="memberId" required defaultValue="">
               <option value="" disabled>Chọn thành viên</option>
-              {candidates.map(member => <option key={member.id} value={member.id}>{member.name}{member.studentId ? ` · ${member.studentId}` : ""}</option>)}
+              {candidates.map(member => <MemberOption key={member.id} memberId={member.id}>{member.name}{member.studentId ? ` · ${member.studentId}` : ""}</MemberOption>)}
             </select>
           </Field>
           <p className="hint">Điểm được ghi theo kết quả xác minh của ca trực</p>
@@ -1178,7 +1199,7 @@ export default function Workspace() {
     const period = shift.period === "am" ? "Ca sáng" : "Ca chiều";
     setModal(previous => ({
       title: "Gỡ người khỏi ca",
-      description: `${memberName} · ${period} ${dateLabel(shift.date, true)}`,
+      description: <><MemberName memberId={memberId} name={memberName} /> · {period} {dateLabel(shift.date, true)}</>,
       content: (
         <>
           <p className="dialog-copy">
@@ -1199,11 +1220,11 @@ export default function Workspace() {
   function confirmMemberDeletion(member: Member) {
     setModal({
       title: "Xóa vĩnh viễn thành viên",
-      description: member.studentId ? `${member.name} · ${member.studentId}` : member.name,
+      description: <><MemberName memberId={member.id} />{member.studentId && ` · ${member.studentId}`}</>,
       content: (
         <>
           <p className="dialog-copy">
-            Hồ sơ, tài khoản, lịch trực, điểm, đăng ký và ảnh minh chứng của {member.name} sẽ bị xóa, thao tác này không thể hoàn tác
+            Hồ sơ, tài khoản, lịch trực, điểm, đăng ký và ảnh minh chứng của <MemberName memberId={member.id} /> sẽ bị xóa, thao tác này không thể hoàn tác
           </p>
           <div className="form-footer">
             <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
@@ -1333,12 +1354,13 @@ export default function Workspace() {
               <div className="request-item" key={`${w.id}-${e.memberId}`}>
                 <div className="request-person">
                   <Avatar
+                    memberId={e.memberId}
                     name={findMember(e.memberId)?.name ?? "Thành viên"}
                     photoId={findMember(e.memberId)?.avatarId}
                     index={i + 2}
                   />
                   <div>
-                    <strong>{findMember(e.memberId)?.name}</strong>
+                    <MemberName as="strong" memberId={e.memberId} />
                     <span>Xin chuyển sang tham gia</span>
                   </div>
                   <span className="request-week">{dateLabel(w.id)}</span>
@@ -1477,9 +1499,9 @@ export default function Workspace() {
                     </td>
                     <td>
                       <div className="person-cell">
-                        <Avatar name={m.name} photoId={m.avatarId} index={club.members.indexOf(m)} />
+                        <Avatar memberId={m.id} name={m.name} photoId={m.avatarId} index={club.members.indexOf(m)} />
                         <span>
-                          <strong>{m.name}</strong>
+                          <MemberName as="strong" memberId={m.id} />
                           {e.reason ? (
                             <small title={e.reason}>{e.reason}</small>
                           ) : (
@@ -1543,7 +1565,7 @@ export default function Workspace() {
                         aria-label={`Chi tiết: ${m.name}`}
                         onClick={() =>
                           setModal({
-                            title: m.name,
+                            title: <MemberName memberId={m.id} />,
                             description: `${m.studentId} · ${statusNames[e.status]}`,
                             content: (
                               <>
@@ -1703,9 +1725,7 @@ export default function Workspace() {
                       Trực C1 · Ca {shift.period === "am" ? "sáng" : "chiều"}
                     </strong>
                     <span>
-                      {shift.assignments
-                        .map((a) => findMember(a.memberId)?.name)
-                        .join(" · ") || "Chưa phân công"}
+                      <MemberNames memberIds={shift.assignments.map(a => a.memberId)} separator=" · " fallback="Chưa phân công" />
                     </span>
                   </div>
                   <Badge status="neutral">
@@ -1979,16 +1999,17 @@ export default function Workspace() {
                                           {m ? (
                                             <div className="person-cell">
                                               <Avatar
+                                                memberId={m.id}
                                                 name={m.name}
                                                 photoId={m.avatarId}
                                                 index={position + 1}
                                               />
                                               <div>
-                                                <strong>{m.name}</strong>
+                                                <MemberName as="strong" memberId={m.id} />
                                                 <small>
                                                   {a.originalId &&
                                                   a.originalId !== a.memberId
-                                                    ? `Thay ${findMember(a.originalId)?.name}`
+                                                    ? <>Thay <MemberName memberId={a.originalId} /></>
                                                     : a.manual ? "Thêm thủ công" : "Thành viên phụ trách"}
                                                 </small>
                                               </div>
@@ -2133,7 +2154,7 @@ export default function Workspace() {
                                                   }
                                                 >
                                                   <Field
-                                                    label={`Ghi chú BĐH: ${m?.name}`}
+                                                    label={<>Ghi chú BĐH · <MemberName memberId={a.memberId} /></>}
                                                   >
                                                     <textarea
                                                       name="note"
@@ -2235,14 +2256,7 @@ export default function Workspace() {
                               {!isShiftPublished(schedule, shift) ? "Nháp · " : ""}
                               {shift.cancelled
                                 ? `Ca ${shift.period === "am" ? "sáng" : "chiều"} · Đã hủy`
-                                : shift.assignments
-                                    .map((a) =>
-                                      findMember(a.memberId)
-                                        ?.name.split(" ")
-                                        .slice(-2)
-                                        .join(" "),
-                                    )
-                                    .join(", ") || "Chưa phân công"}
+                                : <MemberNames memberIds={shift.assignments.map(a => a.memberId)} short fallback="Chưa phân công" />}
                             </span>
                             {!shift.cancelled &&
                             shift.assignments.length < shiftCapacity(shift) ? (
@@ -2266,9 +2280,9 @@ export default function Workspace() {
                       .sort((a, b) => b.n - a.n)
                       .map(({ m, n }, i) => (
                         <div key={m.id}>
-                          <Avatar name={m.name} photoId={m.avatarId} size="small" index={i} />
+                          <Avatar memberId={m.id} name={m.name} photoId={m.avatarId} size="small" index={i} />
                           <span>
-                            {m.name}
+                            <MemberName memberId={m.id} />
                             {m.extraDuties ? (
                               <small>Muốn trực thêm</small>
                             ) : null}
@@ -2483,9 +2497,9 @@ export default function Workspace() {
                   <tr key={m.id}>
                     <td>
                       <div className="person-cell">
-                        <Avatar name={m.name} photoId={m.avatarId} index={i} />
+                        <Avatar memberId={m.id} name={m.name} photoId={m.avatarId} index={i} />
                         <span>
-                          <strong>{m.name}</strong>
+                          <MemberName as="strong" memberId={m.id} />
                           <small>{m.email || "Chưa có email liên hệ"}</small>
                         </span>
                       </div>
@@ -2547,12 +2561,9 @@ export default function Workspace() {
                           <Trash2 size={15} /> Xóa
                         </Button>
                       )}
-                      </> : <button className="text-button" onClick={() => setModal({
-                        title: m.name,
-                        description: scheduleOnly ? "Lịch rảnh" : "Hồ sơ thành viên",
-                        wide: true,
-                        profile: { memberId: m.id, scheduleOnly },
-                      })}>{scheduleOnly ? "Xem lịch rảnh" : "Xem hồ sơ"} <ChevronRight size={14} /></button>}
+                      </> : <button className="text-button" onClick={() => openProfile(m.id, scheduleOnly)}>
+                        {scheduleOnly ? "Xem lịch rảnh" : "Xem hồ sơ"} <ChevronRight size={14} />
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -2845,7 +2856,7 @@ export default function Workspace() {
                   <p>
                     <strong>{displayMessage(l.text)}</strong>
                     <small>
-                      {l.actor} ·{" "}
+                      <MemberName memberId={l.actorId} name={l.actor} /> ·{" "}
                       {new Date(l.at).toLocaleString("vi-VN", {
                         timeZone: "Asia/Ho_Chi_Minh",
                       })}
@@ -2957,9 +2968,9 @@ export default function Workspace() {
     const heading = (<>
       <div className="page-heading">
         <div className="personal-identity">
-          <Avatar name={me!.name} photoId={me!.avatarId} size="large" />
+          <Avatar memberId={me!.id} name={me!.name} photoId={me!.avatarId} size="large" />
           <div>
-            <span className="eyebrow">{me!.name}</span>
+            <MemberName className="eyebrow" memberId={me!.id} />
             <h1>Góc của tôi</h1>
             <p>{isAdmin ? "Quản lý hồ sơ và ảnh đại diện của bạn" : "Đăng ký họp và xem những đóng góp của bạn tại đây"}</p>
           </div>
@@ -3021,10 +3032,8 @@ export default function Workspace() {
                   </strong>
                   <span>
                     Cùng{" "}
-                    {shift.assignments
-                      .filter((a) => a.memberId !== me!.id)
-                      .map((a) => findMember(a.memberId)?.name)
-                      .join(", ") || "thành viên sẽ bổ sung"}
+                    <MemberNames memberIds={shift.assignments.filter(a => a.memberId !== me!.id).map(a => a.memberId)}
+                      fallback="thành viên sẽ bổ sung" />
                   </span>
                 </div>
                 <Badge status="neutral">
@@ -3142,6 +3151,7 @@ export default function Workspace() {
   }
 
   return (
+    <MemberIdentityContext.Provider value={memberIdentity}>
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
         Đến nội dung chính
@@ -3227,9 +3237,9 @@ export default function Workspace() {
             </button>
           ) : null}
           <div className="sidebar-user">
-            <Avatar name={me.name} photoId={me.avatarId} />
+            <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} />
             <div>
-              <strong>{me.name}</strong>
+              <MemberName as="strong" memberId={me.id} />
               <span>{isAdmin ? "Ban điều hành" : "Thành viên"}</span>
             </div>
             <button
@@ -3265,7 +3275,7 @@ export default function Workspace() {
           </div>
           <div className="topbar-right">
             <span className="today-label">{dateLabel(today(), true)}</span>
-            <MusicPlayer obscured={Boolean(modal) || avatarEditing} />
+            <MusicPlayer obscured={Boolean(modal || profileMember) || avatarEditing} />
             <button
               className="icon-button"
               aria-label="Cập nhật dữ liệu"
@@ -3288,15 +3298,7 @@ export default function Workspace() {
               </button>
             ) : null}
             <span className="topbar-divider" />
-            <button
-              className="icon-button avatar-trigger"
-              type="button"
-              title="Đổi ảnh đại diện"
-              aria-label="Đổi ảnh đại diện"
-              onClick={() => setAvatarEditing(true)}
-            >
-              <Avatar name={me.name} photoId={me.avatarId} size="small" />
-            </button>
+            <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} size="small" />
             <span className="topbar-role">
               {isAdmin ? "Ban điều hành" : "Thành viên"}
               <ChevronDown size={13} />
@@ -3399,19 +3401,23 @@ export default function Workspace() {
       </div>
       {modal ? (
         <Dialog
-          title={profileMember?.name ?? modal.title}
+          title={modal.title}
           description={modal.description}
           wide={modal.wide}
           onClose={closeModal}
           busy={busy}
         >
-          {modal.profile ? (
-            profileMember
-              ? <MemberProfile member={profileMember} details={view.directoryAvailability?.[profileMember.id] ?? []} scheduleOnly={modal.profile.scheduleOnly} />
-              : <Empty title="Hồ sơ không còn khả dụng" />
-          ) : modal.content}
+          {modal.content}
         </Dialog>
       ) : null}
+      {profile && profileMember && <MemberProfileDialog
+        key={profileMember.id}
+        member={isAdmin ? { ...profileMember, availability: profileAvailability(club, profileMember) } : profileMember}
+        details={profileRows}
+        scheduleOnly={profile.scheduleOnly}
+        onClose={closeProfile}
+        onEditAvatar={profileMember.id === me.id ? () => { closeProfile(); setAvatarEditing(true); } : undefined}
+      />}
       {avatarEditing && (
         <AvatarEditor
           key={me.id}
@@ -3443,6 +3449,7 @@ export default function Workspace() {
         </div>
       ) : null}
     </div>
+    </MemberIdentityContext.Provider>
   );
 }
 function ArrowUpRightIcon() {

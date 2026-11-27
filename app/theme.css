@@ -149,6 +149,56 @@ td,.person-cell strong { font-size:15px; }
 .profile-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 12px 20px; margin: 0; }
 .profile-fields dt { color: var(--muted); font-size: .875rem; }
 .profile-fields dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+html:has(.member-profile-dialog[open]) { overflow: hidden; }
+.member-profile-dialog {
+  width: min(560px, calc(100% - 24px));
+  max-height: min(88dvh, 710px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface-warm);
+  color: var(--ink);
+  box-shadow: 0 24px 80px #20372835;
+  overscroll-behavior: contain;
+}
+.member-profile-dialog::backdrop {
+  background: #24382c70;
+  backdrop-filter: blur(3px);
+}
+.member-profile-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 15px;
+  padding: 26px 48px 22px 24px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(118deg, #e5eee2, #f5f6ec);
+}
+.member-profile-header > div { min-width: 0; }
+.member-profile-header .avatar.large { width: 64px; height: 64px; flex: none; }
+.member-profile-header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.2rem, 5vw, 1.6rem);
+  line-height: 1.23;
+  overflow-wrap: anywhere;
+}
+.member-profile-header p { margin: 5px 0 0; color: var(--green-dark); }
+.member-profile-close { position: absolute; inset-block-start: 9px; inset-inline-end: 9px; }
+.member-profile-dialog > .member-profile { padding: 21px 24px; }
+.member-profile-dialog > .member-profile h3:first-child { margin-top: 0; }
+.member-profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+}
+.event-participant { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 420px) {
+  .member-profile-header { padding-inline-start: 17px; }
+  .member-profile-dialog > .member-profile, .member-profile-actions { padding-inline: 17px; }
+}
 .score-scope button { min-height: 44px; font-size: .9375rem; color: var(--muted); }
 .score-tally { padding: 0 22px 14px; color: var(--ink); font-size: .9375rem; }
 .score-tally strong { margin-right: .45em; }

@@ -6,6 +6,7 @@ import { addDays, dateLabel, monthLabel, type ScoreboardRow } from "../lib/club"
 import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
 import { Avatar, Button, Empty, PanelHead } from "./ui";
 import { displayMessage } from "../lib/display-message";
+import { MemberName } from "./member-identity";
 
 const scopes = [
   { id: "mine", label: "Điểm của tôi" },
@@ -16,7 +17,7 @@ type ScopeProps = { memberId?: string; scope: ScoreScope; onScopeChange: (scope:
 type ScorePeriod = "tuần" | "tháng";
 type ScoreTier = NonNullable<ReturnType<typeof monthlyScoreTier>>;
 type ScoreTableRow = ScoreboardRow & { studentId?: string; avatarId?: string; lateDeduction?: number };
-type RankedScoreRow = ScoreTableRow & { rank?: number; tier?: ScoreTier; weeklyRank?: number };
+type RankedScoreRow = ScoreTableRow & { rank?: number; tier?: ScoreTier };
 
 const numbers = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
 export const formatScore = (value: number) => numbers.format(value);
@@ -77,17 +78,13 @@ function ScoreAvatar({ row, index, showNumber = false }: {
   row: RankedScoreRow; index: number; showNumber?: boolean;
 }) {
   return <span className="score-avatar" data-tier={row.tier?.id}>
-    <Avatar name={row.name} photoId={row.avatarId} index={index} />
+    <Avatar memberId={row.memberId} name={row.name} photoId={row.avatarId} index={index} />
     {row.tier && <>
       <span className="score-avatar-sheen" aria-hidden="true" />
       <span className="score-avatar-gem" aria-hidden="true" />
     </>}
     {showNumber && row.rank !== undefined && <RankNumber rank={row.rank} />}
   </span>;
-}
-
-function ScoreMemberName({ row }: { row: RankedScoreRow }) {
-  return <strong data-weekly-rank={row.weeklyRank}>{row.name}</strong>;
 }
 
 function MobileScoreList({ rows, memberId, period }: {
@@ -102,7 +99,7 @@ function MobileScoreList({ rows, memberId, period }: {
           <summary>
             <ScoreAvatar row={row} index={index} showNumber />
             <span className="mobile-score-name">
-              <ScoreMemberName row={row} />
+              <MemberName as="strong" memberId={row.memberId} name={row.name} />
               {memberId === row.memberId && <small className="score-self">Bạn</small>}
               {row.tier && <RankTitle tier={row.tier} />}
               {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
@@ -135,8 +132,7 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
   const ranked = rankScoreRows(rows).map(({ rank, ...row }) => {
     const frameRank = weekly ? monthRanks?.get(row.memberId) : rank;
     const tier = frameRank === undefined ? undefined : monthlyScoreTier(frameRank);
-    const weeklyRank = weekly && rank <= 5 ? rank : undefined;
-    return { ...row, tier, weeklyRank, rank: ranksReady && !tier ? rank : undefined };
+    return { ...row, tier, rank: ranksReady && !tier ? rank : undefined };
   });
   const visible = onlyMine ? ranked.filter(row => row.memberId === memberId) : ranked;
   const columns = weekly ? weeklyColumns : monthlyColumns.filter(column => adminReport || column.key !== "lateDeduction");
@@ -181,7 +177,7 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
             </tr></thead>
             <tbody>{visible.map((row, index) => {
               const name = <span className="score-name">
-                <ScoreMemberName key={title} row={row} />
+                <MemberName as="strong" memberId={row.memberId} name={row.name} />
                 {memberId === row.memberId && !onlyMine && <small className="score-self">Bạn</small>}
                 {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
               </span>;

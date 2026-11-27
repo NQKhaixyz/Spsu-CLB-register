@@ -6,6 +6,7 @@ import { monthLabel, type Club } from "../lib/club";
 import { semesterScores } from "../lib/semester-scores";
 import { formatScore, RankNumber } from "./scoreboard";
 import { Empty, Field } from "./ui";
+import { MemberName } from "./member-identity";
 
 const monthChoiceLabel = (month: string) => `${month.slice(5)}/${month.slice(0, 4)}`;
 
@@ -45,7 +46,7 @@ export default function SemesterScoreboard({ club, monthChoices, initialMonth }:
               <summary>
                 <RankNumber rank={row.rank} />
                 <span className="mobile-score-name">
-                  <strong>{row.name}</strong>
+                  <MemberName as="strong" memberId={row.memberId} name={row.name} />
                   <small className="score-committee">{row.committeeNames}</small>
                 </span>
                 <strong className={`mobile-score-total${row.points < 0 ? " score-negative" : ""}`}>
@@ -72,7 +73,7 @@ export default function SemesterScoreboard({ club, monthChoices, initialMonth }:
             </tr></thead>
             <tbody>{rows.map(row => <tr key={row.memberId}>
               <td className="score-rank-column"><RankNumber rank={row.rank} /></td>
-              <td><strong>{row.name}</strong><small className="score-committee">{row.committeeNames}</small></td>
+              <td><MemberName as="strong" memberId={row.memberId} name={row.name} /><small className="score-committee">{row.committeeNames}</small></td>
               <td className="score-numeric"><strong>{formatScore(row.points)}</strong></td>
               {months.map(month => <td key={month} className="score-numeric">
                 {row.byMonth[month] === undefined ? "—" : formatScore(row.byMonth[month])}

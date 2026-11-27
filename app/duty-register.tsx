@@ -12,6 +12,7 @@ import {
   type Rule,
 } from "../lib/club";
 import { Button, PanelHead } from "./ui";
+import { MemberName } from "./member-identity";
 export default function DutyRegister({
   schedule,
   members,
@@ -109,7 +110,7 @@ export default function DutyRegister({
                       ) : null}
                     </td>
                     <td>
-                      <strong>{name}</strong>
+                      <MemberName as="strong" memberId={a.memberId} name={name} />
                     </td>
                     <td className="duty-note-cell">
                       <p>{a.availabilityNote || "—"}</p>

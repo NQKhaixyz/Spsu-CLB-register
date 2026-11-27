@@ -15,6 +15,7 @@ import {
   type AvailabilityDetail,
 } from "../lib/club";
 import { Badge, Button, Empty, PanelHead, Stat, Field } from "./ui";
+import { MemberName } from "./member-identity";
 
 const personKey = (name: string) =>
   name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
@@ -47,7 +48,7 @@ export function AvailabilityPreview({ rows }: { rows: AvailabilityDetail[] }) {
   );
 }
 
-function DetailTable({ rows }: { rows: AvailabilityDetail[] }) {
+function DetailTable({ rows, memberLinks }: { rows: AvailabilityDetail[]; memberLinks?: AvailabilityDataset["memberLinks"] }) {
   return (
     <div className="table-scroll availability-table">
       <table>
@@ -66,7 +67,7 @@ function DetailTable({ rows }: { rows: AvailabilityDetail[] }) {
             <tr key={r.sourceRow}>
               <td className="muted mono">{r.sourceRow}</td>
               <td>
-                <strong>{r.name}</strong>
+                <MemberName as="strong" memberId={memberLinks?.[personKey(r.name)]} name={r.name} />
               </td>
               <td>{r.day}</td>
               <td>{r.period}</td>
@@ -352,6 +353,7 @@ export default function AvailabilityPage({
             {filtered.length ? (
               <DetailTable
                 rows={filtered.slice(current * 25, (current + 1) * 25)}
+                memberLinks={dataset.memberLinks}
               />
             ) : (
               <Empty title="Không có dòng phù hợp">

@@ -6,7 +6,8 @@ import { activityLabels, activityName, activityPointsFor, canAttendEvent, regist
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { EvidencePanel } from "./duty-evidence";
-import { Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
+import { Avatar, Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
+import { MemberName, MemberOption } from "./member-identity";
 type ActivityProps = {club:Club;me:Member;isAdmin:boolean;week:string;busy:boolean;onAction:Act};
 type Act = (action: string, data: Record<string, unknown>, message: string, close?: boolean) => Promise<boolean>;
 type EventChange = "cancel" | "restore" | "delete";
@@ -180,7 +181,11 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         const cancelled = !!event?.cancelledAt;
         const participant = club.members.find(m => m.id === r.memberId);
         return <article className="activity-item" key={r.id}>
-        <div><strong>{activityName(club,r)}{event?.participationMultiplier !== undefined && ` · Lượt ${roundNumber(r)}`}</strong><p>{participant?.name} · {cancelled ? "Ngày kết thúc dự kiến" : "Ngày tính điểm"}: {dateLabel(r.date,true)}</p>{r.note?<p>{r.note}</p>:null}
+        <div><strong>{activityName(club,r)}{event?.participationMultiplier !== undefined && ` · Lượt ${roundNumber(r)}`}</strong>
+        <p className="event-participant">
+          {participant && <Avatar memberId={participant.id} name={participant.name} photoId={participant.avatarId} size="small" />}
+          <span><MemberName memberId={r.memberId} /> · {cancelled ? "Ngày kết thúc dự kiến" : "Ngày tính điểm"}: {dateLabel(r.date,true)}</span>
+        </p>{r.note?<p>{r.note}</p>:null}
         <Badge status={cancelled ? "absent" : r.status==="confirmed"?"attending":r.status==="pending"?"pending":"neutral"}>{cancelled ? "Sự kiện đã hủy" : eventRegistrationLabel(r, evidence)}</Badge>
         {participant?.role !== "admin" && <p className="hint">{!cancelled && r.status==="confirmed" ? activityPointsFor(club,r) : 0} điểm đã ghi nhận{r.decision?` · ${r.decision}`:""}</p>}</div>
         <div className="activity-actions">
@@ -205,7 +210,8 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     {isAdmin && participantEvent && (
       <AddParticipantDialog key={participantEvent.id} event={participantEvent} members={club.members} registrations={registrations} busy={busy} onAction={onAction} onClose={close} />
     )}
-    {review?<Dialog title={review.confirmed?"Duyệt tham gia sự kiện":"Không duyệt tham gia"} description={`${activityName(club,review.row)} · ${club.members.find(m=>m.id===review.row.memberId)?.name}`} onClose={close} busy={busy}>
+    {review?<Dialog title={review.confirmed?"Duyệt tham gia sự kiện":"Không duyệt tham gia"}
+      description={<>{activityName(club,review.row)} · <MemberName memberId={review.row.memberId} /></>} onClose={close} busy={busy}>
       <form onSubmit={async e=>{const f=formData(e);if(await onAction("reviewActivity",{id:review.row.id,confirmed:review.confirmed,reason:f.reason},"Đã cập nhật kết quả duyệt",false))close();}}>
         <p className="dialog-copy">{review.confirmed
           ? `${eventForActivity(club, review.row)?.participationMultiplier !== undefined ? "Cộng điểm theo thứ tự lượt đã duyệt" : `Cộng ${activityPointsFor(club, review.row)} điểm`} vào tuần ${dateLabel(review.row.week)} – ${dateLabel(addDays(review.row.week, 6))}`
@@ -214,7 +220,9 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         <FormFooter label={review.confirmed?"Duyệt và tính điểm":"Lưu kết quả"} onCancel={close} busy={busy}/>
       </form>
     </Dialog>:null}
-    {proof ? <Dialog title="Minh chứng sự kiện" description={`${proof.event.name} · ${club.members.find(member => member.id === proof.row.memberId)?.name ?? "Thành viên"}${proof.event.participationMultiplier !== undefined ? ` · Lượt ${roundNumber(proof.row)}` : ""}`} onClose={close}>
+    {proof ? <Dialog title="Minh chứng sự kiện"
+      description={<>{proof.event.name} · <MemberName memberId={proof.row.memberId} />
+        {proof.event.participationMultiplier !== undefined && ` · Lượt ${roundNumber(proof.row)}`}</>} onClose={close}>
       <EvidencePanel key={proof.row.id} endpoint={"/api/event-evidence?" + new URLSearchParams({ registrationId: proof.row.id })} event onSaved={onEvidenceSaved} />
     </Dialog> : null}
   </div>;
@@ -261,7 +269,7 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
           <option value="" disabled>{matches.length ? "Chọn thành viên" : "Không tìm thấy thành viên phù hợp"}</option>
           {matches.map(member => {
             const row = multiple ? undefined : singleRound(member.id);
-            return <option value={member.id} key={member.id}>{member.name}{member.studentId && ` · ${member.studentId}`}{row && ` · ${registrationStatusLabel(row)}`}</option>;
+            return <MemberOption memberId={member.id} key={member.id}>{member.name}{member.studentId && ` · ${member.studentId}`}{row && ` · ${registrationStatusLabel(row)}`}</MemberOption>;
           })}
         </select>
       </Field>
@@ -354,7 +362,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
         {members.map(m => {
           const score = scoresByMember.get(m.id);
           return <tr key={m.id}>
-            <td>{m.name}<small className="score-committee">{memberCommitteeNames(m)}</small>{isAdmin ? <div className="member-point-actions">
+            <td><MemberName memberId={m.id} /><small className="score-committee">{memberCommitteeNames(m)}</small>{isAdmin ? <div className="member-point-actions">
               <Button variant="secondary" aria-label={`Nhập điểm · ${m.name}`} disabled={busy} onClick={() => {setDeducting(false); setMember(m);}}>Nhập điểm</Button>
               <Button variant="secondary" aria-label={`Trừ điểm · ${m.name}`} disabled={busy} onClick={() => {setDeducting(true); setMember(m);}}>Trừ điểm</Button>
             </div> : null}</td>
@@ -366,9 +374,10 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
       {isAdmin && !members.length && <p className="activity-search" role="status">Không có thành viên phù hợp trong tuần này</p>}
     </section>
     {deductions.length ? <section className="panel"><PanelHead title={isAdmin?"Các khoản trừ điểm trong tuần":"Các khoản trừ điểm của tôi"} description="Điểm được trừ trực tiếp, lý do chỉ hiển thị cho BĐH và thành viên liên quan" />
-      <div className="activity-list">{deductions.map(r=><article className="activity-item" key={r.id}><div><strong>{club.members.find(m=>m.id===r.memberId)?.name} · {r.cancelledAt?"Đã hủy khoản trừ":`−${r.points} điểm`}</strong><p>{dateLabel(r.date,true)} · {r.reason}</p>{r.cancelReason?<p className="hint">Lý do hủy: {r.cancelReason}</p>:null}</div></article>)}</div>
+      <div className="activity-list">{deductions.map(r=><article className="activity-item" key={r.id}><div><strong><MemberName memberId={r.memberId} /> · {r.cancelledAt?"Đã hủy khoản trừ":`−${r.points} điểm`}</strong><p>{dateLabel(r.date,true)} · {r.reason}</p>{r.cancelReason?<p className="hint">Lý do hủy: {r.cancelReason}</p>:null}</div></article>)}</div>
     </section> : null}
-    {member?<Dialog title={`${deducting?"Trừ điểm":"Điểm BĐH nhập"} · ${member.name}`} description={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week,6))}`} onClose={close} busy={busy}>
+    {member?<Dialog title={<>{deducting ? "Trừ điểm" : "Điểm BĐH nhập"} · <MemberName memberId={member.id} /></>}
+      description={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week,6))}`} onClose={close} busy={busy}>
       {deducting ? <DeductionForm club={club} member={member} week={week} busy={busy} onAction={onAction} onClose={close}/> : <ManualForm club={club} member={member} committeeFilter={committeeFilter} week={week} busy={busy} onAction={onAction} onClose={close}/>}
     </Dialog>:null}
   </div>;

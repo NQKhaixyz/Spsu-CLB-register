@@ -7,6 +7,7 @@ import { displayMessage } from "../lib/display-message";
 import { evidenceExpiry, evidenceSubmissionOpen, type DutyEvidenceSummary } from "../lib/duty-evidence";
 import DutyEvidenceAction from "./duty-evidence";
 import { Badge, Button, Dialog } from "./ui";
+import { MemberName } from "./member-identity";
 
 type DutyEntry = { schedule: Schedule; shift: Shift };
 type DutyEvidenceResult = DutyEvidenceSummary | { week: string; error: string };
@@ -125,7 +126,7 @@ export default function DutyWeekActions({ week, entries, club, me }: {
       onClose={() => setReview(undefined)}>
       {reviewRows.length ? <div className="duty-review-list">
         {reviewRows.map((row, index) => <div key={row.memberId} className="duty-review-person">
-          <h3>{club.members.find(member => member.id === row.memberId)?.name ?? "Thành viên"}</h3>
+          <h3><MemberName memberId={row.memberId} /></h3>
           <DutyEvidenceAction target={{ month: row.month, shiftId: row.shiftId, memberId: row.memberId }}
             canSend={false} isAdmin label="Xem ảnh chờ duyệt"
             defaultExpanded={index === 0} onSaved={refresh} />

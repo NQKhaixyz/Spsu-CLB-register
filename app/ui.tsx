@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { statusNames, type Registration } from "../lib/club";
 import { avatarEndpoint } from "../lib/avatar";
+import { useMemberIdentity } from "./member-identity";
 
 export function Brand() {
   return (
@@ -28,12 +29,14 @@ export function Brand() {
 }
 export function Avatar({
   name,
+  memberId,
   size = "",
   index = 0,
   photoId,
   previewUrl,
 }: {
   name: string;
+  memberId?: string;
   size?: string;
   index?: number;
   photoId?: string;
@@ -41,8 +44,10 @@ export function Avatar({
 }) {
   const src = previewUrl ?? (photoId ? `${avatarEndpoint}?photo=${encodeURIComponent(photoId)}` : undefined);
   const [failedSrc, setFailedSrc] = useState<string>();
-  return (
-    <span className={`avatar ${size} color-${index % 6}`} aria-hidden="true">
+  const identity = useMemberIdentity();
+  const className = `avatar ${size} color-${index % 6}`;
+  const portrait = (
+    <>
       {name
         .split(" ")
         .slice(-2)
@@ -54,8 +59,16 @@ export function Avatar({
         // eslint-disable-next-line @next/next/no-img-element
         <img key={src} src={src} alt="" loading="lazy" onError={() => setFailedSrc(src)} />
       )}
-    </span>
+    </>
   );
+  if (memberId && identity?.members.has(memberId)) {
+    const label = `Xem hồ sơ ${name}`;
+    return <button type="button" className={`${className} avatar-profile-trigger`} aria-label={label} title={label}
+      aria-haspopup="dialog" onClick={event => { event.stopPropagation(); identity.openProfile(memberId); }}>
+      {portrait}
+    </button>;
+  }
+  return <span className={className} aria-hidden="true">{portrait}</span>;
 }
 export function Badge({
   status,
@@ -216,8 +229,8 @@ export function Dialog({
   wide = false,
   busy = false,
 }: {
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
@@ -240,6 +253,7 @@ export function Dialog({
   }, []);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if ((e.key === "Escape" || e.key === "Tab") && document.querySelector("dialog[open]")) return;
       if (e.key === "Escape" && !busy) onClose();
       if (e.key === "Tab") {
         const list = dialogControls(ref.current);
@@ -295,7 +309,7 @@ export function Field({
   children,
   hint,
 }: {
-  label: string;
+  label: ReactNode;
   children: ReactNode;
   hint?: string;
 }) {
