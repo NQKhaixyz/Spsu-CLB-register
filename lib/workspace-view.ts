@@ -1,6 +1,7 @@
 import { addDays, adminMemberIds, rosterAssignments, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, pausedForScoreWeek, reportMembers, scoreFor, type Assignment, type Club, type ScoreboardRow, type View } from "./club";
 import { committeeLabels, memberCommitteeNames } from "./committees";
 import { bulletinView } from "./bulletin";
+import { rankScoreRows } from "./score-ranks";
 import { academicWeekFor, activeAvailabilityDatasetFor, profileAvailability, profileAvailabilityRows } from "./availability";
 
 // Show current organization and role wording in the interface and reports,
@@ -69,10 +70,16 @@ export function workspaceView(
       (assignedByWeek.get(w.id)?.has(m.id) || m.joined <= addDays(w.id, 6)))
     .map(m => weeklyScoreFor(club, m.id, w.id)));
   const me = club.members.find((m) => m.userId === user.userId) ?? null;
+  const currentDay = today();
+  const currentMonth = currentDay.slice(0, 7);
+  const monthlyAvatarRanks = me?.active ? {
+    month: currentMonth,
+    memberIds: rankScoreRows(monthlyScoreboard(club, currentMonth, currentDay)).slice(0, 10).map(row => row.memberId),
+  } : undefined;
   const bulletin = me?.active ? bulletinView(club, me) : undefined;
   const isAdmin = me?.role === "admin" && me.active;
   const personalMonthlyScores = !isAdmin && me
-    ? Object.fromEntries([...new Set([today().slice(0, 7), ...club.schedules.map(schedule => schedule.month)])]
+    ? Object.fromEntries([...new Set([currentMonth, ...club.schedules.map(schedule => schedule.month)])]
         .map(month => [month, scoreFor(club, me.id, month)]))
     : undefined;
   const directoryAvailability: View["directoryAvailability"] = !isAdmin && me?.active ? {} : undefined;
@@ -106,7 +113,7 @@ export function workspaceView(
     delete club.demoArchive;
     delete club.dutyWithdrawal;
   }
-  const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin });
+  const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin });
   delete view.club.bulletinPosts;
   delete view.club.bulletinUploads;
   // Keep stored attendance history, while removal from the visible roster also

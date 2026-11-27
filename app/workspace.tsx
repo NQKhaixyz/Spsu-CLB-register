@@ -55,7 +55,6 @@ import {
   ImagePlus,
   LayoutDashboard,
   Leaf,
-  Link2,
   ListFilter,
   LoaderCircle,
   LogOut,
@@ -145,8 +144,7 @@ type Modal = {
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
-  bulletin: { icon: Newspaper, sections: ["bulletin"] },
-  links: { icon: Link2, sections: ["links"] },
+  bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
@@ -199,14 +197,19 @@ export default function Workspace() {
   const profileId = profile?.memberId;
   const openProfile = useCallback((memberId: string, scheduleOnly = false) => setProfile({ memberId, scheduleOnly }), []);
   const closeProfile = useCallback(() => setProfile(null), []);
-  const currentMonday = weekId();
+  const currentDate = today();
+  const currentMonday = weekId(currentDate);
+  const currentMonth = currentDate.slice(0, 7);
   const memberIdentity = useMemo(() => {
     const members = new Map((view?.club.members ?? []).map(member => [member.id, member]));
     const scores = (view?.weeklyScores ?? []).filter(row => row.week === currentMonday && members.has(row.memberId));
     const leaders = rankScoreRows(scores.map(row => ({ ...row, name: members.get(row.memberId)?.name ?? "" }))).slice(0, 5);
     const weeklyRanks = new Map(leaders.map(row => [row.memberId, row.rank]));
-    return { members, weeklyRanks, openProfile };
-  }, [view, currentMonday, openProfile]);
+    const monthRanking = view?.monthlyAvatarRanks;
+    const monthlyRanks = new Map((monthRanking?.month === currentMonth ? monthRanking.memberIds : [])
+      .map((id, index) => [id, index + 1]));
+    return { members, weeklyRanks, monthlyRanks, rankMonth: currentMonth, openProfile };
+  }, [view, currentMonday, currentMonth, openProfile]);
   const [avatarEditing, setAvatarEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -243,10 +246,13 @@ export default function Workspace() {
   const activeSession = Boolean(view?.me?.active);
   useEffect(() => {
     if (!activeSession) return;
-    const monday = Date.parse(`${addDays(currentMonday, 7)}T00:00:00+07:00`);
-    const timer = setTimeout(() => { void load(); }, Math.max(1_000, monday - Date.now() + 1_000));
+    const nextMonday = Date.parse(`${addDays(currentMonday, 7)}T00:00:00+07:00`);
+    const firstOfNextMonth = new Date(`${currentMonth}-01T12:00:00Z`);
+    firstOfNextMonth.setUTCMonth(firstOfNextMonth.getUTCMonth() + 1);
+    const nextMonth = Date.parse(`${firstOfNextMonth.toISOString().slice(0, 10)}T00:00:00+07:00`);
+    const timer = setTimeout(() => { void load(); }, Math.max(1_000, Math.min(nextMonday, nextMonth) - Date.now() + 1_000));
     return () => clearTimeout(timer);
-  }, [activeSession, currentMonday, load]);
+  }, [activeSession, currentMonday, currentMonth, load]);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("tin");
     if (isBulletinId(id)) {
@@ -540,7 +546,10 @@ export default function Workspace() {
     return !!event && (event.requiresEvidence ? eventEvidenceView(row, event, me).canReview : isEventOpen(event, currentDay));
   }).length;
   const pendingTotal = pending.length + activityPending;
-  const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "scoreboard" ? [
+  const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "bulletin" ? [
+    { id: "bulletin", label: "Bài đăng" },
+    { id: "links", label: "Link" },
+  ] : activeSidebarTab === "scoreboard" ? [
     { id: "weeklyScores", label: "Điểm tuần" },
     { id: "reports", label: "Điểm tháng" },
     ...(isAdmin ? [{ id: "semesterScores" as const, label: "Học kỳ" }] : []),
@@ -2367,7 +2376,7 @@ export default function Workspace() {
   }
 
   function weekScoreTable() {
-    return <WeeklyScoreboard week={week.id} revision={view!.revision}
+    return <WeeklyScoreboard week={week.id}
       rows={weeklyScores.map(row => {
         const member = findMember(row.memberId);
         return { ...row, name: member?.name ?? "", committeeNames: memberCommitteeNames(member), avatarId: member?.avatarId };
@@ -2667,7 +2676,7 @@ export default function Workspace() {
             </Button>
           </div>
         </div>
-        <Scoreboard title={monthLabel(month)} period="tháng" rows={total} adminReport
+        <Scoreboard title={monthLabel(month)} period="tháng" reportMonth={month} rows={total} adminReport
           scope={scoreScope} onScopeChange={setScoreScope} />
         {reportSupport}
       </>
@@ -3340,7 +3349,7 @@ export default function Workspace() {
           ) : null}
           {loadError ? <div className="notice amber">{loadError}</div> : null}
           {sectionOptions.length > 0 && (
-            <nav className="workspace-section-nav" aria-label={`Mục trong ${headerTitle}`}>
+            <nav className={`workspace-section-nav${activeSidebarTab === "bulletin" ? " bulletin-section-nav" : ""}`} aria-label={`Mục trong ${headerTitle}`}>
               {sectionOptions.map(({ id, label, pending }) => (
                 <button key={id} type="button" aria-current={activeTab === id ? "page" : undefined} onClick={() => go(id)}>
                   <span>{label}</span>
@@ -3364,12 +3373,14 @@ export default function Workspace() {
               me={me} isAdmin={isAdmin} busy={busy} linkedPostId={linkedBulletin} onDismissLink={dismissBulletinLink}
               onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
           ) : activeTab === "links" ? (
+            <div className="bulletin-links">
             <SharedLinks
               links={club.links ?? []}
               isAdmin={isAdmin}
               busy={busy}
               onAction={(action, data) => act(action, data, action === "deleteSharedLink" ? "Đã xóa link" : action === "moveSharedLink" ? "Đã đổi thứ tự link" : "Đã lưu link", false)}
             />
+            </div>
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (

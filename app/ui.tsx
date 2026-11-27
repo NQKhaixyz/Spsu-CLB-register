@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { statusNames, type Registration } from "../lib/club";
 import { avatarEndpoint } from "../lib/avatar";
+import { monthlyScoreTier } from "../lib/score-ranks";
 import { useMemberIdentity } from "./member-identity";
 
 export function Brand() {
@@ -34,6 +35,7 @@ export function Avatar({
   index = 0,
   photoId,
   previewUrl,
+  profileLink = true,
 }: {
   name: string;
   memberId?: string;
@@ -41,6 +43,7 @@ export function Avatar({
   index?: number;
   photoId?: string;
   previewUrl?: string;
+  profileLink?: boolean;
 }) {
   const src = previewUrl ?? (photoId ? `${avatarEndpoint}?photo=${encodeURIComponent(photoId)}` : undefined);
   const [failedSrc, setFailedSrc] = useState<string>();
@@ -61,14 +64,25 @@ export function Avatar({
       )}
     </>
   );
-  if (memberId && identity?.members.has(memberId)) {
-    const label = `Xem hồ sơ ${name}`;
-    return <button type="button" className={`${className} avatar-profile-trigger`} aria-label={label} title={label}
-      aria-haspopup="dialog" onClick={event => { event.stopPropagation(); identity.openProfile(memberId); }}>
-      {portrait}
-    </button>;
-  }
-  return <span className={className} aria-hidden="true">{portrait}</span>;
+  const face = <span className={className} aria-hidden="true">{portrait}</span>;
+  if (!memberId || !identity?.members.has(memberId)) return face;
+
+  const tier = monthlyScoreTier(identity.monthlyRanks.get(memberId) ?? 0);
+  const frameClass = `avatar-frame ${size}`;
+  const framedPortrait = <>
+    {face}
+    {tier && <>
+      <span className="avatar-frame-sheen" aria-hidden="true" />
+      <span className="avatar-frame-gem" aria-hidden="true" />
+    </>}
+  </>;
+  if (!profileLink) return <span className={frameClass} data-tier={tier?.id} aria-hidden="true">{framedPortrait}</span>;
+  const label = `Xem hồ sơ ${name}`;
+  return <button type="button" className={`${frameClass} avatar-profile-trigger`} data-tier={tier?.id} aria-label={label}
+    title={tier ? `${label} · ${tier.label}` : label} aria-haspopup="dialog"
+    onClick={event => { event.stopPropagation(); identity.openProfile(memberId); }}>
+    {framedPortrait}
+  </button>;
 }
 export function Badge({
   status,

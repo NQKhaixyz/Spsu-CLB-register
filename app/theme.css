@@ -167,16 +167,16 @@ html:has(.member-profile-dialog[open]) { overflow: hidden; }
 }
 .member-profile-header {
   position: relative;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 15px;
-  padding: 26px 48px 22px 24px;
   border-bottom: 1px solid var(--line);
   background: linear-gradient(118deg, #e5eee2, #f5f6ec);
 }
-.member-profile-header > div { min-width: 0; }
-.member-profile-header .avatar.large { width: 64px; height: 64px; flex: none; }
+.member-profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px 15px;
+  padding: 26px 48px 22px 24px;
+}
+.member-profile-identity > div { flex: 1; min-width: 0; }
 .member-profile-header h2 {
   margin: 0;
   color: var(--ink);
@@ -196,7 +196,7 @@ html:has(.member-profile-dialog[open]) { overflow: hidden; }
 }
 .event-participant { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 420px) {
-  .member-profile-header { padding-inline-start: 17px; }
+  .member-profile-identity { padding-inline-start: 17px; }
   .member-profile-dialog > .member-profile, .member-profile-actions { padding-inline: 17px; }
 }
 .score-scope button { min-height: 44px; font-size: .9375rem; color: var(--muted); }

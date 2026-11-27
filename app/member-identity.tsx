@@ -6,6 +6,8 @@ import type { Member } from "../lib/club";
 type MemberIdentity = {
   members: ReadonlyMap<string, Member>;
   weeklyRanks: ReadonlyMap<string, number>;
+  monthlyRanks: ReadonlyMap<string, number>;
+  rankMonth: string;
   openProfile: (memberId: string) => void;
 };
 

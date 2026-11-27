@@ -1213,7 +1213,7 @@ tbody tr:hover {
   gap: 10px;
   align-items: center;
 }
-.person-cell > span:not(.avatar),
+.person-cell > span:not(.avatar, .avatar-frame),
 .person-cell > div {
   display: block;
   min-width: 0;
@@ -1776,7 +1776,7 @@ tbody tr:hover {
   font-size: 13px;
   color: #83966e;
 }
-.distribution-list > div > span:not(.avatar) {
+.distribution-list > div > span:not(.avatar, .avatar-frame) {
   flex: 1;
 }
 .distribution-list strong {
@@ -3737,7 +3737,7 @@ td {
   letter-spacing: 0.2px;
   margin-top: 40px;
 }
-.sidebar-user > button:not(.avatar) {
+.sidebar-user > button:not(.avatar-profile-trigger) {
   border: 0;
   background: none;
   color: #929a8c;

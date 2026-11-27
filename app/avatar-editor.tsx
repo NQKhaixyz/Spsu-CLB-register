@@ -68,7 +68,7 @@ export function AvatarEditor({ member, onClose, onRefresh, onSaved }: {
     <Dialog title="Đổi ảnh đại diện" description="Thành viên trong Đội có thể xem ảnh của bạn" onClose={onClose} busy={busy}>
       <form onSubmit={event => { event.preventDefault(); void save("POST"); }}>
         <div className="avatar-editor">
-          <Avatar name={member.name} photoId={member.avatarId} previewUrl={preview} size="large" />
+          <Avatar memberId={member.id} name={member.name} photoId={member.avatarId} previewUrl={preview} size="large" profileLink={false} />
           <div className="avatar-editor-actions">
             <input ref={picker} type="file" accept="image/*" onChange={choosePhoto} hidden />
             <Button variant="secondary" disabled={busy} onClick={() => picker.current?.click()}>

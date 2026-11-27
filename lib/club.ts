@@ -176,6 +176,7 @@ export type View = {
   setup: boolean;
   revision: number;
   weeklyScores?: WeeklyScore[];
+  monthlyAvatarRanks?: { month: string; memberIds: string[] };
   personalMonthlyScores?: Record<string, ReturnType<typeof scoreFor>>;
   directoryAvailability?: Record<string, Pick<AvailabilityDetail, "day" | "period" | "weeks" | "note">[]>;
   currentAcademicWeek?: number;

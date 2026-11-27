@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
 import { applyAction } from "../lib/actions";
-import { addDays, createClub, newEntry, pausedForScoreWeek, scoreFor, setMemberActive, today, type Member } from "../lib/club";
+import { addDays, createClub, newEntry, pausedForScoreWeek, scoreFor, setMemberActive, today, weekId, type Member } from "../lib/club";
 import { makeReport } from "../lib/excel";
 import { monthlyScoreboard, workspaceView } from "../lib/workspace-view";
 
@@ -50,6 +50,23 @@ test("Pressing pause dates it by the current Vietnamese day and scheduled shifts
   assert.ok(present("2026-10", "2026-12-10"));
   assert.equal(present("2026-11", "2026-12-10"), false);
   assert.equal(present("2026-12", "2026-11-02"), false);
+});
+
+test("Monthly avatar ranks are the same for members and BĐH and absent for inactive viewers", () => {
+  const { club, admin, peer, reader } = fixture();
+  const day = today(), month = day.slice(0, 7);
+  club.weeks = [];
+  club.schedules = [];
+  for (const member of club.members) member.joined = month + "-01";
+  club.manualActivities = [{
+    id: "avatar-qa-points", memberId: reader.id, week: weekId(day), date: day,
+    kind: "special", quantity: 1, points: 2.75, note: "", updatedAt: "", updatedBy: admin.id,
+  }];
+  const expected = { month, memberIds: [reader.id, peer.id] };
+  assert.deepEqual(workspaceView(club, owner, 1).monthlyAvatarRanks, expected);
+  assert.deepEqual(workspaceView(club, viewer, 1).monthlyAvatarRanks, expected);
+  setMemberActive(reader, false, day);
+  assert.equal(workspaceView(club, viewer, 2).monthlyAvatarRanks, undefined);
 });
 
 test("Reactivation includes the return week without reopening previous pauses or charging absences from those dates", () => {

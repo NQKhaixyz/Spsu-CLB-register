@@ -1,7 +1,12 @@
-.bulletin-board {
-  display: grid;
-  gap: 10px;
+.bulletin-board, .bulletin-links {
   max-width: 44rem;
+  margin-inline: auto;
+}
+.bulletin-board { display: grid; gap: 10px; }
+.workspace-section-nav.bulletin-section-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 44rem);
   margin-inline: auto;
 }
 .bulletin-screen-title {
@@ -28,7 +33,7 @@
   border-radius: 14px;
   background: var(--surface-warm);
 }
-.bulletin-compose > .avatar { flex: 0 0 auto; }
+.bulletin-compose > :is(.avatar, .avatar-frame) { flex: 0 0 auto; }
 .bulletin-compose-start.btn {
   flex: 1;
   min-width: 0;
@@ -289,7 +294,7 @@
   padding-top: 12px;
   border-top: 1px solid #d1dec9;
 }
-.bulletin-comment-form > .avatar { margin-top: 4px; }
+.bulletin-comment-form > :is(.avatar, .avatar-frame) { margin-top: 4px; }
 .bulletin-replying {
   display: flex;
   flex-wrap: wrap;

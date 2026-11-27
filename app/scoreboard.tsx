@@ -1,12 +1,12 @@
 "use client";
 import { ChevronDown } from "lucide-react";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState } from "react";
 import { activityLabels, visibleActivityKinds } from "../lib/activity";
 import { addDays, dateLabel, monthLabel, type ScoreboardRow } from "../lib/club";
 import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
 import { Avatar, Button, Empty, PanelHead } from "./ui";
 import { displayMessage } from "../lib/display-message";
-import { MemberName } from "./member-identity";
+import { MemberName, useMemberIdentity } from "./member-identity";
 
 const scopes = [
   { id: "mine", label: "Điểm của tôi" },
@@ -77,12 +77,8 @@ function ScoreRank({ tier, rank }: { tier?: ScoreTier; rank?: number }) {
 function ScoreAvatar({ row, index, showNumber = false }: {
   row: RankedScoreRow; index: number; showNumber?: boolean;
 }) {
-  return <span className="score-avatar" data-tier={row.tier?.id}>
+  return <span className="score-avatar">
     <Avatar memberId={row.memberId} name={row.name} photoId={row.avatarId} index={index} />
-    {row.tier && <>
-      <span className="score-avatar-sheen" aria-hidden="true" />
-      <span className="score-avatar-gem" aria-hidden="true" />
-    </>}
     {showNumber && row.rank !== undefined && <RankNumber rank={row.rank} />}
   </span>;
 }
@@ -122,17 +118,18 @@ function MobileScoreList({ rows, memberId, period }: {
   </ul>;
 }
 
-export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange, monthRanks, frameNotice, adminReport = false }: ScopeProps & {
+export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, onScopeChange, adminReport = false }: ScopeProps & {
   title: string; period: ScorePeriod; rows: ScoreTableRow[];
-  monthRanks?: ReadonlyMap<string, number>; frameNotice?: ReactNode; adminReport?: boolean;
+  reportMonth?: string; adminReport?: boolean;
 }) {
+  const identity = useMemberIdentity();
   const weekly = period === "tuần";
   const onlyMine = !!memberId && scope === "mine";
-  const ranksReady = !weekly || monthRanks !== undefined;
+  const frameMonth = identity?.rankMonth;
   const ranked = rankScoreRows(rows).map(({ rank, ...row }) => {
-    const frameRank = weekly ? monthRanks?.get(row.memberId) : rank;
-    const tier = frameRank === undefined ? undefined : monthlyScoreTier(frameRank);
-    return { ...row, tier, rank: ranksReady && !tier ? rank : undefined };
+    const rankForLabel = weekly ? identity?.monthlyRanks.get(row.memberId) ?? 0 : rank;
+    const tier = monthlyScoreTier(rankForLabel);
+    return { ...row, tier, rank: tier ? undefined : rank };
   });
   const visible = onlyMine ? ranked.filter(row => row.memberId === memberId) : ranked;
   const columns = weekly ? weeklyColumns : monthlyColumns.filter(column => adminReport || column.key !== "lateDeduction");
@@ -153,7 +150,8 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
           </div>
         )}
       />
-      {frameNotice}
+      {frameMonth && (weekly || reportMonth !== frameMonth) &&
+        <div className="score-frame-source">Khung avatar theo {monthLabel(frameMonth).toLowerCase()}</div>}
       {memberId && !onlyMine && rows.length > 0 && (
         <p className="score-tally"><strong>Tổng điểm toàn Đội</strong> {formatScore(Number(rows.reduce((sum, row) => sum + row.points, 0).toFixed(10)))} · {rows.length} thành viên</p>
       )}
@@ -208,9 +206,8 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
 
 type MonthlyScores = { rows: ScoreboardRow[] } | { error: string };
 
-function useMonthlyScores(month: string, revision?: number) {
-  const key = `${month}:${revision ?? ""}`;
-  const [request, setRequest] = useState<{ key: string; result: MonthlyScores } | null>(null);
+function useMonthlyScores(month: string) {
+  const [request, setRequest] = useState<{ month: string; result: MonthlyScores } | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
@@ -222,37 +219,24 @@ function useMonthlyScores(month: string, revision?: number) {
         const data = await response.json() as { month?: string; rows?: ScoreboardRow[]; error?: string };
         if (!response.ok || data.month !== month || !Array.isArray(data.rows))
           throw new Error(data.error || "Không tải được bảng điểm tháng");
-        if (!controller.signal.aborted) setRequest({ key, result: { rows: data.rows } });
+        if (!controller.signal.aborted) setRequest({ month, result: { rows: data.rows } });
       } catch (error) {
-        if (!controller.signal.aborted) setRequest({ key, result: { error: error instanceof Error ? error.message : "Không tải được bảng điểm tháng" } });
+        if (!controller.signal.aborted) setRequest({ month, result: { error: error instanceof Error ? error.message : "Không tải được bảng điểm tháng" } });
       }
     }
     void load();
     return () => controller.abort();
-  }, [month, key, attempt]);
-  const result = request?.key === key ? request.result : null;
+  }, [month, attempt]);
+  const result = request?.month === month ? request.result : null;
   const retry = () => { setRequest(null); setAttempt(value => value + 1); };
   return { result, retry };
 }
 
-export function WeeklyScoreboard({ week, revision, rows, ...scopeProps }: ScopeProps & {
-  week: string; revision: number; rows: ScoreTableRow[];
+export function WeeklyScoreboard({ week, rows, ...scopeProps }: ScopeProps & {
+  week: string; rows: ScoreTableRow[];
 }) {
-  // The selected week's Monday determines the frame month.
-  const month = week.slice(0, 7);
-  const { result, retry } = useMonthlyScores(month, revision);
-  const monthRanks = result && "rows" in result
-    ? new Map(rankScoreRows(result.rows).map(row => [row.memberId, row.rank]))
-    : undefined;
-  const frameMonth = `Khung hạng tháng ${Number(month.slice(5))}/${month.slice(0, 4)}`;
-  const frameNotice = <div className="score-frame-source">
-    {result && "error" in result ? <>
-      <span role="status">Chưa tải được {frameMonth.toLowerCase()}</span>
-      <button type="button" className="text-button" onClick={retry}>Thử lại</button>
-    </> : <span role={result ? undefined : "status"}>{result ? frameMonth : `Đang tải ${frameMonth.toLowerCase()}…`}</span>}
-  </div>;
   return <Scoreboard title={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week, 6))}`}
-    period="tuần" rows={rows} monthRanks={monthRanks} frameNotice={frameNotice} {...scopeProps} />;
+    period="tuần" rows={rows} {...scopeProps} />;
 }
 
 export function MemberMonthlyScoreboard({ month, avatarForMember, ...scopeProps }: ScopeProps & {
@@ -266,5 +250,5 @@ export function MemberMonthlyScoreboard({ month, avatarForMember, ...scopeProps 
     </div>
   );
   const rows = result.rows.map(row => ({ ...row, avatarId: avatarForMember(row.memberId) }));
-  return <Scoreboard title={monthLabel(month)} period="tháng" rows={rows} {...scopeProps} />;
+  return <Scoreboard title={monthLabel(month)} period="tháng" reportMonth={month} rows={rows} {...scopeProps} />;
 }

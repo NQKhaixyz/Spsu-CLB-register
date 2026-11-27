@@ -2,10 +2,11 @@
 
 import { ImagePlus, X } from "lucide-react";
 import { useId, useLayoutEffect, useRef } from "react";
-import { dateLabel, type Member, type AvailabilityDetail } from "../lib/club";
+import { dateLabel, monthLabel, type Member, type AvailabilityDetail } from "../lib/club";
 import { memberCommitteeNames } from "../lib/committees";
 import { memberRoleLabel } from "../lib/member-positions";
-import { MemberName } from "./member-identity";
+import { monthlyScoreTier } from "../lib/score-ranks";
+import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button } from "./ui";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
@@ -54,6 +55,9 @@ export function MemberProfileDialog({ member, details, scheduleOnly, onClose, on
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
+  const identity = useMemberIdentity();
+  const rank = identity?.monthlyRanks.get(member.id) ?? 0;
+  const profileTier = rank <= 5 ? monthlyScoreTier(rank) : undefined;
   useLayoutEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
@@ -65,7 +69,7 @@ export function MemberProfileDialog({ member, details, scheduleOnly, onClose, on
     };
   }, []);
   return (
-    <dialog ref={ref} className="member-profile-dialog" aria-labelledby={titleId}
+    <dialog ref={ref} className="member-profile-dialog" data-tier={profileTier?.id} aria-labelledby={titleId}
       onCancel={event => { event.preventDefault(); onClose(); }}
       onClick={event => {
         if (event.target !== event.currentTarget) return;
@@ -73,10 +77,19 @@ export function MemberProfileDialog({ member, details, scheduleOnly, onClose, on
         if (event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom) onClose();
       }}>
       <header className="member-profile-header">
-        <Avatar name={member.name} photoId={member.avatarId} size="large" />
-        <div>
-          <h2 id={titleId}><MemberName memberId={member.id} name={member.name} /></h2>
-          <p>{scheduleOnly ? "Lịch rảnh" : `${memberRoleLabel(member)} · ${memberCommitteeNames(member)}`}</p>
+        {profileTier && identity && <div className="member-profile-cover">
+          <span className="member-profile-cover-art" aria-hidden="true" />
+          <div className="member-profile-rank">
+            <small>{monthLabel(identity.rankMonth)}</small>
+            <strong>{profileTier.label}</strong>
+          </div>
+        </div>}
+        <div className="member-profile-identity">
+          <Avatar memberId={member.id} name={member.name} photoId={member.avatarId} size="large" profileLink={false} />
+          <div>
+            <h2 id={titleId}><MemberName memberId={member.id} name={member.name} /></h2>
+            <p>{scheduleOnly ? "Lịch rảnh" : `${memberRoleLabel(member)} · ${memberCommitteeNames(member)}`}</p>
+          </div>
         </div>
         <button type="button" className="icon-button member-profile-close" aria-label="Đóng hồ sơ" onClick={onClose}>
           <X size={20} aria-hidden="true" />
