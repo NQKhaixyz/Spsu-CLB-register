@@ -161,6 +161,13 @@
 .event-management[open] { flex-basis: 100%; }
 .event-results { scroll-margin-top: 12px; }
 .event-results .activity-search { padding-bottom: 10px; }
+.event-schedule-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.event-schedule-fields .field { min-width: 0; margin: 0; }
+.event-schedule-fields input { min-width: 0; width: 100%; }
+.event-schedule-hint { margin: 7px 0 16px; }
+@media (max-width: 375px) {
+  .event-schedule-fields { grid-template-columns: minmax(0, 1fr); }
+}
 
 @media (max-width: 760px) {
   .activity-page-heading > .heading-actions, .score-page-heading > .heading-actions { justify-content: flex-start; }

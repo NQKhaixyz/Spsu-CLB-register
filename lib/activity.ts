@@ -36,7 +36,9 @@ export type ClubEvent = {
   participationMultiplier?: number;
   points: number;
   startDate: string;
+  startTime?: string;
   endDate: string;
+  endTime?: string;
   createdAt: string;
   createdBy: string;
   cancelledAt?: string;
@@ -210,6 +212,8 @@ function requireValue(condition: unknown, message: string): asserts condition {
 const text = (value: unknown, max = 500) => String(value ?? "").trim().slice(0, max);
 const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) &&
   !Number.isNaN(Date.parse(date)) && new Date(date + "T12:00:00Z").toISOString().slice(0, 10) === date;
+const optionalTime = (value: unknown): value is string =>
+  typeof value === "string" && (value === "" || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value));
 function quantity(value: unknown, min: number) {
   requireValue(typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= 10000,
     `Số lượt phải là số nguyên từ ${min} đến 10.000.`);
@@ -292,6 +296,12 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
       "Điểm sự kiện phải từ 0 đến 100.000, tối đa 2 chữ số thập phân.");
     const existing = club.events?.find(event => event.id === id);
     if (action === "editEvent") requireValue(existing, "Không tìm thấy sự kiện.");
+    const startTime = data.startTime === undefined ? existing?.startTime ?? "" : data.startTime;
+    const endTime = data.endTime === undefined ? existing?.endTime ?? "" : data.endTime;
+    requireValue(optionalTime(startTime) && optionalTime(endTime), "Giờ sự kiện phải theo dạng HH:mm.");
+    requireValue(startDate !== endDate || !startTime || !endTime || startTime <= endTime,
+      "Cùng ngày, giờ kết thúc phải từ giờ bắt đầu trở đi.");
+    const schedule = { startDate, endDate, startTime: startTime || undefined, endTime: endTime || undefined };
     requireValue(data.requiresEvidence === undefined || typeof data.requiresEvidence === "boolean", "Chọn yêu cầu minh chứng hợp lệ.");
     const requiresEvidence = data.requiresEvidence ?? (action === "editEvent" && !!existing?.requiresEvidence);
     const description = action === "editEvent" && data.description === undefined
@@ -308,6 +318,7 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
       requireValue(!existing.cancelledAt, "Sự kiện đã hủy.");
       const same = existing.name === name && (existing.description ?? "") === description && (existing.location ?? "") === location &&
         existing.startDate === startDate && existing.endDate === endDate && existing.points === points &&
+        (existing.startTime ?? "") === startTime && (existing.endTime ?? "") === endTime &&
         !!existing.requiresEvidence === requiresEvidence && existing.participationMultiplier === participationMultiplier;
       if (same) return true;
       requireValue(action === "editEvent",
@@ -333,12 +344,12 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
           if (evidenceExpired) delete row.evidence;
         }
       }
-      Object.assign(existing, { name, description, location, startDate, endDate, points, requiresEvidence, participationMultiplier });
+      Object.assign(existing, { name, description, location, ...schedule, points, requiresEvidence, participationMultiplier });
       log(`Sửa sự kiện ${name}: ${startDate} – ${endDate}, ${points} điểm/người được duyệt`);
       return true;
     }
     requireValue(endDate >= today(), "Ngày kết thúc sự kiện không được trước hôm nay.");
-    (club.events ??= []).push({ id, name, description, location, startDate, endDate, points, requiresEvidence, participationMultiplier, createdAt: new Date().toISOString(), createdBy: me.id });
+    (club.events ??= []).push({ id, name, description, location, ...schedule, points, requiresEvidence, participationMultiplier, createdAt: new Date().toISOString(), createdBy: me.id });
     log(`Tạo sự kiện ${name}: ${startDate} – ${endDate}, ${points} điểm/người được duyệt`);
     return true;
   }

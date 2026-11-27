@@ -13,6 +13,19 @@ type EventChange = "cancel" | "restore" | "delete";
 type EventDialog = { mode: "create" } | { mode: "edit"; event: ClubEvent } | { mode: "participant"; eventId: string } | { mode: EventChange; event: ClubEvent };
 const formData = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); return Object.fromEntries(new FormData(e.currentTarget)); };
 
+function eventScheduleLabel({ startDate, startTime, endDate, endTime }: ClubEvent) {
+  const date = dateLabel(startDate, true);
+  if (startDate !== endDate) {
+    const from = startTime ? `${date} ${startTime}` : date;
+    const until = dateLabel(endDate, true) + (endTime ? ` ${endTime}` : "");
+    return `${from} – ${until}`;
+  }
+  if (startTime && endTime) return `${date} · ${startTime} – ${endTime}`;
+  if (startTime) return `${date} · Bắt đầu ${startTime}`;
+  if (endTime) return `${date} · Kết thúc ${endTime}`;
+  return date;
+}
+
 export default function Activities({ club, me, isAdmin, busy, onAction, onEvidenceSaved }: Omit<ActivityProps, "week"> & { onEvidenceSaved: () => void }) {
   const [eventDialog, setEventDialog] = useState<EventDialog | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -22,8 +35,10 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const requestsByEvent = useRef(new Map<string, string>());
   const results = useRef<HTMLElement>(null);
   const close = useCallback(() => { setReview(null); setEventDialog(null); setProof(null); }, []);
-  const currentDay = today();
-  const events = [...(club.events ?? [])].sort((a,b) => a.startDate.localeCompare(b.startDate) || a.name.localeCompare(b.name));
+  const now = Date.now();
+  const currentDay = today(new Date(now));
+  const events = [...(club.events ?? [])].sort((a, b) => a.startDate.localeCompare(b.startDate) ||
+    (a.startTime ?? "").localeCompare(b.startTime ?? "") || a.name.localeCompare(b.name));
   const visibleEvents = events.filter(event => showHistory || isEventOpen(event, currentDay));
   const visibleEventIds = new Set(visibleEvents.map(event => event.id));
   const selectedEvent = visibleEventIds.has(eventFilter) ? eventFilter : "";
@@ -92,19 +107,22 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         const ended = event.endDate < currentDay;
         const cancelled = !!event.cancelledAt;
         const evidence = own && event.requiresEvidence ? eventEvidenceView(own, event, me) : null;
-        const eventDates = event.startDate === event.endDate ? dateLabel(event.startDate, true) :
-          `${dateLabel(event.startDate, true)} – ${dateLabel(event.endDate, true)}`;
+        const startsLater = event.startDate > currentDay ||
+          (event.startTime && now < Date.parse(`${event.startDate}T${event.startTime}:00+07:00`));
+        const afterSchedule = event.endTime && now >= Date.parse(`${event.endDate}T${event.endTime}:00+07:00`);
+        const status = cancelled ? "Đã hủy" : ended ? "Đã kết thúc" :
+          startsLater ? "Sắp diễn ra" : afterSchedule ? "Đang mở đăng ký" : "Đang diễn ra";
         const actionableProof = proofRows[0];
         return <article className="activity-item event-card" key={event.id}>
           <header className="event-card-header">
             <div>
               <h3>{event.name}</h3>
               <div className="activity-meta">
-                <span><CalendarDays size={16} aria-hidden="true" /> {eventDates}</span>
+                <span><CalendarDays size={16} aria-hidden="true" /> {eventScheduleLabel(event)}</span>
                 <span><MapPin size={16} aria-hidden="true" /> {event.location || "Chưa cập nhật địa điểm"}</span>
               </div>
             </div>
-            <Badge status={cancelled ? "absent" : "neutral"}>{cancelled ? "Đã hủy" : ended ? "Đã kết thúc" : event.startDate > currentDay ? "Sắp diễn ra" : "Đang diễn ra"}</Badge>
+            <Badge status={cancelled ? "absent" : "neutral"}>{status}</Badge>
           </header>
           <div className="activity-actions event-card-actions">
             {actionableProof && <Button disabled={busy} onClick={() => {
@@ -360,6 +378,8 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
   const [multiple, setMultiple] = useState(event?.participationMultiplier !== undefined);
   const currentDay = today();
   const [startDate, setStartDate] = useState(event?.startDate ?? currentDay);
+  const [endDate, setEndDate] = useState(event?.endDate ?? currentDay);
+  const [startTime, setStartTime] = useState(event?.startTime ?? "");
   const minEndDate = event || startDate > currentDay ? startDate : currentDay;
   return <form onSubmit={async e => {
     const fields = formData(e);
@@ -370,16 +390,19 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
   }}>
     <Field label="Tên sự kiện"><input name="name" defaultValue={event?.name} required minLength={2} maxLength={160} placeholder="Ví dụ: Hỗ trợ ngày hội sinh viên" autoFocus /></Field>
     <Field label="Địa điểm (không bắt buộc)"><input name="location" defaultValue={event?.location} maxLength={eventLocationLimit} /></Field>
+    <div className="form-grid event-schedule-fields">
+      <Field label="Ngày bắt đầu"><input name="startDate" type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
+      <Field label="Giờ bắt đầu"><input name="startTime" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} /></Field>
+      <Field label="Ngày kết thúc"><input name="endDate" type="date" required min={minEndDate} value={endDate} onChange={e => setEndDate(e.target.value)} /></Field>
+      <Field label="Giờ kết thúc"><input name="endTime" type="time" min={(startDate === endDate && startTime) || undefined} defaultValue={event?.endTime} /></Field>
+    </div>
+    <p className="hint event-schedule-hint">Giờ Việt Nam · Có thể để trống</p>
     <Field label="Mô tả sự kiện (không bắt buộc)"><textarea name="description" defaultValue={event?.description ?? ""} maxLength={eventDescriptionLimit} rows={3} /></Field>
     <Field label={multiple ? "Điểm lượt đầu" : "Điểm mỗi thành viên được duyệt"}><input name="points" type="number" min={0} max={100000} step="0.01" defaultValue={event?.points} required placeholder="Nhập điểm" /></Field>
     <label className="event-history"><input type="checkbox" checked={multiple} onChange={e => setMultiple(e.target.checked)} /> Cho phép tham gia nhiều lần</label>
     {multiple && <Field label="Hệ số nhân" hint="Ví dụ điểm lượt đầu là 2 và hệ số là 1,5 thì ba lượt được duyệt nhận 2, 3 và 4,5 điểm">
       <input name="participationMultiplier" type="number" min={1} max={100000} step=".01" defaultValue={event?.participationMultiplier ?? 2} required />
     </Field>}
-    <div className="form-grid">
-      <Field label="Từ ngày"><input name="startDate" type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
-      <Field label="Đến hết ngày"><input name="endDate" type="date" required min={minEndDate} defaultValue={event?.endDate ?? currentDay} /></Field>
-    </div>
     <label className="event-history"><input type="checkbox" name="requiresEvidence" defaultChecked={event?.requiresEvidence} /> Yêu cầu ảnh minh chứng</label>
     <p className="hint">Khi bật, thành viên đăng ký rồi gửi ảnh để BĐH duyệt và tính điểm, hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam</p>
     <p className="hint">{event ? "Điểm của các lượt đã duyệt cập nhật theo mức điểm, hệ số và ngày kết thúc được lưu" : "Các lượt đã duyệt được tính vào tuần kết thúc sự kiện"}</p>

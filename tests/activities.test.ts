@@ -180,6 +180,39 @@ test("Event location persists when older clients omit it and clears when the for
   applyAction(club, admin, "editEvent", { ...data, location: "" });
   assert.equal(event.location, "");
 });
+
+test("Event hours can be added to a date-only event, preserved by older forms and cleared independently", () => {
+  const club = fixture();
+  const data = eventData();
+  applyAction(club, admin, "createEvent", data);
+  const event = club.events![0];
+  assert.equal(event.startTime, undefined);
+  const expiresAt = eventEvidenceExpiry(event);
+  applyAction(club, admin, "editEvent", { ...data, startTime: "08:30", endTime: "10:45" });
+  applyAction(club, admin, "editEvent", { ...data, location: "Hội trường" });
+  assert.deepEqual([event.startTime, event.endTime], ["08:30", "10:45"]);
+  assert.equal(eventEvidenceExpiry(event), expiresAt);
+  assert.ok(isEventOpen(event, data.endDate));
+  applyAction(club, admin, "editEvent", { ...data, endTime: "" });
+  assert.deepEqual([event.startTime, event.endTime], ["08:30", undefined]);
+});
+
+test("Event hours require a valid clock range and support events that run overnight", () => {
+  const club = fixture();
+  const data = eventData();
+  assert.throws(() => applyAction(club, admin, "createEvent", { ...data, startTime: "24:00" }), /HH:mm/);
+  assert.throws(() => applyAction(club, admin, "createEvent", { ...data, endTime: null }), /HH:mm/);
+  const hours = { startTime: "23:45", endTime: "00:15" };
+  assert.throws(() => applyAction(club, admin, "createEvent", { ...data, ...hours }), /giờ kết thúc phải từ giờ bắt đầu/);
+  const nextDay = addDays(data.endDate, 1);
+  applyAction(club, admin, "createEvent", { ...data, ...hours, endDate: nextDay });
+  const event = club.events![0];
+  assert.equal(event.endDate, nextDay);
+  assert.deepEqual([event.startTime, event.endTime], ["23:45", "00:15"]);
+  assert.throws(() => applyAction(club, admin, "editEvent", data), /giờ kết thúc phải từ giờ bắt đầu/);
+  assert.equal(event.endDate, nextDay);
+});
+
 function createEvent(c:ReturnType<typeof fixture>, data: ReturnType<typeof eventData> & { requiresEvidence?: boolean } = eventData()) {
  applyAction(c,admin,"createEvent",data);return c.events!.find(e=>e.id===data.id)!;
 }
