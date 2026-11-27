@@ -16,7 +16,7 @@ type ScopeProps = { memberId?: string; scope: ScoreScope; onScopeChange: (scope:
 type ScorePeriod = "tuần" | "tháng";
 type ScoreTier = NonNullable<ReturnType<typeof monthlyScoreTier>>;
 type ScoreTableRow = ScoreboardRow & { studentId?: string; avatarId?: string; lateDeduction?: number };
-type RankedScoreRow = ScoreTableRow & { rank?: number; tier?: ScoreTier };
+type RankedScoreRow = ScoreTableRow & { rank?: number; tier?: ScoreTier; weeklyRank?: number };
 
 const numbers = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
 export const formatScore = (value: number) => numbers.format(value);
@@ -86,6 +86,10 @@ function ScoreAvatar({ row, index, showNumber = false }: {
   </span>;
 }
 
+function ScoreMemberName({ row }: { row: RankedScoreRow }) {
+  return <strong data-weekly-rank={row.weeklyRank}>{row.name}</strong>;
+}
+
 function MobileScoreList({ rows, memberId, period }: {
   rows: RankedScoreRow[]; memberId?: string; period: ScorePeriod;
 }) {
@@ -98,7 +102,7 @@ function MobileScoreList({ rows, memberId, period }: {
           <summary>
             <ScoreAvatar row={row} index={index} showNumber />
             <span className="mobile-score-name">
-              <strong>{row.name}</strong>
+              <ScoreMemberName row={row} />
               {memberId === row.memberId && <small className="score-self">Bạn</small>}
               {row.tier && <RankTitle tier={row.tier} />}
               {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
@@ -131,7 +135,8 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
   const ranked = rankScoreRows(rows).map(({ rank, ...row }) => {
     const frameRank = weekly ? monthRanks?.get(row.memberId) : rank;
     const tier = frameRank === undefined ? undefined : monthlyScoreTier(frameRank);
-    return { ...row, tier, rank: ranksReady && !tier ? rank : undefined };
+    const weeklyRank = weekly && rank <= 5 ? rank : undefined;
+    return { ...row, tier, weeklyRank, rank: ranksReady && !tier ? rank : undefined };
   });
   const visible = onlyMine ? ranked.filter(row => row.memberId === memberId) : ranked;
   const columns = weekly ? weeklyColumns : monthlyColumns.filter(column => adminReport || column.key !== "lateDeduction");
@@ -176,7 +181,8 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
             </tr></thead>
             <tbody>{visible.map((row, index) => {
               const name = <span className="score-name">
-                <strong>{row.name}</strong>{memberId === row.memberId && !onlyMine && <small className="score-self">Bạn</small>}
+                <ScoreMemberName key={title} row={row} />
+                {memberId === row.memberId && !onlyMine && <small className="score-self">Bạn</small>}
                 {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
               </span>;
               return <tr key={row.memberId}>
