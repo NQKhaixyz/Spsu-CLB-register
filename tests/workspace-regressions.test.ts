@@ -8,6 +8,7 @@ import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
 import { sidebarTabLabels, sidebarTabs } from "../lib/workspace-navigation";
 import { memberPositions, memberRoleLabel } from "../lib/member-positions";
 import { bulletinDateInput, bulletinView, parseBulletinDate, pruneBulletinState, pruneExpiredBulletinPosts } from "../lib/bulletin";
+import { bulletinInline, toggleBulletinEmphasis } from "../lib/bulletin-format";
 import { bulletinByteRange, bulletinMediaIds, bulletinMediaKey, removedBulletinKeys } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 
@@ -70,7 +71,8 @@ test("The sidebar uses one fixed order and member positions do not grant BĐH pe
     assert.equal(view.me?.sidebarOrder, undefined);
     assert.ok(view.club.members.every(profile => profile.sidebarOrder === undefined));
   }
-  assert.equal(memberPositions.length, 8);
+  assert.equal(memberPositions.length, 9);
+  assert.equal(memberRoleLabel({ role: "member", position: "secretary" }), "Thư ký");
   for (const position of memberPositions) {
     applyAction(c, owner, "member", { memberId: pending.id, role: "member", position });
     const view = workspaceView(c, member, 1);
@@ -205,6 +207,22 @@ test("Legacy bulletin authors come from matching creation logs and survive later
   applyAction(c, owner, "saveBulletinPost", { id: "legacy-post", title: "Tiêu đề mới", content: "Nội dung", revision: 1 });
   assert.equal(bulletinView(c, pending).posts[0].author.name, author.name);
   assert.ok(!("createdBy" in bulletinView(c, pending).posts[0]));
+});
+
+test("Bulletin formatting supports nested emphasis and preserves literal text in an older post", () => {
+  const raw = "Đội *2026* và phần cần nhấn";
+  const start = raw.indexOf("phần");
+  const bold = toggleBulletinEmphasis(raw, start, raw.length, "**", false);
+  const both = toggleBulletinEmphasis(bold.value, bold.start, bold.end, "_", true);
+  assert.deepEqual(bulletinInline(both.value), [
+    "Đội ", "*", "2026", "*", " và ",
+    { marker: "**", children: [{ marker: "_", children: ["phần cần nhấn"] }] },
+  ]);
+  const italic = toggleBulletinEmphasis(both.value, both.start, both.end, "**", true);
+  assert.deepEqual(bulletinInline(italic.value).at(-1), { marker: "_", children: ["phần cần nhấn"] });
+  assert.deepEqual(bulletinInline("**<img src=x onerror=bad>**\n_đang viết"), [
+    { marker: "**", children: ["<img src=x onerror=bad>"] }, "\n", "_", "đang viết",
+  ]);
 });
 test("Members can post and manage their own attachments, with one-time draft ownership and cleanup", () => {
   const { c, pending } = fixture();

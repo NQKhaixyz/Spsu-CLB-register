@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { MessageSquare, Plus, UserRound } from "lucide-react";
 import { personKey } from "../lib/availability";
 import { uid } from "../lib/club";
@@ -9,6 +9,7 @@ import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button, Dialog, Empty, Field, FormFooter } from "./ui";
 
 export type SubmitFeedback = (draft: FeedbackDraft, onError: (message: string) => void) => Promise<boolean>;
+export type RecallFeedback = (id: string, onError: (message: string) => void) => Promise<boolean>;
 
 const orderNames = new Intl.Collator("vi-VN");
 const feedbackClock = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
@@ -79,18 +80,28 @@ export function FeedbackComposer({ initialRecipientId, busy, onSubmit, onSent, o
         <label><input type="radio" name="identity" value="public" defaultChecked /> Công khai tên</label>
         <label><input type="radio" name="identity" value="anonymous" /> Ẩn danh</label>
       </div>
-      <p className="feedback-visibility-note">Cả Đội xem được nội dung trên hồ sơ người nhận</p>
+      <p className="feedback-visibility-note">Cả Đội xem được nội dung trên hồ sơ người nhận. Bạn có thể thu hồi trong 30 phút đầu</p>
     </fieldset>
     {error && <p className="feedback-error" role="alert">{error}</p>}
     <FormFooter label="Gửi feedback" busy={busy} onCancel={onCancel} />
   </form>;
 }
 
-export function FeedbackList({ entries, linkRecipients = false }: {
-  entries: FeedbackView[]; linkRecipients?: boolean;
+function FeedbackList({ entries, busy, onRecall, linkRecipients = false }: {
+  entries: FeedbackView[]; busy: boolean; onRecall: RecallFeedback; linkRecipients?: boolean;
 }) {
   const identity = useMemberIdentity();
   const [limit, setLimit] = useState(pageSize);
+  const [confirmId, setConfirmId] = useState<string>();
+  const [error, setError] = useState("");
+  const [now, setNow] = useState(Date.now);
+  const nextDeadline = entries.slice(0, limit).reduce((earliest, { recallUntil }) =>
+    recallUntil && recallUntil > now ? Math.min(earliest, recallUntil) : earliest, Infinity);
+  useEffect(() => {
+    if (!Number.isFinite(nextDeadline)) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, nextDeadline - Date.now()) + 1);
+    return () => window.clearTimeout(timer);
+  }, [nextDeadline]);
   if (!entries.length) return <Empty title="Chưa có feedback" icon={MessageSquare} />;
   return <>
     <ol className="feedback-list">
@@ -116,6 +127,22 @@ export function FeedbackList({ entries, linkRecipients = false }: {
               })}
             </div>
             <p className="feedback-body">{item.body}</p>
+            {item.recallUntil && item.recallUntil > now && (
+              confirmId === item.id ? <div className="feedback-recall">
+                <p>Thu hồi feedback khỏi mục Feedback và hồ sơ tất cả người nhận?</p>
+                <div className="feedback-recall-actions">
+                  <Button variant="secondary" disabled={busy} onClick={() => setConfirmId(undefined)}>Quay lại</Button>
+                  <Button variant="danger" disabled={busy} onClick={async () => {
+                    setError("");
+                    if (await onRecall(item.id, setError)) setConfirmId(undefined);
+                  }}>Xác nhận thu hồi</Button>
+                </div>
+                {error && <p className="feedback-error" role="alert">{error}</p>}
+              </div> : <button type="button" className="text-button" disabled={busy} onClick={() => {
+                setError("");
+                setConfirmId(item.id);
+              }}>Thu hồi</button>
+            )}
           </article>
         </li>;
       })}
@@ -124,8 +151,8 @@ export function FeedbackList({ entries, linkRecipients = false }: {
   </>;
 }
 
-export function FeedbackPage({ entries, busy, onSubmit }: {
-  entries: FeedbackView[]; busy: boolean; onSubmit: SubmitFeedback;
+export function FeedbackPage({ entries, busy, onSubmit, onRecall }: {
+  entries: FeedbackView[]; busy: boolean; onSubmit: SubmitFeedback; onRecall: RecallFeedback;
 }) {
   const [composing, setComposing] = useState(false);
   const close = () => setComposing(false);
@@ -138,7 +165,7 @@ export function FeedbackPage({ entries, busy, onSubmit }: {
         </div>
         <Button onClick={() => setComposing(true)} disabled={busy}><Plus size={17} aria-hidden="true" /> Gửi feedback</Button>
       </div>
-      <FeedbackList entries={entries} linkRecipients />
+      <FeedbackList entries={entries} busy={busy} onRecall={onRecall} linkRecipients />
       {composing && <Dialog title="Gửi feedback" onClose={close} wide busy={busy}>
         <FeedbackComposer busy={busy} onSubmit={onSubmit} onSent={close} onCancel={close} />
       </Dialog>}
@@ -146,8 +173,8 @@ export function FeedbackPage({ entries, busy, onSubmit }: {
   );
 }
 
-export function ProfileFeedback({ recipientId, entries, busy, onSubmit }: {
-  recipientId: string; entries: FeedbackView[]; busy: boolean; onSubmit: SubmitFeedback;
+export function ProfileFeedback({ recipientId, entries, busy, onSubmit, onRecall }: {
+  recipientId: string; entries: FeedbackView[]; busy: boolean; onSubmit: SubmitFeedback; onRecall: RecallFeedback;
 }) {
   const [composing, setComposing] = useState(false);
   const [sent, setSent] = useState(false);
@@ -160,7 +187,7 @@ export function ProfileFeedback({ recipientId, entries, busy, onSubmit }: {
           <Plus size={16} aria-hidden="true" /> Gửi feedback
         </Button>
       </div>
-      <FeedbackList entries={entries} />
+      <FeedbackList entries={entries} busy={busy} onRecall={onRecall} />
     </>}
   </section>;
 }

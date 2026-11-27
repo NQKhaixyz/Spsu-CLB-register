@@ -2,7 +2,9 @@
 
 import { Camera, ImagePlus, Image as ImageIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
+import { isPointAmount } from "../lib/activity";
 import type { EvidenceAssignment } from "../lib/duty-evidence";
+import type { EventEvidenceView } from "../lib/event-evidence";
 import type { PhotoEvidenceView } from "../lib/photo-evidence";
 import { preparePhoto } from "./prepare-photo";
 import { Badge, Button, Field } from "./ui";
@@ -60,9 +62,10 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
   event?: boolean;
   onSaved?: () => void;
 }) {
-  const [data, setData] = useState<PhotoEvidenceView<"attached"> | null>(null);
+  const [data, setData] = useState<EventEvidenceView | null>(null);
   const [draft, setDraft] = useState<{ photo: Blob; url: string } | null>(null);
   const [note, setNote] = useState("");
+  const [contribution, setContribution] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -151,7 +154,8 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
     void save(endpoint, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: data.evidence.id, status, note }),
+      body: JSON.stringify({ id: data.evidence.id, status, note,
+        contributionPoints: status === "approved" && data.requiresContributionPoints ? Number(contribution) : undefined }),
     }, status === "approved" ? (event ? "Đã duyệt minh chứng và ghi điểm sự kiện" : "Đã duyệt minh chứng") : "Đã từ chối minh chứng");
   }
 
@@ -204,11 +208,16 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
       )}
       {data?.canReview && photoUrl && !draft && !photoFailed && loadedPhotoId === evidence?.id && (
         <>
+          {data.requiresContributionPoints && <Field label="Điểm đóng góp">
+            <input type="number" inputMode="decimal" min={0} max={100000} step="0.01" value={contribution}
+              onChange={event => setContribution(event.target.value)} />
+          </Field>}
           <Field label="Ghi chú duyệt">
             <textarea rows={2} maxLength={500} value={note} onChange={event => setNote(event.target.value)} placeholder="Nhập lý do nếu từ chối" />
           </Field>
           <div className="duty-evidence-actions">
-            <Button disabled={busy} onClick={() => review("approved")}>{event ? "Duyệt ảnh và tính điểm" : "Duyệt ảnh"}</Button>
+            <Button disabled={busy || (data.requiresContributionPoints && (!contribution || !isPointAmount(Number(contribution))))}
+              onClick={() => review("approved")}>{event ? "Duyệt ảnh và tính điểm" : "Duyệt ảnh"}</Button>
             <Button variant="danger" disabled={busy || !note.trim()} onClick={() => review("rejected")}>Từ chối ảnh</Button>
           </div>
         </>

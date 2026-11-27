@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { reviewEventRegistration } from "../../../lib/activity";
+import { eventContributionError, isPointAmount, reviewEventRegistration } from "../../../lib/activity";
 import { eventEvidenceTarget, eventEvidenceView, eventPhotoId } from "../../../lib/event-evidence";
 import { eventPhotoKey, eventPhotoStagingMs, removeEventPhoto } from "../../../lib/event-photo-storage";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
@@ -73,6 +73,7 @@ export async function POST(request: Request) {
         if (!current.canUpload || (current.evidence?.id ?? null) !== expected || now >= stagedAt + eventPhotoStagingMs) throw changed();
         row.evidence = { id, submittedAt: now };
         row.status = "pending";
+        delete row.contributionPoints;
         delete row.reviewedAt;
         delete row.reviewedBy;
         delete row.decision;
@@ -97,13 +98,13 @@ export async function PATCH(request: Request) {
     if (user.member.role !== "admin") throw new AuthError("Chỉ BĐH được duyệt minh chứng.", 403);
     if (view.expired) throw new AuthError("Đã hết hạn duyệt minh chứng.", 410);
     const bytes = await readBody(request, "application/json", 8192, "Ghi chú quá dài.");
-    let input: { id?: unknown; status?: unknown; note?: unknown } | null;
+    let input: { id?: unknown; status?: unknown; note?: unknown; contributionPoints?: unknown } | null;
     try {
       input = JSON.parse(new TextDecoder().decode(bytes));
     } catch {
       throw new AuthError("Kết quả duyệt không hợp lệ.", 400);
     }
-    const { id, status, note } = input ?? {};
+    const { id, status, note, contributionPoints } = input ?? {};
     if (typeof id !== "string" || !eventPhotoId.test(id) || (status !== "approved" && status !== "rejected")) {
       throw new AuthError("Kết quả duyệt không hợp lệ.", 400);
     }
@@ -120,7 +121,10 @@ export async function PATCH(request: Request) {
       const current = eventEvidenceView(row, event, member);
       if (current.expired) throw new AuthError("Đã hết hạn duyệt minh chứng.", 410);
       if (!current.canReview || current.evidence?.id !== id) throw changed();
-      reviewEventRegistration(club, member, { id: row.id, confirmed: status === "approved", reason }, text => {
+      if (status === "approved" && current.requiresContributionPoints && !isPointAmount(contributionPoints)) {
+        throw new AuthError(eventContributionError, 400);
+      }
+      reviewEventRegistration(club, member, { id: row.id, confirmed: status === "approved", reason, contributionPoints }, text => {
         club.logs.unshift({ at: new Date().toISOString(), actor: member.name, actorId: member.id, text });
         club.logs = club.logs.slice(0, 2000);
       }, id);

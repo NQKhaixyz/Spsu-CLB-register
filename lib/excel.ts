@@ -244,7 +244,7 @@ export async function makeReport(club: Club, month: string, asOf = today()) {
     activityRows.map(r => {
       const event = eventForActivity(club, r);
       const count = r.kind === "committee" ? "" : r.quantity;
-      const rate = r.kind === "committee" ? "" : activityUnitPoints(club, r);
+      const rate = r.kind === "committee" || event?.scoringMode === "contribution" ? "" : activityUnitPoints(club, r);
       return [r.week, dateLabel(r.date, true), member(r.memberId)?.studentId ?? "", member(r.memberId)?.name ?? "", activityName(club, r), count, rate, r.credited ? activityPointsFor(club, r) : 0, r.state, r.note, member(r.actor)?.name ?? "", r.decision, event?.startDate ?? "", event?.endDate ?? "", memberCommitteeNames(member(r.memberId))];
     }),
   );

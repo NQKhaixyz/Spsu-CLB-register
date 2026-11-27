@@ -1,6 +1,7 @@
 export const memberPositionLabels = {
   captain: "Đội trưởng",
   deputy: "Đội phó",
+  secretary: "Thư ký",
   "tt-lead": "Trưởng ban TT",
   "cm-lead": "Trưởng ban CM",
   "sk-lead": "Trưởng ban SK",

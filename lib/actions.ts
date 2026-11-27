@@ -42,7 +42,7 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
-import { eraseFeedbackMembers, sendMemberFeedback } from "./feedback";
+import { eraseFeedbackMembers, recallMemberFeedback, sendMemberFeedback } from "./feedback";
 import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
 import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
@@ -129,6 +129,10 @@ export function applyAction(
   check(me?.active, "Tài khoản chưa có hồ sơ hoặc đã ngừng hoạt động.");
   if (action === "sendFeedback") {
     sendMemberFeedback(club, me, data);
+    return;
+  }
+  if (action === "recallFeedback") {
+    recallMemberFeedback(club, me, data.id);
     return;
   }
   if (action === "setMyFont") {
@@ -246,6 +250,8 @@ export function applyAction(
     check(admin || (data.publishAt === undefined && data.deleteAt === undefined), "Chỉ BĐH được hẹn giờ bản tin.");
     const title = typeof data.title === "string" ? data.title.trim() : "";
     const content = typeof data.content === "string" ? data.content.trim() : "";
+    check(data.contentFormat === undefined || data.contentFormat === "emphasis", "Định dạng bản tin không hợp lệ.");
+    const contentFormat = data.contentFormat ?? post?.contentFormat;
     check(title.length > 0 && title.length <= bulletinTitleLimit, `Nhập tiêu đề từ 1 đến ${bulletinTitleLimit} ký tự.`);
     const now = Date.now();
     const previousMedia = post?.media ?? [];
@@ -266,10 +272,11 @@ export function applyAction(
     const deleteAt = data.deleteAt === undefined ? post?.deleteAt : parseBulletinDate(data.deleteAt);
     check(!Number.isNaN(publishAt) && !Number.isNaN(deleteAt), "Giờ hẹn không hợp lệ. Dùng giờ Việt Nam.");
     check(deleteAt === undefined || deleteAt > Math.max(now, publishAt ?? now), "Giờ xóa phải sau thời điểm đăng và sau hiện tại.");
-    const fields = { title, content, publishAt, deleteAt, media: media.length ? media : undefined };
+    const fields = { title, content, contentFormat, publishAt, deleteAt, media: media.length ? media : undefined };
     if (post) {
       const sameMedia = previousMedia.length === media.length && previousMedia.every((file, index) => file.id === media[index].id);
-      if (sameMedia && post.title === title && post.content === content && post.publishAt === publishAt && post.deleteAt === deleteAt) return;
+      if (sameMedia && post.title === title && post.content === content && post.contentFormat === contentFormat &&
+        post.publishAt === publishAt && post.deleteAt === deleteAt) return;
       check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để xem nội dung mới.");
       if (post.createdBy === undefined) post.createdBy = bulletinAuthorId(club, post) ?? null;
       Object.assign(post, fields, { revision: post.revision + 1 });

@@ -125,6 +125,64 @@ test("Multi-round events use the per-event multiplier for each approved round an
   assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 0);
 });
 
+test("Fixed event modes credit 0.25 for a single member or each approved round, consistently in reports", async () => {
+  const club = fixture();
+  const single = { ...eventData("event-fixed-one"), scoringMode: "single", participationMultiplier: 10 };
+  const perRound = { ...eventData("event-fixed-many"), scoringMode: "perRound" };
+  applyAction(club, admin, "createEvent", single);
+  applyAction(club, admin, "createEvent", perRound);
+  applyAction(club, user, "registerEvent", { eventId: single.id });
+  applyAction(club, user, "registerEvent", { eventId: single.id });
+  for (const registrationId of ["fixed-round-1", "fixed-round-2", "fixed-round-2", "fixed-round-3"]) {
+    applyAction(club, user, "registerEvent", { eventId: perRound.id, registrationId });
+  }
+  const [one, first, second, third] = club.activityRegistrations!;
+  assert.equal(club.activityRegistrations!.length, 4);
+  for (const row of [one, first, second]) applyAction(club, admin, "reviewActivity", { id: row.id, confirmed: true });
+  assert.equal(third.status, "pending");
+  assert.equal(club.events![0].participationMultiplier, undefined);
+  assert.deepEqual([one, first, second].map(row => activityPointsFor(club, row)), [0.25, 0.25, 0.25]);
+  assert.throws(() => applyAction(club, admin, "editEvent", { ...perRound, scoringMode: "single" }), /nhiều lượt/);
+  const month = today().slice(0, 7);
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 0.75);
+  assert.equal(monthlyScoreboard(club, month).find(row => row.memberId === "a1")?.points, 0.75);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load((await makeReport(club, month)).buffer);
+  const detail = book.getWorksheet("Chi tiết hoạt động")!;
+  assert.deepEqual([4, 5, 6, 7].map(row => detail.getCell(row, 8).value), [0.25, 0.25, 0.25, 0]);
+});
+
+test("Contribution events require an individual award on approval or direct addition and allow later adjustments", async () => {
+  const club = fixture();
+  const data = { ...eventData("event-contributions"), scoringMode: "contribution", requiresEvidence: true };
+  applyAction(club, admin, "createEvent", data);
+  const event = club.events![0];
+  applyAction(club, user, "registerEvent", { eventId: event.id });
+  const registration = club.activityRegistrations![0];
+  const photoId = crypto.randomUUID();
+  registration.evidence = { id: photoId, submittedAt: Date.now() };
+  const review = { id: registration.id, confirmed: true };
+  assert.throws(() => reviewEventRegistration(club, club.members[0], review, () => {}, photoId), /Nhập điểm đóng góp/);
+  assert.throws(() => reviewEventRegistration(club, club.members[0], { ...review, contributionPoints: 1.234 }, () => {}, photoId), /Nhập điểm đóng góp/);
+  const direct = { eventId: event.id, memberId: "a2" };
+  assert.throws(() => applyAction(club, admin, "addEventParticipant", direct), /Nhập điểm đóng góp/);
+  reviewEventRegistration(club, club.members[0], { ...review, contributionPoints: 0 }, () => {}, photoId);
+  applyAction(club, admin, "addEventParticipant", { ...direct, contributionPoints: 2.15 });
+  const edit = { id: registration.id, contributionPoints: 1.37 };
+  assert.throws(() => applyAction(club, user, "saveEventContribution", edit), /Chỉ BĐH/);
+  applyAction(club, admin, "saveEventContribution", edit);
+  const month = today().slice(0, 7);
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 1.37);
+  assert.equal(monthlyScoreboard(club, month).find(row => row.memberId === "a2")?.points, 2.15);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load((await makeReport(club, month)).buffer);
+  const detail = book.getWorksheet("Chi tiết hoạt động")!;
+  assert.deepEqual([4, 5].map(row => [detail.getCell(row, 7).value, detail.getCell(row, 8).value]), [["", 1.37], ["", 2.15]]);
+  applyAction(club, admin, "cancelEvent", { id: event.id });
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 0);
+  assert.throws(() => applyAction(club, admin, "saveEventContribution", edit), /Chỉ chỉnh điểm/);
+});
+
 test("BĐH accounts can manage the workspace and are excluded from both scoreboards and all Excel sheets", async () => {
   const c = fixture();
   const event = createEvent(c);

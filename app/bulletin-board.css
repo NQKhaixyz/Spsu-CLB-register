@@ -1,4 +1,4 @@
-.bulletin-board, .bulletin-links {
+.bulletin-board {
   max-width: 44rem;
   margin-inline: auto;
 }
@@ -206,6 +206,9 @@
   overflow-wrap: anywhere;
   line-height: 1.65;
 }
+:is(.bulletin-preview, .bulletin-fulltext) :is(strong, em) {
+  font-synthesis: weight style;
+}
 .bulletin-note {
   display: flex;
   align-items: center;
@@ -361,6 +364,21 @@
 }
 .bulletin-video-fallback p { margin: 0; }
 .bulletin-video-fallback a { width: fit-content; color: var(--green-dark); text-decoration: underline; }
+.bulletin-format-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bulletin-format-tools .btn { padding-inline: 10px; }
+.bulletin-format-hint { margin: 6px 0 10px; }
+.bulletin-format-preview {
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.bulletin-format-preview small { color: var(--muted); }
+.bulletin-format-preview .bulletin-fulltext { margin: 4px 0 0; }
 .bulletin-picker { margin-block: 12px 16px; }
 .bulletin-picker-actions {
   display: flex;

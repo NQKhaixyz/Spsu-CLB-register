@@ -54,6 +54,10 @@
 }
 .feedback-recipients button:hover { background: #e7efe2; }
 .feedback-body { margin: 0; color: var(--ink); white-space: pre-wrap; line-height: 1.6; }
+.feedback-entry > .text-button { justify-self: start; }
+.feedback-recall { display: grid; gap: 8px; }
+.feedback-recall p { margin: 0; }
+.feedback-recall-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .feedback-composer { display: grid; gap: 16px; }
 .feedback-composer .field { margin: 0; }

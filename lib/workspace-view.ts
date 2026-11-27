@@ -77,7 +77,7 @@ export function workspaceView(
     month: currentMonth,
     rows: monthStandings.map(({ memberId, points, rank }) => ({ memberId, points, rank })),
   };
-  const feedback = me?.active ? memberFeedbackView(club) : undefined;
+  const feedback = me?.active ? memberFeedbackView(club, me.id) : undefined;
   const bulletin = me?.active ? bulletinView(club, me) : undefined;
   const isAdmin = me?.role === "admin" && me.active;
   const personalMonthlyScores = !isAdmin && me

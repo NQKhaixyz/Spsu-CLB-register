@@ -18,6 +18,7 @@ export type BulletinPost = {
   id: string;
   title: string;
   content: string;
+  contentFormat?: "emphasis";
   revision: number;
   createdAt?: number;
   createdBy?: string | null;

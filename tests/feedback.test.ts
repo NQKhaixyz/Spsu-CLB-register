@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyAction, type Identity } from "../lib/actions";
 import { createClub, today, uid, type Member } from "../lib/club";
-import { feedbackBodyLimit } from "../lib/feedback";
+import { feedbackBodyLimit, feedbackRecallWindow, memberFeedbackView, recallMemberFeedback } from "../lib/feedback";
 import { eraseMemberData } from "../lib/member-deletion";
 import { workspaceView } from "../lib/workspace-view";
 
@@ -68,4 +68,30 @@ test("Feedback validates recipients and mode before saving and follows member de
   assert.deepEqual(club.memberFeedback?.[0].recipientIds, [second.id]);
   eraseMemberData(club, admin, sender);
   assert.equal(club.memberFeedback?.length, 0);
+});
+
+test("Only the sender can recall feedback during the first 30 minutes, without reviving it on retry", () => {
+  const { club, admin, sender, first, second } = fixture();
+  const draft = { id: uid(), body: "Góp ý cần thu hồi", recipientIds: [first.id, second.id], anonymous: true };
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  const stored = club.memberFeedback![0];
+  const deadline = stored.createdAt + feedbackRecallWindow;
+  for (const viewer of [admin, first, second]) {
+    const visible = memberFeedbackView(club, viewer.id, deadline - 1)[0];
+    assert.equal(visible.authorId, undefined);
+    assert.equal(visible.recallUntil, undefined);
+    assert.throws(() => applyAction(club, identity(viewer), "recallFeedback", { id: draft.id }), /Chỉ người gửi/);
+  }
+  assert.equal(memberFeedbackView(club, sender.id, deadline - 1)[0].recallUntil, deadline);
+  assert.equal(memberFeedbackView(club, sender.id, deadline)[0].recallUntil, undefined);
+  assert.throws(() => recallMemberFeedback(club, sender, draft.id, deadline), /hết 30 phút/);
+  applyAction(club, identity(sender), "recallFeedback", { id: draft.id });
+  applyAction(club, identity(sender), "recallFeedback", { id: draft.id });
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  assert.deepEqual(stored.recipientIds, []);
+  assert.equal(stored.body, "");
+  assert.equal(club.logs.length, 0);
+  for (const viewer of [admin, sender, first, second]) {
+    assert.deepEqual(workspaceView(club, identity(viewer), 1).feedback, []);
+  }
 });

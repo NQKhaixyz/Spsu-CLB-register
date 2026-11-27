@@ -3,6 +3,7 @@ import type { Club, Member } from "./club";
 import type { PhotoEvidenceView } from "./photo-evidence";
 
 export const eventPhotoId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+export type EventEvidenceView = PhotoEvidenceView<"attached"> & { requiresContributionPoints?: true };
 
 export function eventEvidenceTarget(club: Club, viewer: Member, registrationId: string) {
   const row = club.activityRegistrations?.find(registration => registration.id === registrationId);
@@ -12,7 +13,7 @@ export function eventEvidenceTarget(club: Club, viewer: Member, registrationId: 
   return { row, event };
 }
 
-export function eventEvidenceView(row: ActivityRegistration, event: ClubEvent, viewer: Member, now = Date.now()): PhotoEvidenceView<"attached"> {
+export function eventEvidenceView(row: ActivityRegistration, event: ClubEvent, viewer: Member, now = Date.now()): EventEvidenceView {
   const expiresAt = eventEvidenceExpiry(event);
   const expired = now >= expiresAt;
   const savedReview = row.evidence?.review;
@@ -27,6 +28,7 @@ export function eventEvidenceView(row: ActivityRegistration, event: ClubEvent, v
   } : null;
   return {
     evidence, expiresAt, expired,
+    ...(event.scoringMode === "contribution" && viewer.role === "admin" ? { requiresContributionPoints: true } : {}),
     canUpload: !event.cancelledAt && !expired && !!event.requiresEvidence && viewer.id === row.memberId &&
       (row.status === "pending" || row.status === "declined"),
     canReview: !event.cancelledAt && !!event.requiresEvidence && !!evidence && viewer.role === "admin" && row.status === "pending",

@@ -21,9 +21,8 @@ import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
 import DutyEvidenceAction from "./duty-evidence";
 import DutyWeekActions from "./duty-week-actions";
-import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
-import { FeedbackPage, type SubmitFeedback } from "./feedback";
+import { FeedbackPage, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import { AcademicWeekSettings } from "./academic-week-settings";
 import { isBulletinId } from "../lib/bulletin";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
@@ -131,7 +130,6 @@ type Tab =
   | "duties"
   | "bulletin"
   | "feedback"
-  | "links"
   | "members"
   | "reports"
   | "semesterScores"
@@ -147,7 +145,7 @@ type Modal = {
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
-  bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
+  bulletin: { icon: Newspaper, sections: ["bulletin"] },
   feedback: { icon: MessageSquare, sections: ["feedback"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
@@ -435,6 +433,7 @@ export default function Workspace() {
     }
   }
   const submitFeedback: SubmitFeedback = (draft, onError) => act("sendFeedback", draft, "Đã gửi feedback", false, onError);
+  const recallFeedback: RecallFeedback = (id, onError) => act("recallFeedback", { id }, "Đã thu hồi feedback", false, onError);
   function dismissBulletinLink() {
     const url = new URL(window.location.href);
     if (!url.searchParams.has("tin")) return;
@@ -557,10 +556,7 @@ export default function Workspace() {
     return !!event && (event.requiresEvidence ? eventEvidenceView(row, event, me).canReview : isEventOpen(event, currentDay));
   }).length;
   const pendingTotal = pending.length + activityPending;
-  const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "bulletin" ? [
-    { id: "bulletin", label: "Bài đăng" },
-    { id: "links", label: "Link" },
-  ] : activeSidebarTab === "scoreboard" ? [
+  const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "scoreboard" ? [
     { id: "weeklyScores", label: "Điểm tuần" },
     { id: "reports", label: "Điểm tháng" },
     ...(isAdmin ? [{ id: "semesterScores" as const, label: "Học kỳ" }] : []),
@@ -3331,8 +3327,7 @@ export default function Workspace() {
           {club.demo &&
           !(activeTab === "members" && memberSection === "availability") &&
           !(activeTab === "duties" && club.schedules.some(schedule => schedule.sourceFilename &&
-            schedule.shifts.some(shift => weekId(shift.date) === dutyWeek))) &&
-          activeTab !== "links" ? (
+            schedule.shifts.some(shift => weekId(shift.date) === dutyWeek))) ? (
             <div className="demo-banner">
               <Sparkles size={15} />
               <span>
@@ -3386,16 +3381,7 @@ export default function Workspace() {
               me={me} isAdmin={isAdmin} busy={busy} linkedPostId={linkedBulletin} onDismissLink={dismissBulletinLink}
               onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
           ) : activeTab === "feedback" ? (
-            <FeedbackPage entries={view.feedback ?? []} busy={busy} onSubmit={submitFeedback} />
-          ) : activeTab === "links" ? (
-            <div className="bulletin-links">
-            <SharedLinks
-              links={club.links ?? []}
-              isAdmin={isAdmin}
-              busy={busy}
-              onAction={(action, data) => act(action, data, action === "deleteSharedLink" ? "Đã xóa link" : action === "moveSharedLink" ? "Đã đổi thứ tự link" : "Đã lưu link", false)}
-            />
-            </div>
+            <FeedbackPage entries={view.feedback ?? []} busy={busy} onSubmit={submitFeedback} onRecall={recallFeedback} />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (
@@ -3444,6 +3430,7 @@ export default function Workspace() {
         feedback={(view.feedback ?? []).filter(item => item.recipientIds.includes(profileMember.id))}
         busy={busy}
         onSubmitFeedback={submitFeedback}
+        onRecallFeedback={recallFeedback}
         onClose={closeProfile}
         onEditAvatar={profileMember.id === me.id ? () => { closeProfile(); setAvatarEditing(true); } : undefined}
       />}
