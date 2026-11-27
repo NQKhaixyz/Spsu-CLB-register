@@ -1,13 +1,16 @@
 "use client";
 
 import { ImagePlus, X } from "lucide-react";
-import { useId, useLayoutEffect, useRef } from "react";
-import { dateLabel, monthLabel, type Member, type AvailabilityDetail } from "../lib/club";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import { addDays, dateLabel, monthLabel, type Member, type AvailabilityDetail } from "../lib/club";
+import type { FeedbackView } from "../lib/feedback";
 import { memberCommitteeNames } from "../lib/committees";
 import { memberRoleLabel } from "../lib/member-positions";
 import { monthlyScoreTier } from "../lib/score-ranks";
 import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button } from "./ui";
+import { ProfileFeedback, type SubmitFeedback } from "./feedback";
+import { formatScore } from "./scoreboard";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 
@@ -23,7 +26,6 @@ function ProfileDetails({ member, details, scheduleOnly }: {
   const fields = [
     ["MSSV", member.studentId || "Chờ bổ sung MSSV"],
     ["Email liên hệ", member.email || "Chưa có"],
-    ["Trạng thái", member.active ? "Đang hoạt động" : "Tạm nghỉ"],
     ["Ngày tham gia", dateLabel(member.joined, true)],
     ...(member.left ? [["Ngày tạm nghỉ", dateLabel(member.left, true)]] : []),
     ...(member.loginName ? [["Tên đăng nhập được cấp", member.loginName]] : []),
@@ -46,15 +48,45 @@ function ProfileDetails({ member, details, scheduleOnly }: {
   </div>;
 }
 
-export function MemberProfileDialog({ member, details, scheduleOnly, onClose, onEditAvatar }: {
+function ProfileScores({ memberId }: { memberId: string }) {
+  const identity = useMemberIdentity();
+  if (!identity) return null;
+  const week = identity.weeklyScores.get(memberId);
+  const month = identity.monthlyScores.get(memberId);
+  const tier = month ? monthlyScoreTier(month.rank) : undefined;
+  return <dl className="profile-scores" aria-label="Điểm và hạng hiện tại">
+    <div>
+      <dt title={`${dateLabel(identity.rankWeek, true)} – ${dateLabel(addDays(identity.rankWeek, 6), true)}`}>Điểm tuần</dt>
+      <dd>
+        <strong>{week ? formatScore(week.points) : "—"}</strong>
+        <span>{week ? `Hạng ${week.rank}` : "Chưa xếp hạng"}</span>
+      </dd>
+    </div>
+    <div>
+      <dt title={monthLabel(identity.rankMonth)}>Điểm tháng</dt>
+      <dd>
+        <strong>{month ? formatScore(month.points) : "—"}</strong>
+        <span className={tier ? "score-rank-title" : undefined} data-tier={tier?.id}>
+          {tier?.label ?? (month ? `Hạng ${month.rank}` : "Chưa xếp hạng")}
+        </span>
+      </dd>
+    </div>
+  </dl>;
+}
+
+export function MemberProfileDialog({ member, details, scheduleOnly, feedback, busy, onSubmitFeedback, onClose, onEditAvatar }: {
   member: Member;
   details: Pick<AvailabilityDetail, "day" | "period" | "weeks" | "note">[];
   scheduleOnly: boolean;
+  feedback: FeedbackView[];
+  busy: boolean;
+  onSubmitFeedback: SubmitFeedback;
   onClose: () => void;
   onEditAvatar?: () => void;
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
+  const [section, setSection] = useState<"info" | "feedback">("info");
   const identity = useMemberIdentity();
   const rank = identity?.monthlyRanks.get(member.id) ?? 0;
   const profileTier = rank <= 5 ? monthlyScoreTier(rank) : undefined;
@@ -95,8 +127,20 @@ export function MemberProfileDialog({ member, details, scheduleOnly, onClose, on
           <X size={20} aria-hidden="true" />
         </button>
       </header>
-      <ProfileDetails member={member} details={details} scheduleOnly={scheduleOnly} />
-      {onEditAvatar && !scheduleOnly && <footer className="member-profile-actions">
+      {!scheduleOnly && <>
+        <ProfileScores memberId={member.id} />
+        <div className="profile-sections" role="group" aria-label="Nội dung hồ sơ">
+          <button type="button" aria-pressed={section === "info"} onClick={() => setSection("info")}>Thông tin</button>
+          <button type="button" aria-pressed={section === "feedback"} onClick={() => setSection("feedback")}>
+            Feedback {feedback.length > 0 && <span>{feedback.length}</span>}
+          </button>
+        </div>
+      </>}
+      {(scheduleOnly || section === "info") && <ProfileDetails member={member} details={details} scheduleOnly={scheduleOnly} />}
+      {!scheduleOnly && <div hidden={section !== "feedback"}>
+        <ProfileFeedback recipientId={member.id} entries={feedback} busy={busy} onSubmit={onSubmitFeedback} />
+      </div>}
+      {onEditAvatar && !scheduleOnly && section === "info" && <footer className="member-profile-actions">
         <Button variant="secondary" onClick={onEditAvatar}>
           <ImagePlus size={16} aria-hidden="true" /> Đổi ảnh đại diện
         </Button>

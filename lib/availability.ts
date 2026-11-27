@@ -5,6 +5,7 @@ import type {
   AvailabilityDetail,
   AvailabilitySettings,
   AvailabilityDataset,
+  AcademicWeekAnchor,
 } from "./club";
 
 export const personKey = (name: string) =>
@@ -20,7 +21,7 @@ export function activeAvailabilityDatasetFor(club: Club) {
   const dataset = club.activeAvailabilityDataset ?? club.availabilityDataset;
   return dataset?.settings && dataset.memberLinks ? dataset : undefined;
 }
-export function academicWeekFor(date: string, settings: AvailabilitySettings) {
+export function academicWeekFor(date: string, settings: AcademicWeekAnchor) {
   return (
     settings.anchorWeek +
     Math.floor(
@@ -29,6 +30,20 @@ export function academicWeekFor(date: string, settings: AvailabilitySettings) {
         604800000,
     )
   );
+}
+
+function academicWeekOverride(club: Club, date: string) {
+  return club.academicWeekAnchors?.findLast(anchor => anchor.anchorDate <= date);
+}
+
+export function academicWeekForClub(club: Club, date: string) {
+  return academicWeekFor(date, academicWeekOverride(club, date) ?? activeAvailabilityDatasetFor(club)?.settings ??
+    { anchorDate: "2026-11-09", anchorWeek: 11 });
+}
+
+export function dutyAcademicWeek(club: Club, shift: Pick<Shift, "date" | "academicWeek">) {
+  const anchor = academicWeekOverride(club, shift.date);
+  return anchor ? academicWeekFor(shift.date, anchor) : shift.academicWeek;
 }
 export function clockMinutes(value: string) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value))
@@ -227,7 +242,7 @@ export function createDutyAvailability(club: Club) {
     if (date < settings.startDate) return no;
     const allRows = rowsByMember.get(member.id) ?? [];
     if (!allRows.length) return no;
-    const week = academicWeekFor(date, settings),
+    const week = academicWeekFor(date, academicWeekOverride(club, date) ?? settings),
       weekday = new Date(date + "T12:00:00Z").getUTCDay();
     const matching = allRows.filter(
       (r) =>

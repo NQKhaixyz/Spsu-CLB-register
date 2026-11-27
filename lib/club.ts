@@ -6,10 +6,13 @@ import type { CommitteeMembership } from "./committees";
 import type { FontId } from "./interface-fonts";
 import type { SidebarTab } from "./workspace-navigation";
 import type { MemberPosition } from "./member-positions";
+import type { FeedbackView, StoredFeedback } from "./feedback";
+import type { ScoreStanding } from "./score-ranks";
 import {
   academicWeekFor,
   activeAvailabilityDatasetFor,
   createDutyAvailability,
+  dutyAcademicWeek,
 } from "./availability";
 export type Registration = "unregistered" | "attending" | "absent" | "pending";
 export type DutyResult =
@@ -122,9 +125,8 @@ export type AvailabilityDataset = {
   settings?: AvailabilitySettings;
   memberLinks?: Record<string, string>;
 };
-export type AvailabilitySettings = {
-  anchorDate: string;
-  anchorWeek: number;
+export type AcademicWeekAnchor = { anchorDate: string; anchorWeek: number };
+export type AvailabilitySettings = AcademicWeekAnchor & {
   startDate: string;
   amStart: string;
   amEnd: string;
@@ -135,6 +137,7 @@ export type AvailabilitySettings = {
 };
 export type Club = {
   ownerId: string;
+  academicWeekAnchors?: AcademicWeekAnchor[];
   name: string;
   demo: boolean;
   members: Member[];
@@ -142,6 +145,7 @@ export type Club = {
   schedules: Schedule[];
   links?: SharedLink[];
   bulletinPosts?: BulletinPost[];
+  memberFeedback?: StoredFeedback[];
   bulletinUploads?: BulletinUpload[];
   rules: Rule[];
   activityRegistrations?: ActivityRegistration[];
@@ -177,6 +181,8 @@ export type View = {
   revision: number;
   weeklyScores?: WeeklyScore[];
   monthlyAvatarRanks?: { month: string; memberIds: string[] };
+  currentMonthScores?: { month: string; rows: ScoreStanding[] };
+  feedback?: FeedbackView[];
   personalMonthlyScores?: Record<string, ReturnType<typeof scoreFor>>;
   directoryAvailability?: Record<string, Pick<AvailabilityDetail, "day" | "period" | "weeks" | "note">[]>;
   currentAcademicWeek?: number;
@@ -528,8 +534,11 @@ export function createDutyShiftSlots(club: Club, month: string, peoplePerShift: 
         !club.deletedDutyDates?.includes(d) &&
         (!detailSettings || d >= detailSettings.startDate),
     )
-    .flatMap((date) =>
-      (["am", "pm"] as const).map((period) => ({
+    .flatMap((date) => {
+      const academicWeek = dutyAcademicWeek(club, {
+        date, academicWeek: detailSettings ? academicWeekFor(date, detailSettings) : undefined,
+      });
+      return (["am", "pm"] as const).map((period) => ({
         id: `${date}-${period}`,
         date,
         period,
@@ -543,11 +552,11 @@ export function createDutyShiftSlots(club: Club, month: string, peoplePerShift: 
                   : detailSettings.pmStart,
               endTime:
                 period === "am" ? detailSettings.amEnd : detailSettings.pmEnd,
-              academicWeek: academicWeekFor(date, detailSettings),
             }
           : {}),
-      })),
-    );
+        ...(academicWeek === undefined ? {} : { academicWeek }),
+      }));
+    });
 }
 
 export function makeSchedule(club: Club, month: string, peoplePerShift = club.peoplePerShift ?? 2): Schedule {

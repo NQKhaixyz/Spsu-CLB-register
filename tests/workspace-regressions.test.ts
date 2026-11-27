@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyAction } from "../lib/actions";
-import { createClub, type AvailabilityDataset } from "../lib/club";
+import { createClub, createDutyShiftSlots, type AvailabilityDataset } from "../lib/club";
+import { academicWeekForClub } from "../lib/availability";
 import { workspaceView } from "../lib/workspace-view";
 import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
 import { sidebarTabLabels, sidebarTabs } from "../lib/workspace-navigation";
@@ -63,7 +64,7 @@ test("The sidebar uses one fixed order and member positions do not grant BĐH pe
   const admin = c.members.find(m => m.userId === owner.userId)!;
   pending.sidebarOrder = ["members", "personal"];
   admin.sidebarOrder = ["overview", "scoreboard"];
-  assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Góc của tôi", "Thành viên"]);
+  assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Feedback", "Góc của tôi", "Thành viên"]);
   for (const identity of [owner, member]) {
     const view = workspaceView(c, identity, 1);
     assert.equal(view.me?.sidebarOrder, undefined);
@@ -82,6 +83,27 @@ test("The sidebar uses one fixed order and member positions do not grant BĐH pe
   applyAction(c, owner, "member", { memberId: pending.id, position: "" });
   assert.equal(memberRoleLabel(pending), "Thành viên");
 });
+test("BĐH can assign a week number from a chosen date and keep prior calendar weeks", () => {
+  const { c, pending } = fixture();
+  pending.userId = "academic-week-reader";
+  const member = { userId: pending.userId, displayName: pending.name, email: "" };
+  const draft = { date: "2027-01-06", weekNumber: "1" };
+  assert.equal(academicWeekForClub(c, "2027-01-01"), 18);
+  assert.throws(() => applyAction(c, member, "setAcademicWeekAnchor", draft), /Chỉ BĐH/);
+  assert.throws(() => applyAction(c, owner, "setAcademicWeekAnchor", { ...draft, date: "2027-02-30" }), /ngày hợp lệ/);
+  assert.throws(() => applyAction(c, owner, "setAcademicWeekAnchor", { ...draft, weekNumber: true }), /Số tuần học/);
+  applyAction(c, owner, "setAcademicWeekAnchor", draft);
+  assert.deepEqual(c.academicWeekAnchors, [{ anchorDate: "2027-01-04", anchorWeek: 1 }]);
+  assert.equal(academicWeekForClub(c, "2027-01-03"), 18);
+  assert.equal(academicWeekForClub(c, "2027-01-10"), 1);
+  assert.equal(academicWeekForClub(c, "2027-01-11"), 2);
+  c.days = [1];
+  assert.equal(createDutyShiftSlots(c, "2027-01", 2).find(shift => shift.date === "2027-01-11")?.academicWeek, 2);
+  applyAction(c, owner, "setAcademicWeekAnchor", { date: "2027-01-09", weekNumber: 3 });
+  assert.deepEqual(c.academicWeekAnchors, [{ anchorDate: "2027-01-04", anchorWeek: 3 }]);
+  assert.deepEqual(workspaceView(c, member, 1).club.academicWeekAnchors, c.academicWeekAnchors);
+});
+
 test("Bulletin posts are readable by members, with author editing, safe retries and stale edit checks", () => {
   const { c, pending } = fixture();
   pending.userId = "bulletin-reader";

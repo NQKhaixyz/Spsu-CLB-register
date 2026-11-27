@@ -195,6 +195,10 @@ html:has(.member-profile-dialog[open]) { overflow: hidden; }
   border-top: 1px solid var(--line);
 }
 .event-participant { display: flex; align-items: center; gap: 8px; }
+.academic-week-preview { margin: 0 0 14px; }
+.academic-week-anchors { margin-top: 12px; }
+.academic-week-anchors summary { cursor: pointer; color: var(--green-dark); font-weight: 650; }
+.academic-week-anchors ul { margin-bottom: 0; padding-inline-start: 18px; }
 @media (max-width: 420px) {
   .member-profile-identity { padding-inline-start: 17px; }
   .member-profile-dialog > .member-profile, .member-profile-actions { padding-inline: 17px; }

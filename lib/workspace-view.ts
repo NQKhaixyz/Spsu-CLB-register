@@ -2,7 +2,8 @@ import { addDays, adminMemberIds, rosterAssignments, today, weekId, weeklyScoreF
 import { committeeLabels, memberCommitteeNames } from "./committees";
 import { bulletinView } from "./bulletin";
 import { rankScoreRows } from "./score-ranks";
-import { academicWeekFor, activeAvailabilityDatasetFor, profileAvailability, profileAvailabilityRows } from "./availability";
+import { memberFeedbackView } from "./feedback";
+import { academicWeekForClub, dutyAcademicWeek, profileAvailability, profileAvailabilityRows } from "./availability";
 
 // Show current organization and role wording in the interface and reports,
 // while keeping logins, IDs, and stored history as recorded.
@@ -49,12 +50,8 @@ export function workspaceView(
   revision: number,
 ) {
   const adminIds = adminMemberIds(club);
-  const academicSettings = activeAvailabilityDatasetFor(club)?.settings;
-  // The club's confirmed anchor is week 11, starting Monday 09/11/2026.
-  // Compute before filtering private availability data so every member sees it.
-  const currentAcademicWeek = academicSettings
-    ? academicWeekFor(weekId(), academicSettings)
-    : 11 + Math.floor((Date.parse(weekId()) - Date.parse("2026-11-09")) / 604800000);
+  const currentDay = today();
+  const currentAcademicWeek = academicWeekForClub(club, currentDay);
   const assignedByWeek = new Map<string, Set<string>>();
   for (const schedule of club.schedules) {
     for (const shift of schedule.shifts) {
@@ -70,12 +67,17 @@ export function workspaceView(
       (assignedByWeek.get(w.id)?.has(m.id) || m.joined <= addDays(w.id, 6)))
     .map(m => weeklyScoreFor(club, m.id, w.id)));
   const me = club.members.find((m) => m.userId === user.userId) ?? null;
-  const currentDay = today();
   const currentMonth = currentDay.slice(0, 7);
-  const monthlyAvatarRanks = me?.active ? {
+  const monthStandings = me?.active ? rankScoreRows(monthlyScoreboard(club, currentMonth, currentDay)) : undefined;
+  const monthlyAvatarRanks = monthStandings && {
     month: currentMonth,
-    memberIds: rankScoreRows(monthlyScoreboard(club, currentMonth, currentDay)).slice(0, 10).map(row => row.memberId),
-  } : undefined;
+    memberIds: monthStandings.slice(0, 10).map(row => row.memberId),
+  };
+  const currentMonthScores = monthStandings && {
+    month: currentMonth,
+    rows: monthStandings.map(({ memberId, points, rank }) => ({ memberId, points, rank })),
+  };
+  const feedback = me?.active ? memberFeedbackView(club) : undefined;
   const bulletin = me?.active ? bulletinView(club, me) : undefined;
   const isAdmin = me?.role === "admin" && me.active;
   const personalMonthlyScores = !isAdmin && me
@@ -113,7 +115,10 @@ export function workspaceView(
     delete club.demoArchive;
     delete club.dutyWithdrawal;
   }
-  const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin });
+  const { memberFeedback: _privateFeedback, ...visibleClub } = club;
+  const view = currentTerminology({ club: visibleClub, me, isAdmin: !!isAdmin, setup: !me,
+    identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, currentMonthScores,
+    personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin, feedback });
   delete view.club.bulletinPosts;
   delete view.club.bulletinUploads;
   // Keep stored attendance history, while removal from the visible roster also
@@ -132,6 +137,8 @@ export function workspaceView(
     }
     for (const schedule of group.schedules) {
       for (const shift of schedule.shifts) {
+        const academicWeek = dutyAcademicWeek(club, shift);
+        if (academicWeek !== undefined) shift.academicWeek = academicWeek;
         shift.assignments = visibleAssignments(shift.assignments);
         if (shift.cancellationSnapshot) shift.cancellationSnapshot = visibleAssignments(shift.cancellationSnapshot);
       }

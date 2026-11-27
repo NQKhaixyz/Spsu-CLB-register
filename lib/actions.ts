@@ -42,6 +42,7 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
+import { eraseFeedbackMembers, sendMemberFeedback } from "./feedback";
 import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
 import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
@@ -126,6 +127,10 @@ export function applyAction(
     return;
   }
   check(me?.active, "Tài khoản chưa có hồ sơ hoặc đã ngừng hoạt động.");
+  if (action === "sendFeedback") {
+    sendMemberFeedback(club, me, data);
+    return;
+  }
   if (action === "setMyFont") {
     check(data.memberId === undefined || data.memberId === me.id, "Bạn chỉ có thể đổi phông chữ cho tài khoản của mình.");
     check(isFontId(data.font), "Phông chữ không hợp lệ.");
@@ -279,6 +284,20 @@ export function applyAction(
   }
   if (applyActivityAction(club, me, action, data, note)) return;
   check(admin, "Chỉ BĐH được thực hiện thao tác này.");
+  if (action === "setAcademicWeekAnchor") {
+    const date = typeof data.date === "string" ? data.date : "";
+    const anchorWeek = typeof data.weekNumber === "number" || typeof data.weekNumber === "string" ? Number(data.weekNumber) : NaN;
+    check(validDate(date), "Chọn ngày hợp lệ để đặt mốc tuần học");
+    check(Number.isInteger(anchorWeek) && anchorWeek >= 1 && anchorWeek <= 53, "Số tuần học phải là số nguyên từ 1 đến 53");
+    const anchorDate = weekId(date);
+    check(validDate(anchorDate), "Ngày bắt đầu tuần không hợp lệ");
+    const anchors = club.academicWeekAnchors ?? [];
+    if (anchors.find(anchor => anchor.anchorDate === anchorDate)?.anchorWeek === anchorWeek) return;
+    club.academicWeekAnchors = [...anchors.filter(anchor => anchor.anchorDate !== anchorDate), { anchorDate, anchorWeek }]
+      .sort((a, b) => a.anchorDate.localeCompare(b.anchorDate));
+    note(`Đặt mốc tuần ${anchorWeek} từ ${anchorDate}`);
+    return;
+  }
   const getWeek = () => {
     const w = club.weeks.find((w) => w.id === data.week);
     check(w, "Không tìm thấy tuần.");
@@ -1073,6 +1092,7 @@ export function applyAction(
         schedules: sampleSchedules,
       };
       club.members = club.members.filter((m) => !sampleIds.has(m.id));
+      eraseFeedbackMembers(club, sampleIds);
       club.weeks = [];
       club.schedules = club.schedules.filter(
         (s) => !sampleSchedules.includes(s),
@@ -1125,6 +1145,8 @@ export function applyAction(
       real.availabilityDataset = club.availabilityDataset;
     if (club.activeAvailabilityDataset)
       real.activeAvailabilityDataset = club.activeAvailabilityDataset;
+    const remaining = new Set(real.members.map(member => member.id));
+    eraseFeedbackMembers(club, new Set(club.members.filter(member => !remaining.has(member.id)).map(member => member.id)));
     Object.assign(club, real);
     syncWeeks(club);
     note("Bắt đầu dữ liệu thật");

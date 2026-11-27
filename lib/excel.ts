@@ -16,6 +16,7 @@ import {
   type AvailabilityDetail,
 } from "./club";
 import { memberCommitteeNames } from "./committees";
+import { dutyAcademicWeek } from "./availability";
 import type { Worksheet } from "exceljs";
 
 export async function makeReport(club: Club, month: string, asOf = today()) {
@@ -210,7 +211,7 @@ export async function makeReport(club: Club, month: string, asOf = today()) {
           dutyNames[a.result],
           t.cancelled ? 0 : dutyPointsFor(a, rulesFor(club, month)),
           t.startTime ? `${t.startTime}–${t.endTime}` : "",
-          t.academicWeek ?? "",
+          dutyAcademicWeek(club, t) ?? "",
           [a.availabilityNote, a.note].filter(Boolean).join(" · "),
           a.late ? "Có" : "Không",
           t.cancelled ? 0 : latePenaltyFor(a, rulesFor(club, month)),

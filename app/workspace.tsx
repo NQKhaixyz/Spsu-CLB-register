@@ -23,6 +23,8 @@ import DutyEvidenceAction from "./duty-evidence";
 import DutyWeekActions from "./duty-week-actions";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
+import { FeedbackPage, type SubmitFeedback } from "./feedback";
+import { AcademicWeekSettings } from "./academic-week-settings";
 import { isBulletinId } from "../lib/bulletin";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
 import { activeAvailabilityDatasetFor, availabilityForDuty, profileAvailability, profileAvailabilityRows } from "../lib/availability";
@@ -128,6 +130,7 @@ type Tab =
   | "requests"
   | "duties"
   | "bulletin"
+  | "feedback"
   | "links"
   | "members"
   | "reports"
@@ -145,6 +148,7 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
+  feedback: { icon: MessageSquare, sections: ["feedback"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
@@ -203,12 +207,15 @@ export default function Workspace() {
   const memberIdentity = useMemo(() => {
     const members = new Map((view?.club.members ?? []).map(member => [member.id, member]));
     const scores = (view?.weeklyScores ?? []).filter(row => row.week === currentMonday && members.has(row.memberId));
-    const leaders = rankScoreRows(scores.map(row => ({ ...row, name: members.get(row.memberId)?.name ?? "" }))).slice(0, 5);
-    const weeklyRanks = new Map(leaders.map(row => [row.memberId, row.rank]));
+    const weeklyStandings = rankScoreRows(scores.map(row => ({ ...row, name: members.get(row.memberId)?.name ?? "" })));
+    const weeklyRanks = new Map(weeklyStandings.slice(0, 5).map(row => [row.memberId, row.rank]));
+    const weeklyScores = new Map(weeklyStandings.map(({ memberId, points, rank }) => [memberId, { memberId, points, rank }]));
     const monthRanking = view?.monthlyAvatarRanks;
     const monthlyRanks = new Map((monthRanking?.month === currentMonth ? monthRanking.memberIds : [])
       .map((id, index) => [id, index + 1]));
-    return { members, weeklyRanks, monthlyRanks, rankMonth: currentMonth, openProfile };
+    const monthScores = view?.currentMonthScores;
+    const monthlyScores = new Map((monthScores?.month === currentMonth ? monthScores.rows : []).map(row => [row.memberId, row]));
+    return { members, weeklyRanks, monthlyRanks, weeklyScores, monthlyScores, rankWeek: currentMonday, rankMonth: currentMonth, openProfile };
   }, [view, currentMonday, currentMonth, openProfile]);
   const [avatarEditing, setAvatarEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -261,7 +268,7 @@ export default function Workspace() {
     }
   }, []);
   useEffect(() => {
-    if (tab !== "members") return;
+    if (tab !== "members" && tab !== "feedback" && !profileId) return;
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
@@ -400,6 +407,7 @@ export default function Workspace() {
     data: Record<string, unknown>,
     message = "Đã lưu thay đổi",
     close = true,
+    onError?: (message: string) => void,
   ) {
     if (busyRef.current) return false;
     busyRef.current = true;
@@ -417,13 +425,16 @@ export default function Workspace() {
       notify(result.notice ?? message);
       return true;
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Không lưu được dữ liệu", true);
+      const error = e instanceof Error ? e.message : "Không lưu được dữ liệu";
+      if (onError) onError(displayMessage(error));
+      else notify(error, true);
       return false;
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
   }
+  const submitFeedback: SubmitFeedback = (draft, onError) => act("sendFeedback", draft, "Đã gửi feedback", false, onError);
   function dismissBulletinLink() {
     const url = new URL(window.location.href);
     if (!url.searchParams.has("tin")) return;
@@ -2701,6 +2712,8 @@ export default function Workspace() {
           </div>
         </div>
         <div className="settings-layout">
+          <AcademicWeekSettings club={club} busy={busy}
+            onSave={(date, weekNumber) => act("setAcademicWeekAnchor", { date, weekNumber }, "Đã lưu mốc tuần học", false)} />
           <section className="panel settings-card">
             <PanelHead title="Thông tin & ngày trực" />
             <form
@@ -3372,6 +3385,8 @@ export default function Workspace() {
             <BulletinBoard key={linkedBulletin ?? "feed"} posts={view.bulletin?.posts ?? []} nextChangeAt={view.bulletin?.nextChangeAt}
               me={me} isAdmin={isAdmin} busy={busy} linkedPostId={linkedBulletin} onDismissLink={dismissBulletinLink}
               onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
+          ) : activeTab === "feedback" ? (
+            <FeedbackPage entries={view.feedback ?? []} busy={busy} onSubmit={submitFeedback} />
           ) : activeTab === "links" ? (
             <div className="bulletin-links">
             <SharedLinks
@@ -3426,6 +3441,9 @@ export default function Workspace() {
         member={isAdmin ? { ...profileMember, availability: profileAvailability(club, profileMember) } : profileMember}
         details={profileRows}
         scheduleOnly={profile.scheduleOnly}
+        feedback={(view.feedback ?? []).filter(item => item.recipientIds.includes(profileMember.id))}
+        busy={busy}
+        onSubmitFeedback={submitFeedback}
         onClose={closeProfile}
         onEditAvatar={profileMember.id === me.id ? () => { closeProfile(); setAvatarEditing(true); } : undefined}
       />}

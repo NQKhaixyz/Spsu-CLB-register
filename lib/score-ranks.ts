@@ -1,3 +1,5 @@
+export type ScoreStanding = { memberId: string; points: number; rank: number };
+
 const monthlyTiers = [
   { id: "challenger", label: "Thách đấu" },
   { id: "grandmaster", label: "Đại cao thủ" },

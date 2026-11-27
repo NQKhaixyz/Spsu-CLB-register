@@ -2,11 +2,15 @@
 
 import { createContext, Fragment, useContext, type ReactNode } from "react";
 import type { Member } from "../lib/club";
+import type { ScoreStanding } from "../lib/score-ranks";
 
 type MemberIdentity = {
   members: ReadonlyMap<string, Member>;
   weeklyRanks: ReadonlyMap<string, number>;
   monthlyRanks: ReadonlyMap<string, number>;
+  weeklyScores: ReadonlyMap<string, ScoreStanding>;
+  monthlyScores: ReadonlyMap<string, ScoreStanding>;
+  rankWeek: string;
   rankMonth: string;
   openProfile: (memberId: string) => void;
 };

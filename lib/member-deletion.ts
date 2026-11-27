@@ -2,6 +2,7 @@ import { personKey } from "./availability";
 import type { Assignment, AvailabilityDataset, Club, Member, Shift } from "./club";
 import { eventPhotoId } from "./event-evidence";
 import { bulletinAuthorId } from "./bulletin";
+import { eraseFeedbackMembers } from "./feedback";
 
 export function canDeleteMember(club: Club, admin: Member, target: Member) {
   return admin.active && admin.role === "admin" && target.id !== admin.id &&
@@ -96,6 +97,7 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   );
   const eventPhotos = new Set<string>();
   removeFromHistory(club, member.id, eventPhotos);
+  eraseFeedbackMembers(club, new Set([member.id]));
   if (club.bulletinPosts) club.bulletinPosts = club.bulletinPosts.filter(post => bulletinAuthorId(club, post) !== member.id);
   if (club.bulletinUploads) club.bulletinUploads = club.bulletinUploads.filter(upload => upload.uploaderId !== member.id);
   for (const post of club.bulletinPosts ?? []) {
