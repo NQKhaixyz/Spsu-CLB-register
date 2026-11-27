@@ -1,6 +1,7 @@
 import { dateLabel, type Member, type AvailabilityDetail } from "../lib/club";
 import { memberCommitteeNames } from "../lib/committees";
 import { memberRoleLabel } from "../lib/member-positions";
+import { Avatar } from "./ui";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 
@@ -25,9 +26,14 @@ export function MemberProfile({ member, details, scheduleOnly }: {
     ["Nguyện vọng trực thêm", member.extraDuties ? "Có" : "Không"],
   ];
   return <div className="member-profile">
-    {!scheduleOnly && <dl className="profile-fields">{fields.map(([label, value]) =>
-      <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
-    )}</dl>}
+    {!scheduleOnly && (
+      <>
+        <Avatar name={member.name} photoId={member.avatarId} size="large" />
+        <dl className="profile-fields">{fields.map(([label, value]) =>
+          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+        )}</dl>
+      </>
+    )}
     <h3>Khung giờ rảnh</h3>
     <dl className="profile-fields">
       <div><dt>Sáng</dt><dd>{availableDays(member.availability, "am")}</dd></div>

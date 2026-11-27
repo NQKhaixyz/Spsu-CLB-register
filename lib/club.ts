@@ -25,6 +25,7 @@ export type Member = CommitteeMembership & {
   email?: string;
   role: "admin" | "member";
   position?: MemberPosition;
+  avatarId?: string;
   fontPreference?: FontId;
   sidebarOrder?: (SidebarTab | "overview")[];
   active: boolean;

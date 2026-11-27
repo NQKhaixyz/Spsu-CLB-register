@@ -10,6 +10,7 @@ import { resolveFont } from "../lib/interface-fonts";
 import { sidebarTabs, sidebarTabLabels, type SidebarTab } from "../lib/workspace-navigation";
 import { isMemberPosition, memberPositions, memberPositionLabels, memberRoleLabel } from "../lib/member-positions";
 import { FontSettings } from "./font-settings";
+import { AvatarEditor } from "./avatar-editor";
 import { MemberMonthlyScoreboard, Scoreboard, type ScoreScope } from "./scoreboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
@@ -46,6 +47,7 @@ import {
   Coffee,
   FileSpreadsheet,
   HeartHandshake,
+  ImagePlus,
   LayoutDashboard,
   Leaf,
   Link2,
@@ -130,9 +132,11 @@ type Tab =
 type Modal = {
   title: string;
   description?: string;
-  content: ReactNode;
   wide?: boolean;
-};
+} & (
+  | { content: ReactNode; profile?: never }
+  | { profile: { memberId: string; scheduleOnly: boolean }; content?: never }
+);
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
@@ -185,12 +189,15 @@ export default function Workspace() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [modal, setModal] = useState<Modal | null>(null);
+  const profileId = modal?.profile?.memberId;
+  const [avatarEditing, setAvatarEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(
     null,
   );
   const closeModal = useCallback(() => setModal(null), []);
+  const closeAvatar = useCallback(() => setAvatarEditing(false), []);
   const notify = (text: string, error = false) => setToast({ text: displayMessage(text), error });
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -217,6 +224,12 @@ export default function Workspace() {
     load();
   }, [load]);
   useEffect(() => {
+    if (tab !== "members") return;
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load, tab, profileId]);
+  useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), toast.error ? 7500 : 4000);
     return () => clearTimeout(t);
@@ -232,6 +245,7 @@ export default function Workspace() {
       setView(null);
       setAuth(true);
       closeModal();
+      closeAvatar();
     }
   }
   async function savePassword(
@@ -469,6 +483,7 @@ export default function Workspace() {
   const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
   const currentWeek = club.weeks.find((w) => w.id === weekId())!;
   const findMember = (id: string) => club.members.find((m) => m.id === id);
+  const profileMember = profileId ? findMember(profileId) : undefined;
   const pending = club.weeks.flatMap((w) =>
     !w.closed && !w.cancelled
       ? w.entries
@@ -1295,6 +1310,7 @@ export default function Workspace() {
                 <div className="request-person">
                   <Avatar
                     name={findMember(e.memberId)?.name ?? "Thành viên"}
+                    photoId={findMember(e.memberId)?.avatarId}
                     index={i + 2}
                   />
                   <div>
@@ -1437,7 +1453,7 @@ export default function Workspace() {
                     </td>
                     <td>
                       <div className="person-cell">
-                        <Avatar name={m.name} index={club.members.indexOf(m)} />
+                        <Avatar name={m.name} photoId={m.avatarId} index={club.members.indexOf(m)} />
                         <span>
                           <strong>{m.name}</strong>
                           {e.reason ? (
@@ -1950,6 +1966,7 @@ export default function Workspace() {
                                             <div className="person-cell">
                                               <Avatar
                                                 name={m.name}
+                                                photoId={m.avatarId}
                                                 index={position + 1}
                                               />
                                               <div>
@@ -2234,7 +2251,7 @@ export default function Workspace() {
                       .sort((a, b) => b.n - a.n)
                       .map(({ m, n }, i) => (
                         <div key={m.id}>
-                          <Avatar name={m.name} size="small" index={i} />
+                          <Avatar name={m.name} photoId={m.avatarId} size="small" index={i} />
                           <span>
                             {m.name}
                             {m.extraDuties ? (
@@ -2448,7 +2465,7 @@ export default function Workspace() {
                   <tr key={m.id}>
                     <td>
                       <div className="person-cell">
-                        <Avatar name={m.name} index={i} />
+                        <Avatar name={m.name} photoId={m.avatarId} index={i} />
                         <span>
                           <strong>{m.name}</strong>
                           <small>{m.email || "Chưa có email liên hệ"}</small>
@@ -2516,7 +2533,7 @@ export default function Workspace() {
                         title: m.name,
                         description: scheduleOnly ? "Lịch rảnh" : "Hồ sơ thành viên",
                         wide: true,
-                        content: <MemberProfile member={m} details={view?.directoryAvailability?.[m.id] ?? []} scheduleOnly={scheduleOnly} />,
+                        profile: { memberId: m.id, scheduleOnly },
                       })}>{scheduleOnly ? "Xem lịch rảnh" : "Xem hồ sơ"} <ChevronRight size={14} /></button>}
                     </td>
                   </tr>
@@ -2645,7 +2662,7 @@ export default function Workspace() {
                   <tr key={s.m.id}>
                     <td>
                       <div className="person-cell">
-                        <Avatar name={s.m.name} index={i} />
+                        <Avatar name={s.m.name} photoId={s.m.avatarId} index={i} />
                         <strong>{s.m.name}</strong>
                       </div>
                     </td>
@@ -3012,15 +3029,19 @@ export default function Workspace() {
     return (
       <>
         <div className="page-heading">
-          <div>
-            <span className="eyebrow">{me!.name}</span>
-            <h1>
-              Góc của tôi
-            </h1>
-            <p>Đăng ký họp và xem những đóng góp của bạn tại đây</p>
+          <div className="personal-identity">
+            <Avatar name={me!.name} photoId={me!.avatarId} size="large" />
+            <div>
+              <span className="eyebrow">{me!.name}</span>
+              <h1>Góc của tôi</h1>
+              <p>Đăng ký họp và xem những đóng góp của bạn tại đây</p>
+            </div>
           </div>
           <div className="heading-actions">
             <Badge status="neutral">MSSV {me!.studentId}</Badge>
+            <Button variant="secondary" onClick={() => setAvatarEditing(true)}>
+              <ImagePlus size={16} aria-hidden="true" /> Đổi ảnh đại diện
+            </Button>
             {!isAdmin && <Button variant="secondary" onClick={() => { setScoreScope("team"); go("weeklyScores"); }}>Xem điểm toàn Đội</Button>}
           </div>
         </div>
@@ -3293,7 +3314,7 @@ export default function Workspace() {
             <span>Hướng dẫn sử dụng</span>
           </button>
           <div className="sidebar-user">
-            <Avatar name={me.name} />
+            <Avatar name={me.name} photoId={me.avatarId} />
             <div>
               <strong>{me.name}</strong>
               <span>{isAdmin ? "Ban điều hành" : "Thành viên"}</span>
@@ -3331,7 +3352,7 @@ export default function Workspace() {
           </div>
           <div className="topbar-right">
             <span className="today-label">{dateLabel(today(), true)}</span>
-            <MusicPlayer obscured={Boolean(modal)} />
+            <MusicPlayer obscured={Boolean(modal) || avatarEditing} />
             <button
               className="icon-button"
               aria-label="Cập nhật dữ liệu"
@@ -3354,7 +3375,15 @@ export default function Workspace() {
               </button>
             ) : null}
             <span className="topbar-divider" />
-            <Avatar name={me.name} size="small" />
+            <button
+              className="icon-button avatar-trigger"
+              type="button"
+              title="Đổi ảnh đại diện"
+              aria-label="Đổi ảnh đại diện"
+              onClick={() => setAvatarEditing(true)}
+            >
+              <Avatar name={me.name} photoId={me.avatarId} size="small" />
+            </button>
             <span className="topbar-role">
               {isAdmin ? "Ban điều hành" : "Thành viên"}
               <ChevronDown size={13} />
@@ -3506,15 +3535,32 @@ export default function Workspace() {
       </div>
       {modal ? (
         <Dialog
-          title={modal.title}
+          title={profileMember?.name ?? modal.title}
           description={modal.description}
           wide={modal.wide}
           onClose={closeModal}
           busy={busy}
         >
-          {modal.content}
+          {modal.profile ? (
+            profileMember
+              ? <MemberProfile member={profileMember} details={view.directoryAvailability?.[profileMember.id] ?? []} scheduleOnly={modal.profile.scheduleOnly} />
+              : <Empty title="Hồ sơ không còn khả dụng" />
+          ) : modal.content}
         </Dialog>
       ) : null}
+      {avatarEditing && (
+        <AvatarEditor
+          key={me.id}
+          member={me}
+          onClose={closeAvatar}
+          onRefresh={load}
+          onSaved={(updated, message) => {
+            setView(current => current && current.me?.id === updated.me?.id && current.revision <= updated.revision ? updated : current);
+            closeAvatar();
+            notify(message);
+          }}
+        />
+      )}
       {toast ? (
         <div
           className={`toast ${toast.error ? "error" : ""}`}

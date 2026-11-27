@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { Identity } from "./actions";
+import { avatarKey } from "./avatar";
 import { syncWeeks } from "./club";
 import { queueDutyPhotoDeletions } from "./duty-photo-storage";
 import { eventPhotoKey } from "./event-photo-storage";
@@ -40,8 +41,10 @@ export async function deleteMember(identity: Identity, data: Record<string, unkn
           .bind(clean, archived.id, updated, payload));
       }
     }
-    if (eventPhotos.size) {
-      statements.push(queuePhotoDeletions(db, [...eventPhotos].map(eventPhotoKey), updated, payload));
+    const photos = [...eventPhotos].map(eventPhotoKey);
+    if (member.avatarId) photos.push(avatarKey(member.avatarId));
+    if (photos.length) {
+      statements.push(queuePhotoDeletions(db, photos, updated, payload));
     }
     statements.push(
       queueDutyPhotoDeletions(db, { memberId: member.id }, updated, payload),

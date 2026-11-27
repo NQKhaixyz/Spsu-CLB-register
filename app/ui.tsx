@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { statusNames, type Registration } from "../lib/club";
+import { avatarEndpoint } from "../lib/avatar";
 
 export function Brand() {
   return (
@@ -29,11 +30,17 @@ export function Avatar({
   name,
   size = "",
   index = 0,
+  photoId,
+  previewUrl,
 }: {
   name: string;
   size?: string;
   index?: number;
+  photoId?: string;
+  previewUrl?: string;
 }) {
+  const src = previewUrl ?? (photoId ? `${avatarEndpoint}?photo=${encodeURIComponent(photoId)}` : undefined);
+  const [failedSrc, setFailedSrc] = useState<string>();
   return (
     <span className={`avatar ${size} color-${index % 6}`} aria-hidden="true">
       {name
@@ -42,6 +49,11 @@ export function Avatar({
         .map((n) => n[0])
         .join("")
         .toUpperCase()}
+      {src && src !== failedSrc && (
+        // The authenticated image and upload preview use their original URLs.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img key={src} src={src} alt="" loading="lazy" onError={() => setFailedSrc(src)} />
+      )}
     </span>
   );
 }
@@ -213,14 +225,12 @@ export function Dialog({
     const focusables = () =>
       Array.from(
         ref.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]',
+          'button:not([disabled]),a[href],input:not([disabled]):not([hidden]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]',
         ) ?? [],
       );
     const timer = setTimeout(() => {
-      (
-        ref.current?.querySelector<HTMLElement>("input,textarea,select") ??
-        focusables()[0]
-      )?.focus();
+      const list = focusables();
+      (list.find(element => element.matches("input,textarea,select")) ?? list[0])?.focus();
     }, 30);
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onClose();
@@ -296,10 +306,12 @@ export function Field({
 }
 export function FormFooter({
   busy,
+  disabled,
   label = "Lưu thay đổi",
   onCancel,
 }: {
   busy?: boolean;
+  disabled?: boolean;
   label?: string;
   onCancel: () => void;
 }) {
@@ -308,7 +320,7 @@ export function FormFooter({
       <Button variant="secondary" onClick={onCancel} disabled={busy}>
         Hủy
       </Button>
-      <Button type="submit" disabled={busy}>
+      <Button type="submit" disabled={busy || disabled}>
         {busy ? (
           <LoaderCircle className="spin" size={16} />
         ) : (

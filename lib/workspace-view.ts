@@ -80,8 +80,8 @@ export function workspaceView(
       if (rows.length) directoryAvailability[m.id] = rows.map(({ day, period, weeks, note }) => ({ day, period, weeks, note }));
       const availability = profileAvailability(club, m, rows);
       if (m.id === me?.id) return { ...m, availability };
-      const { id, name, studentId, email, role, position, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId } = m;
-      return { id, name, studentId, email, role, position, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId, availability };
+      const { id, name, studentId, email, role, position, avatarId, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId } = m;
+      return { id, name, studentId, email, role, position, avatarId, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId, availability };
     });
     club.weeks = club.weeks.map(({ closingSnapshot, ...w }) => ({ ...w, entries: w.entries.filter((e) => e.memberId === me?.id) }));
     club.schedules = club.schedules.filter((s) => s.shifts.some(shift => isShiftPublished(s, shift))).map(({ pendingDutyWeek, ...s }) => ({

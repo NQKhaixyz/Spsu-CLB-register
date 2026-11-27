@@ -39,8 +39,11 @@ export async function readBody(request: Request, type: string, limit: number, to
   return bytes.subarray(0, length);
 }
 
-export async function readPhoto(request: Request) {
-  const bytes = await readBody(request, "image/jpeg", maxPhotoBytes, "Ảnh vượt quá 2 MB.");
+export async function readPhoto(
+  request: Request,
+  { maxBytes = maxPhotoBytes, tooLarge = "Ảnh vượt quá 2 MB." } = {},
+) {
+  const bytes = await readBody(request, "image/jpeg", maxBytes, tooLarge);
   const { length } = bytes;
   if (length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff ||
       bytes[length - 2] !== 0xff || bytes[length - 1] !== 0xd9) {
