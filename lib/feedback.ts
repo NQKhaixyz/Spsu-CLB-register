@@ -1,4 +1,5 @@
 import type { Club, Member } from "./club";
+import { addFeedbackNotification, clearFeedbackConsentNotifications, type StoredFeedbackNotification } from "./feedback-notifications";
 
 export const feedbackBodyLimit = 2000;
 export const feedbackActionWindow = 24 * 60 * 60 * 1000;
@@ -23,6 +24,7 @@ export type StoredFeedback = FeedbackDraft & {
   recalledAt?: number;
   replies?: FeedbackReply[];
   approvedBy?: string[];
+  notifications?: StoredFeedbackNotification[];
   version?: number;
   deliveryId?: string;
 };
@@ -73,6 +75,7 @@ function splitFeedback(item: StoredFeedback): StoredFeedback[] {
     recipientIds: [recipientId],
     deliveryId: item.deliveryId ?? item.id,
     approvedBy: undefined,
+    notifications: undefined,
     replies: item.replies?.filter(reply => reply.memberId === item.authorId || reply.memberId === recipientId),
   }));
 }
@@ -109,10 +112,15 @@ export function sendMemberFeedback(club: Club, author: Member, data: Record<stri
     return;
   }
   const createdAt = Date.now();
-  (club.memberFeedback ??= []).unshift(...recipientIds.map((recipientId, index) => ({
-    id: index === 0 ? id : crypto.randomUUID(), deliveryId: id,
-    recipientIds: [recipientId], anonymous, body, authorId: author.id, createdAt,
-  })));
+  const conversations = recipientIds.map((recipientId, index) => {
+    const item: StoredFeedback = {
+      id: index === 0 ? id : crypto.randomUUID(), deliveryId: id,
+      recipientIds: [recipientId], anonymous, body, authorId: author.id, createdAt,
+    };
+    addFeedbackNotification(item, author.id, "received", createdAt);
+    return item;
+  });
+  (club.memberFeedback ??= []).unshift(...conversations);
 }
 
 export function editMemberFeedback(club: Club, author: Member, data: Record<string, unknown>, now = Date.now()) {
@@ -140,6 +148,7 @@ export function recallMemberFeedback(club: Club, author: Member, id: unknown, no
   item.recipientIds = [];
   delete item.replies;
   delete item.approvedBy;
+  delete item.notifications;
   item.recalledAt = now;
 }
 
@@ -149,6 +158,7 @@ function requireOpenFeedback(item: StoredFeedback, now: number) {
 
 function resetFeedbackConsent(item: StoredFeedback) {
   delete item.approvedBy;
+  clearFeedbackConsentNotifications(item);
   item.version = (item.version ?? 0) + 1;
 }
 
@@ -168,6 +178,7 @@ export function replyToFeedback(club: Club, member: Member, data: Record<string,
   }
   (item.replies ??= []).push({ id, memberId: member.id, body, createdAt: now });
   resetFeedbackConsent(item);
+  addFeedbackNotification(item, member.id, "reply", now);
 }
 
 export function setFeedbackConsent(club: Club, member: Member, data: Record<string, unknown>, now = Date.now()) {
@@ -182,8 +193,14 @@ export function setFeedbackConsent(club: Club, member: Member, data: Record<stri
     throw new Error("Cuộc trao đổi vừa thay đổi. Cập nhật dữ liệu rồi xem lại trước khi đồng ý công khai");
   }
   const approvals = new Set(item.approvedBy);
-  if (data.approved) approvals.add(member.id);
-  else approvals.delete(member.id);
+  if (approvals.has(member.id) === data.approved) return;
+  if (data.approved) {
+    approvals.add(member.id);
+    addFeedbackNotification(item, member.id, "consent", now);
+  } else {
+    approvals.delete(member.id);
+    clearFeedbackConsentNotifications(item, member.id);
+  }
   item.approvedBy = [...approvals];
 }
 

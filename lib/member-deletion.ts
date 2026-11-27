@@ -44,7 +44,7 @@ function removeFromHistory(history: MemberHistory, id: string, eventPhotos: Set<
     if (!history[field]) continue;
     history[field] = history[field].filter(row => {
       if (row.memberId === id) {
-        if (row.evidence && eventPhotoId.test(row.evidence.id)) eventPhotos.add(row.evidence.id);
+        if (row.evidence && !row.evidence.linkUrl && eventPhotoId.test(row.evidence.id)) eventPhotos.add(row.evidence.id);
         return false;
       }
       if (row.reviewedBy === id) delete row.reviewedBy;

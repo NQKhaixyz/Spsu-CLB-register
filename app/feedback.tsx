@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MessageSquare, Plus, UserRound } from "lucide-react";
 import { personKey } from "../lib/availability";
 import { uid } from "../lib/club";
@@ -122,8 +122,8 @@ function EditFeedbackForm({ item, busy, onEdit, onClose }: {
   </form>;
 }
 
-function FeedbackConversation({ item, openForActions, busy, actions }: {
-  item: FeedbackView; openForActions: boolean; busy: boolean; actions: FeedbackConversationActions;
+function FeedbackConversation({ item, openForActions, busy, actions, initiallyOpen }: {
+  item: FeedbackView; openForActions: boolean; busy: boolean; actions: FeedbackConversationActions; initiallyOpen: boolean;
 }) {
   const [draftId, setDraftId] = useState(uid);
   const [error, setError] = useState("");
@@ -146,7 +146,7 @@ function FeedbackConversation({ item, openForActions, busy, actions }: {
   }
 
   if (!item.replies.length && !canReply && !consent) return null;
-  return <details className="feedback-conversation">
+  return <details className="feedback-conversation" open={initiallyOpen || undefined}>
     <summary>Phản hồi{item.replies.length > 0 && ` · ${item.replies.length}`}</summary>
     {item.replies.length > 0 && <ol className="feedback-messages">
       {item.replies.map(reply => <li key={reply.id}>
@@ -180,9 +180,9 @@ function FeedbackConversation({ item, openForActions, busy, actions }: {
   </details>;
 }
 
-function FeedbackList({ entries, busy, onEdit, onRecall, conversationActions, linkRecipients = false }: {
+function FeedbackList({ entries, busy, onEdit, onRecall, conversationActions, linkRecipients = false, expandConversation = false }: {
   entries: FeedbackView[]; busy: boolean; onEdit: EditFeedback; onRecall: RecallFeedback;
-  conversationActions: FeedbackConversationActions; linkRecipients?: boolean;
+  conversationActions: FeedbackConversationActions; linkRecipients?: boolean; expandConversation?: boolean;
 }) {
   const identity = useMemberIdentity();
   const [limit, setLimit] = useState(pageSize);
@@ -249,7 +249,8 @@ function FeedbackList({ entries, busy, onEdit, onRecall, conversationActions, li
                   setAction({ kind: "recall", id: item.id });
                 }}>Xóa feedback</button>
               </div>}
-              {!confirming && <FeedbackConversation item={item} openForActions={openForActions} busy={busy} actions={conversationActions} />}
+              {!confirming && <FeedbackConversation item={item} openForActions={openForActions} busy={busy}
+                actions={conversationActions} initiallyOpen={expandConversation} />}
             </>}
           </article>
         </li>;
@@ -259,12 +260,30 @@ function FeedbackList({ entries, busy, onEdit, onRecall, conversationActions, li
   </>;
 }
 
-export function FeedbackPage({ entries, busy, onSubmit, onEdit, onRecall, conversationActions }: {
+export function FeedbackPage({ entries, busy, onSubmit, onEdit, onRecall, conversationActions, focusId, focusPending, focusError, onBack }: {
   entries: FeedbackView[]; busy: boolean; onSubmit: SubmitFeedback; onEdit: EditFeedback; onRecall: RecallFeedback;
   conversationActions: FeedbackConversationActions;
+  focusId?: string; focusPending: boolean; focusError: string; onBack: () => void;
 }) {
   const [composing, setComposing] = useState(false);
+  const focusedHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusId) focusedHeading.current?.focus();
+  }, [focusId]);
   const close = () => setComposing(false);
+  if (focusId) {
+    const entry = entries.find(item => item.id === focusId);
+    return <div className="feedback-page">
+      <div className="page-heading">
+        <h1 ref={focusedHeading} tabIndex={-1}>Cuộc trao đổi</h1>
+        <Button variant="secondary" onClick={onBack}>Về danh sách feedback</Button>
+      </div>
+      {focusPending ? <p role="status">Đang mở cuộc trao đổi…</p>
+        : entry ? <FeedbackList entries={[entry]} busy={busy} onEdit={onEdit} onRecall={onRecall}
+          conversationActions={conversationActions} linkRecipients expandConversation />
+        : <Empty title={focusError ? "Chưa mở được cuộc trao đổi" : "Cuộc trao đổi không còn hiển thị"} icon={MessageSquare} />}
+    </div>;
+  }
   return (
     <div className="feedback-page">
       <div className="page-heading">

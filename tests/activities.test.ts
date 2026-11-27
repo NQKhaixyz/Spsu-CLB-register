@@ -4,7 +4,7 @@ import { applyAction } from "../lib/actions";
 import { createClub, syncWeeks, today, weekId, addDays, scoreFor, weeklyScoreFor, type Member } from "../lib/club";
 import { activityName, activityScoreFor, ratedActivityKinds, visibleActivityKinds, activityUnitPoints, activityPointsFor, eventEvidenceExpiry, isEventOpen, reviewEventRegistration } from "../lib/activity";
 import { committeeKinds } from "../lib/committees";
-import { detachExpiredEventPhotos, eventEvidenceTarget, eventEvidenceView } from "../lib/event-evidence";
+import { detachExpiredEventPhotos, eventEvidenceLink, eventEvidenceTarget, eventEvidenceView } from "../lib/event-evidence";
 import { eventPhotoKey, purgeExpiredEventPhotos } from "../lib/event-photo-storage";
 import { monthlyScoreboard, workspaceView } from "../lib/workspace-view";
 import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
@@ -203,7 +203,7 @@ test("Older visit registrations keep their points until the total is reviewed on
   const pending = club.activityRegistrations![0];
   pending.evidence = { id: crypto.randomUUID(), submittedAt: Date.now() };
   const count = { eventId: event.id, memberId: pending.memberId, quantity: 5, previousQuantity: 0 };
-  assert.throws(() => applyAction(club, admin, "saveEventRounds", count), /duyệt ảnh/);
+  assert.throws(() => applyAction(club, admin, "saveEventRounds", count), /duyệt minh chứng/);
   const approved = { ...pending, id: "old-visit-approved", status: "confirmed" as const, evidence: undefined };
   const secondPhoto = { ...pending, id: "old-visit-with-photo", evidence: { ...pending.evidence, id: crypto.randomUUID() } };
   club.activityRegistrations!.push(approved, secondPhoto);
@@ -434,6 +434,45 @@ test("Self registrations for evidence events require review of the current photo
   assert.equal(eventEvidenceView(row, event, owner).canUpload, false);
   assert.equal(activityScoreFor(c, owner.id, row.week, true).activityPoints.event, 6);
   assert.equal(activityScoreFor(c, owner.id, row.date.slice(0, 7)).activityCounts.event, 1);
+});
+
+test("Event evidence links are validated, scoped to the registration and expire without removing earned points", () => {
+  const linkUrl = eventEvidenceLink("  https://example.org/minh-chung?q=thu%20nghiem  ");
+  assert.equal(linkUrl, "https://example.org/minh-chung?q=thu%20nghiem");
+  assert.equal(eventEvidenceLink("javascript:alert(1)"), null);
+  assert.equal(eventEvidenceLink("https://user:secret@example.org/"), null);
+  assert.equal(eventEvidenceLink("https://example.org/" + "x".repeat(2048)), null);
+  const c = fixture();
+  const event = createEvent(c, { ...eventData(), requiresEvidence: true });
+  const row = register(c);
+  const [reviewer, owner, other] = c.members;
+  const evidenceId = crypto.randomUUID();
+  row.evidence = { id: evidenceId, submittedAt: Date.now(), linkUrl: linkUrl! };
+  assert.equal(eventEvidenceTarget(c, other, row.id), null);
+  assert.equal(eventEvidenceView(row, event, owner).evidence?.linkUrl, linkUrl);
+  assert.equal(workspaceView(c, admin, 1).club.activityRegistrations?.[0].evidence?.linkUrl, undefined);
+  assert.equal(eventEvidenceView(row, event, reviewer).evidence?.linkUrl, linkUrl);
+  assert.equal(eventEvidenceView(row, event, reviewer).canReview, true);
+  reviewEventRegistration(c, reviewer, { id: row.id, confirmed: true }, () => {}, evidenceId);
+  const expires = eventEvidenceExpiry(event);
+  assert.equal(eventEvidenceView(row, event, owner, expires).evidence, null);
+  const pruned = detachExpiredEventPhotos(c, expires);
+  assert.equal(pruned.changed, true);
+  assert.deepEqual([...pruned.detached], []);
+  assert.equal(row.evidence, undefined);
+  assert.equal(activityScoreFor(c, owner.id, row.week, true).activityPoints.event, 6);
+});
+
+test("Formatted event descriptions survive editing by clients without the format field", () => {
+  const c = fixture();
+  const data = { ...eventData(), description: "**Thông báo** _quan trọng_", descriptionFormat: "emphasis" };
+  applyAction(c, admin, "createEvent", data);
+  const event = c.events![0];
+  assert.equal(event.descriptionFormat, "emphasis");
+  applyAction(c, admin, "editEvent", { ...data, descriptionFormat: undefined, name: "Tên đã sửa" });
+  assert.equal(event.description, data.description);
+  assert.equal(event.descriptionFormat, "emphasis");
+  assert.throws(() => applyAction(c, admin, "editEvent", { ...data, descriptionFormat: "html" }), /Định dạng mô tả/);
 });
 
 test("BĐH can directly credit a roster member without an account, registration or photo after an event ends", async () => {

@@ -415,6 +415,7 @@ input[type="checkbox"]:disabled {
   margin-left: 232px;
 }
 .topbar {
+  position: relative;
   height: 73px;
   border-bottom: 1px solid var(--line);
   background: #fffffff0;
@@ -476,19 +477,6 @@ input[type="checkbox"]:disabled {
 .icon-button:hover {
   background: #f0f3ea;
   color: var(--green);
-}
-.notification-button {
-  position: relative;
-}
-.notification-button i {
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #ba9361;
-  right: 5px;
-  top: 4px;
-  box-shadow: 0 0 0 2px #fff;
 }
 .main-content {
   max-width: 1580px;

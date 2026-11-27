@@ -1,11 +1,10 @@
 "use client";
 
-import { Camera, ImagePlus, Image as ImageIcon } from "lucide-react";
+import { Camera, ImagePlus, Image as ImageIcon, Link2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { isEventRoundQuantity, isPointAmount } from "../lib/activity";
 import type { EvidenceAssignment } from "../lib/duty-evidence";
-import type { EventEvidenceView } from "../lib/event-evidence";
-import type { PhotoEvidenceView } from "../lib/photo-evidence";
+import { eventEvidenceLinkLimit, type EventEvidenceView } from "../lib/event-evidence";
 import { preparePhoto } from "./prepare-photo";
 import { Badge, Button, Field } from "./ui";
 import { displayMessage } from "../lib/display-message";
@@ -23,7 +22,7 @@ const evidenceTime = new Intl.DateTimeFormat("vi-VN", {
 
 async function evidenceRequest(url: string, options?: RequestInit) {
   const response = await fetch(url, options);
-  const data = await response.json() as PhotoEvidenceView<"attached"> & { error?: string };
+  const data = await response.json() as EventEvidenceView & { error?: string };
   if (!response.ok) throw new Error(data.error || "Chưa tải được minh chứng");
   return data;
 }
@@ -66,6 +65,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
 }) {
   const [data, setData] = useState<EventEvidenceView | null>(null);
   const [draft, setDraft] = useState<{ photo: Blob; url: string } | null>(null);
+  const [linkDraft, setLinkDraft] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [contribution, setContribution] = useState("");
   const [roundQuantity, setRoundQuantity] = useState("");
@@ -101,6 +101,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
         return;
       }
       setDraft(null);
+      setLinkDraft(null);
       setData(current => current && { ...current, expired: true, canUpload: false, canReview: false });
     };
     timer = window.setTimeout(expire, Math.max(0, Math.min(expiresAt - Date.now(), 2_147_000_000)));
@@ -114,6 +115,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
     const signal = loadSignal.current;
     setBusy(true);
     setDraft(null);
+    setLinkDraft(null);
     setMessage("");
     setError("");
     try {
@@ -135,6 +137,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
     try {
       setData(await evidenceRequest(url, { ...options, signal }));
       setDraft(null);
+      setLinkDraft(null);
       setNote("");
       setPhotoFailed(false);
       setMessage(success);
@@ -146,10 +149,16 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
     }
   }
 
+  const replacement = data?.evidence ? "&replace=" + encodeURIComponent(data.evidence.id) : "";
   function upload() {
     if (!draft || busy) return;
-    const replacement = data?.evidence ? "&replace=" + encodeURIComponent(data.evidence.id) : "";
     void save(endpoint + replacement, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: draft.photo }, "Đã gửi ảnh cho BĐH");
+  }
+
+  function uploadLink() {
+    if (!linkDraft?.trim() || busy) return;
+    void save(endpoint + replacement, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ linkUrl: linkDraft.trim() }) }, "Đã gửi link cho BĐH");
   }
 
   function review(status: "approved" | "rejected") {
@@ -166,18 +175,21 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
 
   const evidence = data?.evidence;
   const status = evidence && !(evidence.status === "pending" && data.expired) ? statusLabels[evidence.status] : null;
+  const linkUrl = data && !data.expired && !draft ? evidence?.linkUrl : undefined;
   const photoUrl = data && !data.expired
-    ? draft?.url ?? (evidence && !photoFailed ? endpoint + "&photo=" + encodeURIComponent(evidence.id) : null)
+    ? draft?.url ?? (evidence && !evidence.linkUrl && !photoFailed ? endpoint + "&photo=" + encodeURIComponent(evidence.id) : null)
     : null;
+  const evidenceType = linkUrl ? "link" : "ảnh";
+  const canReview = data?.canReview && (linkUrl || (photoUrl && !draft && !photoFailed && loadedPhotoId === evidence?.id));
   return (
     <div id={id} className="duty-evidence-panel">
       {!data && !error && <p className="hint" role="status">Đang tải minh chứng…</p>}
-      {data?.expired && <p className="hint">{event ? "Ảnh minh chứng của sự kiện đã hết hạn lưu" : "Ảnh minh chứng của ca này đã hết hạn lưu"}</p>}
+      {data?.expired && <p className="hint">{event ? "Minh chứng của sự kiện đã hết hạn lưu" : "Ảnh minh chứng của ca này đã hết hạn lưu"}</p>}
       {data && !data.expired && !evidence && <p className="hint">Chưa gửi minh chứng</p>}
       {evidence && status && (
         <>
           <div className="duty-evidence-meta">
-            <Badge status={status.badge}>{status.label}</Badge>
+            <Badge status={status.badge}>{evidence.status === "attached" && evidence.linkUrl ? "Link đính kèm" : status.label}</Badge>
             <span>Gửi lúc {evidenceTime.format(evidence.submittedAt)}</span>
           </div>
           {evidence.reviewNote && <p className="duty-evidence-note">{evidence.reviewNote}</p>}
@@ -194,10 +206,17 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
           onError={() => !draft && setPhotoFailed(true)}
         />
       )}
-      {!draft && evidence && !data.expired && photoFailed && <p className="hint">Ảnh không còn khả dụng, mở lại minh chứng để kiểm tra</p>}
+      {linkUrl && <div className="event-proof-link">
+        <a href={linkUrl} target="_blank" rel="noopener noreferrer">
+          <Link2 size={16} aria-hidden="true" /> Mở link minh chứng
+        </a>
+        <span>{linkUrl}</span>
+      </div>}
+      {!draft && evidence && !data.expired && !evidence.linkUrl && photoFailed &&
+        <p className="hint">Ảnh không còn khả dụng, mở lại minh chứng để kiểm tra</p>}
       {data?.canUpload && (
         <>
-          <p className="hint">{event ? `Gửi một ảnh, hạn gửi và duyệt: ${evidenceTime.format(data.expiresAt)} (giờ Việt Nam)` : "Gửi một ảnh cho ca trực, ảnh được lưu đến 00:00 thứ Hai"}</p>
+          <p className="hint">{event ? `Gửi một ảnh hoặc một link trước ${evidenceTime.format(data.expiresAt)} (giờ Việt Nam)` : "Gửi một ảnh cho ca trực, ảnh được lưu đến 00:00 thứ Hai"}</p>
           <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={choosePhoto} />
           <input ref={filePicker} type="file" accept="image/*" hidden onChange={choosePhoto} />
           <div className="duty-evidence-actions">
@@ -207,11 +226,32 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
             <Button variant="secondary" disabled={busy} onClick={() => filePicker.current?.click()}>
               <ImagePlus size={16} aria-hidden="true" /> Chọn ảnh
             </Button>
+            {event && linkDraft === null && <Button variant="secondary" disabled={busy} onClick={() => {
+              setDraft(null);
+              setLinkDraft("");
+              setMessage("");
+              setError("");
+            }}>
+              <Link2 size={16} aria-hidden="true" /> Thêm link
+            </Button>}
             {draft && <Button disabled={busy} onClick={upload}>Gửi ảnh</Button>}
           </div>
+          {linkDraft !== null && <form className="event-proof-form" onSubmit={formEvent => {
+            formEvent.preventDefault();
+            uploadLink();
+          }}>
+            <Field label="Link minh chứng">
+              <input type="url" value={linkDraft} onChange={e => setLinkDraft(e.target.value)}
+                required maxLength={eventEvidenceLinkLimit} placeholder="https://" disabled={busy} />
+            </Field>
+            <div className="duty-evidence-actions">
+              <Button type="submit" disabled={busy || !linkDraft.trim()}>Gửi link</Button>
+              <Button variant="secondary" disabled={busy} onClick={() => { setLinkDraft(null); setError(""); }}>Quay lại</Button>
+            </div>
+          </form>}
         </>
       )}
-      {data?.canReview && photoUrl && !draft && !photoFailed && loadedPhotoId === evidence?.id && (
+      {canReview && data && (
         <>
           {data.requiresContributionPoints && <Field label="Điểm đóng góp">
             <input type="number" inputMode="decimal" min={0} max={100000} step="0.01" value={contribution}
@@ -226,13 +266,13 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
             <Button disabled={busy || (data.requiresContributionPoints && (!contribution || !isPointAmount(Number(contribution)))) ||
               (data.recordedRounds !== undefined && (!roundQuantity || !isEventRoundQuantity(Number(roundQuantity))))}
               onClick={() => review("approved")}>
-              {data.recordedRounds !== undefined ? "Duyệt ảnh và lưu số lượt" : event ? "Duyệt ảnh và tính điểm" : "Duyệt ảnh"}
+              {data.recordedRounds !== undefined ? `Duyệt ${evidenceType} và lưu số lượt` : event ? `Duyệt ${evidenceType} và tính điểm` : "Duyệt ảnh"}
             </Button>
-            <Button variant="danger" disabled={busy || !note.trim()} onClick={() => review("rejected")}>Từ chối ảnh</Button>
+            <Button variant="danger" disabled={busy || !note.trim()} onClick={() => review("rejected")}>Từ chối {evidenceType}</Button>
           </div>
         </>
       )}
-      {busy && <p className="hint" role="status">Đang xử lý ảnh…</p>}
+      {busy && <p className="hint" role="status">{event ? "Đang xử lý minh chứng…" : "Đang xử lý ảnh…"}</p>}
       {message && <p className="hint" role="status">{message}</p>}
       {error && <p className="form-error" role="alert">{displayMessage(error)}</p>}
     </div>

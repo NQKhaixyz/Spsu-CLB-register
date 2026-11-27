@@ -122,6 +122,9 @@ export function workspaceView(
     personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin, feedback });
   delete view.club.bulletinPosts;
   delete view.club.bulletinUploads;
+  for (const row of view.club.activityRegistrations ?? []) {
+    if (row.evidence) delete row.evidence.linkUrl;
+  }
   // Keep stored attendance history, while removal from the visible roster also
   // frees seats and excludes previous BĐH assignments from the displayed totals.
   const visibleAssignments = (rows: Assignment[]) =>

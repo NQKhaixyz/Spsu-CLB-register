@@ -21,7 +21,7 @@ async function detachCurrentExpiredPhotos(db: D1Database, now: number) {
     if (!row) return { retained: new Set<string>(), detached: new Set<string>() };
     const club = JSON.parse(row.payload) as Club;
     const photos = detachExpiredEventPhotos(club, now);
-    if (!photos.detached.size) return photos;
+    if (!photos.changed) return photos;
     const result = await db.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=?")
       .bind(JSON.stringify(club), row.revision).run();
     if (result.meta.changes) return photos;

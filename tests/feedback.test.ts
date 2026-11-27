@@ -3,6 +3,7 @@ import test from "node:test";
 import { applyAction, type Identity } from "../lib/actions";
 import { createClub, today, uid, type Member } from "../lib/club";
 import { applyRequestedFeedbackReset, editMemberFeedback, feedbackActionWindow, feedbackBodyLimit, memberFeedbackView, recallMemberFeedback } from "../lib/feedback";
+import { feedbackNotificationsFor, markFeedbackNotificationRead } from "../lib/feedback-notifications";
 import { eraseMemberData } from "../lib/member-deletion";
 import { workspaceView } from "../lib/workspace-view";
 
@@ -57,6 +58,58 @@ test("Feedback sent to multiple members creates one private conversation per rec
   sender.active = false;
   assert.equal(workspaceView(club, identity(sender), 2).feedback, undefined);
   assert.throws(() => applyAction(club, identity(sender), "sendFeedback", { ...draft, id: uid() }), /ngừng hoạt động/);
+});
+
+test("Feedback notifications reach only the other participant in that copy and preserve anonymity", () => {
+  const { club, admin, sender, first, second, reader } = fixture();
+  const draft = { id: uid(), body: "Góp ý cần xem", recipientIds: [first.id, second.id], anonymous: true };
+  const notices = (member: Member) => feedbackNotificationsFor(club, member.id);
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  const [delivered] = notices(first);
+  const [secondDelivery] = notices(second);
+  assert.equal(delivered.kind, "received");
+  assert.equal(notices(first).length, 1);
+  assert.equal(delivered.actorId, undefined);
+  assert.equal("body" in delivered, false);
+  assert.notEqual(secondDelivery.feedbackId, delivered.feedbackId);
+  assert.deepEqual(notices(sender), []);
+  assert.deepEqual(notices(admin), []);
+  assert.equal(markFeedbackNotificationRead(club, second.id, delivered.id), false);
+  assert.equal(markFeedbackNotificationRead(club, first.id, delivered.id), true);
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  assert.equal(notices(first)[0].read, true);
+
+  const feedbackId = delivered.feedbackId;
+  const reply = { id: uid(), feedbackId, body: "Cảm ơn góp ý" };
+  applyAction(club, identity(first), "replyToFeedback", reply);
+  applyAction(club, identity(first), "replyToFeedback", reply);
+  assert.deepEqual(notices(sender).map(item => [item.kind, item.actorId, item.feedbackId]), [["reply", first.id, feedbackId]]);
+  assert.deepEqual(notices(second), [secondDelivery]);
+
+  const consent = { feedbackId, approved: true, version: 1 };
+  applyAction(club, identity(first), "setFeedbackConsent", consent);
+  applyAction(club, identity(first), "setFeedbackConsent", consent);
+  assert.equal(notices(sender).filter(item => item.kind === "consent").length, 1);
+  applyAction(club, identity(sender), "setFeedbackConsent", consent);
+  const consentNotice = notices(first).find(item => item.kind === "consent");
+  assert.equal(consentNotice?.feedbackId, feedbackId);
+  assert.equal(consentNotice?.actorId, undefined);
+  assert.equal(memberFeedbackView(club, reader.id)[0].isPublic, true);
+  assert.deepEqual(notices(reader), []);
+  applyAction(club, identity(sender), "setFeedbackConsent", { ...consent, approved: false });
+  assert.equal(notices(first).some(item => item.kind === "consent"), false);
+  assert.equal(notices(sender).some(item => item.kind === "consent"), true);
+
+  applyAction(club, identity(sender), "replyToFeedback", { id: uid(), feedbackId, body: "Trả lời ẩn danh" });
+  const anonymousReply = notices(first).find(item => item.kind === "reply");
+  assert.equal(anonymousReply?.feedbackId, feedbackId);
+  assert.equal(anonymousReply?.actorId, undefined);
+  assert.equal(notices(sender).some(item => item.kind === "consent"), false);
+  applyAction(club, identity(sender), "recallFeedback", { id: feedbackId });
+  assert.deepEqual(notices(first), []);
+  assert.deepEqual(notices(sender), []);
+  assert.deepEqual(notices(second), [secondDelivery]);
 });
 
 test("Feedback validates recipients and mode before saving and follows member deletion", () => {

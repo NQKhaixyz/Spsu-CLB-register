@@ -1,17 +1,16 @@
 "use client";
 
-import { Bold, ImagePlus, Italic, Video, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { ImagePlus, Video, X } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, type BulletinPostView } from "../lib/bulletin";
-import { toggleBulletinEmphasis, type BulletinMarker } from "../lib/bulletin-format";
 import {
   bulletinMediaByteLimit, bulletinMediaEndpoint, bulletinMediaLimit, bulletinMediaUrl, bulletinStageMs,
   bulletinVideoLimitMb, bulletinVideoTypes, isBulletinMediaId, isBulletinVideo, type BulletinMedia, type BulletinMediaType,
 } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 import { BulletinAttachmentView } from "./bulletin-attachments";
-import { BulletinText } from "./bulletin-text";
 import { preparePhoto } from "./prepare-photo";
+import { TextEmphasisEditor } from "./text-emphasis-editor";
 import { Button, Dialog, Field, FormFooter } from "./ui";
 
 type DraftMedia = {
@@ -77,10 +76,6 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [selection, setSelection] = useState(initialSelection);
-  const [content, setContent] = useState(original?.content ?? "");
-  const [contentFormat, setContentFormat] = useState(original?.contentFormat);
-  const contentId = useId();
-  const editor = useRef<HTMLTextAreaElement>(null);
   const photos = useRef<HTMLInputElement>(null);
   const videos = useRef<HTMLInputElement>(null);
   const previews = useRef(new Set<string>());
@@ -128,24 +123,6 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
     if (previews.current.delete(draft.url)) URL.revokeObjectURL(draft.url);
   }
 
-  function emphasize(marker: BulletinMarker) {
-    const input = editor.current;
-    if (!input || waiting) return;
-    const next = toggleBulletinEmphasis(input.value, input.selectionStart, input.selectionEnd, marker, !!contentFormat);
-    if (next.value.length > bulletinContentLimit) {
-      setError("Nội dung đã đạt giới hạn ký tự, hãy rút gọn rồi thử định dạng lại");
-      return;
-    }
-    setError("");
-    setContent(next.value);
-    setContentFormat("emphasis");
-    requestAnimationFrame(() => {
-      if (editor.current !== input) return;
-      input.focus();
-      input.setSelectionRange(next.start, next.end);
-    });
-  }
-
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (waiting) return;
@@ -187,29 +164,8 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
   return <Dialog title={original ? "Sửa tin" : "Đăng tin"} onClose={onClose} wide busy={waiting}>
     <form onSubmit={save}>
       <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit} defaultValue={original?.title} /></Field>
-      <Field label="Nội dung">
-        <textarea ref={editor} id={contentId} name="content" rows={4} required={!files.length}
-          maxLength={bulletinContentLimit} value={content} onChange={event => setContent(event.target.value)}
-          aria-describedby={contentId + "-hint"} onKeyDown={event => {
-            if (!(event.ctrlKey || event.metaKey) || !["b", "i"].includes(event.key.toLowerCase())) return;
-            event.preventDefault();
-            emphasize(event.key.toLowerCase() === "b" ? "**" : "_");
-          }} />
-      </Field>
-      {contentFormat && <input type="hidden" name="contentFormat" value={contentFormat} />}
-      <div className="bulletin-format-tools" role="group" aria-label="Định dạng nội dung">
-        <Button variant="secondary" disabled={waiting} onClick={() => emphasize("**")}>
-          <Bold size={16} aria-hidden="true" /> Bôi đậm
-        </Button>
-        <Button variant="secondary" disabled={waiting} onClick={() => emphasize("_")}>
-          <Italic size={16} aria-hidden="true" /> In nghiêng
-        </Button>
-      </div>
-      <p className="hint bulletin-format-hint" id={contentId + "-hint"}>Chọn đoạn chữ rồi bấm Bôi đậm hoặc In nghiêng</p>
-      {contentFormat && content.trim() && <section className="bulletin-format-preview" aria-label="Xem trước nội dung">
-        <small>Xem trước nội dung</small>
-        <div className="bulletin-fulltext"><BulletinText content={content} contentFormat={contentFormat} /></div>
-      </section>}
+      <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={4} maxLength={bulletinContentLimit}
+        initialText={original?.content} initialFormat={original?.contentFormat} required={!files.length} busy={waiting} />
       <div className="bulletin-picker">
         <div className="bulletin-picker-actions">
           <input ref={photos} type="file" accept="image/*" multiple hidden onChange={event => choose(event, "image")} />

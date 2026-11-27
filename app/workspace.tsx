@@ -24,6 +24,7 @@ import DutyWeekActions from "./duty-week-actions";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
 import { FeedbackPage, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
+import FeedbackNotifications from "./feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
 import { isBulletinId } from "../lib/bulletin";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
@@ -41,7 +42,6 @@ import {
 import {
   ArrowDownToLine,
   ArrowRight,
-  Bell,
   CalendarCheck2,
   CalendarDays,
   Check,
@@ -185,6 +185,8 @@ export default function Workspace() {
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [linkedBulletin, setLinkedBulletin] = useState<string>();
+  const [feedbackTarget, setFeedbackTarget] = useState<{ id: string }>();
+  const [loadedFeedbackTarget, setLoadedFeedbackTarget] = useState<{ id: string }>();
   const [memberSection, setMemberSection] = useState<"profiles" | "availability">("profiles");
   const [editingWeeklyPoints, setEditingWeeklyPoints] = useState(false);
   const [committeeFilter, setCommitteeFilter] = useState<CommitteeFilter>("all");
@@ -270,9 +272,11 @@ export default function Workspace() {
   useEffect(() => {
     if (tab !== "members" && tab !== "feedback" && !profileId) return;
     const controller = new AbortController();
-    void load(controller.signal);
+    void load(controller.signal).then(() => {
+      if (feedbackTarget && !controller.signal.aborted) setLoadedFeedbackTarget(feedbackTarget);
+    });
     return () => controller.abort();
-  }, [load, tab, profileId]);
+  }, [load, tab, profileId, feedbackTarget]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), toast.error ? 7500 : 4000);
@@ -291,6 +295,7 @@ export default function Workspace() {
       closeModal();
       closeAvatar();
       closeProfile();
+      setFeedbackTarget(undefined);
     }
   }
   async function savePassword(
@@ -451,6 +456,7 @@ export default function Workspace() {
   }
   const go = (next: Tab) => {
     if (next !== "bulletin") dismissBulletinLink();
+    setFeedbackTarget(undefined);
     setTab(next);
     setEditingWeeklyPoints(false);
     setFilter("all");
@@ -459,6 +465,11 @@ export default function Workspace() {
     setMobileNav(false);
     window.scrollTo(0, 0);
   };
+  function openFeedbackFromNotification(id: string) {
+    closeProfile();
+    go("feedback");
+    setFeedbackTarget({ id });
+  }
   if (loading) return <Loading />;
   if (auth) return <Login onSuccess={load} />;
   if (!view)
@@ -1252,7 +1263,7 @@ export default function Workspace() {
       content: (
         <>
           <p className="dialog-copy">
-            Hồ sơ, tài khoản, lịch trực, điểm, đăng ký và ảnh minh chứng của <MemberName memberId={member.id} /> sẽ bị xóa, thao tác này không thể hoàn tác
+            Hồ sơ, tài khoản, lịch trực, điểm, đăng ký và minh chứng của <MemberName memberId={member.id} /> sẽ bị xóa, thao tác này không thể hoàn tác
           </p>
           <div className="form-footer">
             <Button variant="secondary" onClick={closeModal}>Quay lại</Button>
@@ -3317,16 +3328,9 @@ export default function Workspace() {
             >
               <RefreshCw size={17} className={busy ? "spin" : ""} />
             </button>
-            {isAdmin ? (
-              <button
-                className="icon-button notification-button"
-                aria-label={`${pendingTotal} đăng ký chờ xử lý`}
-                onClick={() => go(pending.length ? "meetings" : "requests")}
-              >
-                <Bell size={19} />
-                {pendingTotal ? <i /> : null}
-              </button>
-            ) : null}
+            <FeedbackNotifications key={me.id} pending={isAdmin ? pendingTotal : 0}
+              onOpenPending={() => go(pending.length ? "meetings" : "requests")}
+              onOpenFeedback={openFeedbackFromNotification} />
             <span className="topbar-divider" />
             <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} size="small" />
             <span className="topbar-role">
@@ -3399,8 +3403,10 @@ export default function Workspace() {
                 onAction={(action, data) => act(action, data, action === "deleteSharedLink" ? "Đã xóa link" : action === "moveSharedLink" ? "Đã đổi thứ tự link" : "Đã lưu link", false)} />
             </section>
           ) : activeTab === "feedback" ? (
-            <FeedbackPage entries={view.feedback ?? []} busy={busy} onSubmit={submitFeedback} onEdit={editFeedback}
-              onRecall={recallFeedback} conversationActions={feedbackConversationActions} />
+            <FeedbackPage key={feedbackTarget?.id ?? "list"} entries={view.feedback ?? []} busy={busy}
+              onSubmit={submitFeedback} onEdit={editFeedback} onRecall={recallFeedback} conversationActions={feedbackConversationActions}
+              focusId={feedbackTarget?.id} focusPending={feedbackTarget !== loadedFeedbackTarget} focusError={loadError}
+              onBack={() => go("feedback")} />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (

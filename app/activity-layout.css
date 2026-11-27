@@ -122,10 +122,39 @@
 .event-index .event-history input { flex-shrink: 0; margin: 0; }
 .event-index .activity-list { padding: 0 var(--activity-padding); }
 .event-index .event-card {
+  display: block;
+  padding: 0;
+  border-color: var(--line);
+}
+.event-card-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 4px;
+  list-style: none;
+  cursor: pointer;
+}
+.event-card-summary::-webkit-details-marker { display: none; }
+.event-card-summary:hover { background: var(--surface-warm); }
+.event-card-summary:focus-visible { outline-offset: -2px; border-radius: 8px; }
+.event-card-title { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.event-card-title strong { color: var(--ink); font-size: 1.0625rem; }
+.event-card-title > span {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: .875rem;
+  color: var(--muted);
+}
+.event-card-title svg { flex: none; margin-top: 2px; }
+.event-card-chevron { color: var(--green-dark); }
+.event-card[open] > .event-card-summary .event-card-chevron { transform: rotate(180deg); }
+.event-card-details {
   display: grid;
   gap: 10px;
-  padding: 14px 0;
-  border-color: var(--line);
+  border-top: 1px solid var(--line);
+  padding: 12px 4px;
 }
 .event-card-header, .event-card-meta {
   display: flex;
@@ -135,7 +164,6 @@
   gap: 6px 10px;
 }
 .event-card-header > div { min-width: 0; }
-.event-card-header h3 { margin-bottom: 5px; color: var(--ink); }
 .event-card-actions { align-items: center; }
 .event-card-meta {
   align-items: center;
@@ -143,7 +171,29 @@
   color: var(--muted);
   font-size: .875rem;
 }
-.event-index .event-description { margin: 0; color: var(--ink); line-height: 1.55; }
+.event-index .event-description { margin: 0; color: var(--ink); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.event-description :is(strong, em) { font-synthesis: weight style; }
+.event-proof-form { display: grid; gap: 8px; }
+.event-proof-form .field { margin: 0; }
+.event-proof-link {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-warm);
+  overflow-wrap: anywhere;
+}
+.event-proof-link a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: var(--green-dark);
+  font-weight: 700;
+  text-decoration: underline;
+}
+.event-proof-link span { color: var(--muted); font-size: .875rem; }
 .event-management { position: relative; }
 .event-management > summary { list-style: none; cursor: pointer; }
 .event-management > summary::-webkit-details-marker { display: none; }

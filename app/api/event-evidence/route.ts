@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { eventContributionError, isEventRoundQuantity, isPointAmount, memberEventRegistrations, recordedEventQuantity, reviewEventRegistration, type ActivityRegistration, type ClubEvent } from "../../../lib/activity";
 import type { Club, Member } from "../../../lib/club";
-import { eventEvidenceTarget, eventEvidenceView, eventPhotoId } from "../../../lib/event-evidence";
+import { eventEvidenceLink, eventEvidenceTarget, eventEvidenceView, eventPhotoId } from "../../../lib/event-evidence";
 import { eventPhotoKey, eventPhotoStagingMs, removeEventPhoto } from "../../../lib/event-photo-storage";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
@@ -12,6 +12,24 @@ export const dynamic = "force-dynamic";
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: privatePhotoHeaders });
 const changed = () => new AuthError("Minh chứng vừa thay đổi. Mở lại để xem bản mới.", 409);
+
+function photoBucket() {
+  if (!env.BUCKET) throw new AuthError("Kho ảnh chưa được kết nối. Vui lòng thử lại sau.", 503);
+  return env.BUCKET;
+}
+
+async function readEvidenceLink(request: Request) {
+  const bytes = await readBody(request, "application/json", 8192, "Link minh chứng quá dài.");
+  let data: { linkUrl?: unknown } | null;
+  try {
+    data = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new AuthError("Link minh chứng không hợp lệ.", 400);
+  }
+  const url = eventEvidenceLink(data?.linkUrl);
+  if (!url) throw new AuthError("Nhập link minh chứng bắt đầu bằng https:// hoặc http://.", 400);
+  return url;
+}
 
 function viewFor(club: Club, row: ActivityRegistration, event: ClubEvent, member: Member) {
   const view = eventEvidenceView(row, event, member);
@@ -30,9 +48,7 @@ async function context(request: Request) {
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(registrationId)) throw new AuthError("Đăng ký sự kiện không hợp lệ.", 400);
   const target = eventEvidenceTarget(user.club, user.member, registrationId);
   if (!target) throw new AuthError("Bạn không có quyền xem minh chứng này.", 403);
-  const bucket = env.BUCKET;
-  if (!bucket) throw new AuthError("Kho ảnh chưa được kết nối. Vui lòng thử lại sau.", 503);
-  return { user, registrationId, search, bucket, view: viewFor(user.club, target.row, target.event, user.member) };
+  return { user, registrationId, search, view: viewFor(user.club, target.row, target.event, user.member) };
 }
 
 function errorResponse(error: unknown) {
@@ -43,13 +59,13 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const { view, search, bucket } = await context(request);
+    const { view, search } = await context(request);
     const photo = search.get("photo");
     if (photo === null) return json(view);
-    if (!eventPhotoId.test(photo) || view.expired || view.evidence?.id !== photo) {
+    if (!eventPhotoId.test(photo) || view.expired || view.evidence?.id !== photo || view.evidence.linkUrl) {
       throw new AuthError("Ảnh không còn khả dụng.", 404);
     }
-    const object = await bucket.get(eventPhotoKey(photo));
+    const object = await photoBucket().get(eventPhotoKey(photo));
     if (!object || Date.now() >= view.expiresAt) throw new AuthError("Ảnh không còn khả dụng.", 404);
     return photoResponse(object.body);
   } catch (error) {
@@ -60,17 +76,21 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     verifyOrigin(request);
-    const { user, view, search, bucket, registrationId } = await context(request);
+    const { user, view, search, registrationId } = await context(request);
     if (view.expired) throw new AuthError("Đã hết hạn gửi minh chứng.", 410);
-    if (!view.canUpload) throw new AuthError("Đăng ký này không nhận thêm ảnh.", 409);
+    if (!view.canUpload) throw new AuthError("Đăng ký này không nhận thêm minh chứng.", 409);
     const expected = search.get("replace");
     if (expected !== (view.evidence?.id ?? null)) throw changed();
-    const bytes = await readPhoto(request);
+    const linkUrl = request.headers.get("content-type")?.split(";")[0] === "application/json"
+      ? await readEvidenceLink(request) : undefined;
+    const bucket = linkUrl ? undefined : photoBucket();
+    const bytes = bucket ? await readPhoto(request) : undefined;
     const id = crypto.randomUUID();
     const stagedAt = Date.now();
     if (stagedAt >= view.expiresAt) throw new AuthError("Đã hết hạn gửi minh chứng.", 410);
-    const object = await bucket.put(eventPhotoKey(id), bytes, { httpMetadata: { contentType: "image/jpeg" } });
-    if (!object) throw new AuthError("Chưa lưu được ảnh. Vui lòng thử lại.", 503);
+    if (bucket && bytes && !await bucket.put(eventPhotoKey(id), bytes, { httpMetadata: { contentType: "image/jpeg" } })) {
+      throw new AuthError("Chưa lưu được ảnh. Vui lòng thử lại.", 503);
+    }
     try {
       const { result } = await mutate(user.userId, club => {
         const member = club.members.find(item => item.userId === user.userId);
@@ -80,8 +100,9 @@ export async function POST(request: Request) {
         const now = Date.now();
         const current = eventEvidenceView(row, event, member, now);
         if (current.expired) throw new AuthError("Đã hết hạn gửi minh chứng.", 410);
-        if (!current.canUpload || (current.evidence?.id ?? null) !== expected || now >= stagedAt + eventPhotoStagingMs) throw changed();
-        row.evidence = { id, submittedAt: now };
+        if (!current.canUpload || (current.evidence?.id ?? null) !== expected ||
+            (bucket && now >= stagedAt + eventPhotoStagingMs)) throw changed();
+        row.evidence = { id, submittedAt: now, ...(linkUrl ? { linkUrl } : {}) };
         row.status = "pending";
         delete row.contributionPoints;
         delete row.reviewedAt;
@@ -89,11 +110,11 @@ export async function POST(request: Request) {
         delete row.decision;
         return eventEvidenceView(row, event, member, now);
       });
-      if (expected) await removeEventPhoto(bucket, expected);
+      if (expected && !view.evidence?.linkUrl && env.BUCKET) await removeEventPhoto(env.BUCKET, expected);
       return json(result);
     } catch (error) {
       // On a storage error, the write could have landed. Cleanup checks actual references.
-      if (error instanceof AuthError) await removeEventPhoto(bucket, id);
+      if (error instanceof AuthError && bucket) await removeEventPhoto(bucket, id);
       throw error;
     }
   } catch (error) {
@@ -104,7 +125,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     verifyOrigin(request);
-    const { user, view, bucket, registrationId } = await context(request);
+    const { user, view, registrationId } = await context(request);
     if (user.member.role !== "admin") throw new AuthError("Chỉ BĐH được duyệt minh chứng.", 403);
     if (view.expired) throw new AuthError("Đã hết hạn duyệt minh chứng.", 410);
     const bytes = await readBody(request, "application/json", 8192, "Ghi chú quá dài.");
@@ -120,7 +141,8 @@ export async function PATCH(request: Request) {
     }
     const reason = typeof note === "string" ? note.trim().slice(0, 500) : "";
     if (status === "rejected" && !reason) throw new AuthError("Nhập lý do từ chối.", 400);
-    if (!view.canReview || view.evidence?.id !== id || !await bucket.head(eventPhotoKey(id))) throw changed();
+    if (!view.canReview || view.evidence?.id !== id) throw changed();
+    if (!view.evidence.linkUrl && !await photoBucket().head(eventPhotoKey(id))) throw changed();
 
     const { result } = await mutate(user.userId, club => {
       const member = club.members.find(item => item.userId === user.userId);

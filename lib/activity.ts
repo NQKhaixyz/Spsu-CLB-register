@@ -44,6 +44,7 @@ export type ClubEvent = {
   id: string;
   name: string;
   description?: string;
+  descriptionFormat?: "emphasis";
   location?: string;
   requiresEvidence?: boolean;
   scoringMode?: EventScoringMode;
@@ -90,6 +91,7 @@ export type ActivityRegistration = {
   evidence?: {
     id: string;
     submittedAt: number;
+    linkUrl?: string;
     review?: { status: "attached" | "rejected"; at?: string; note?: string };
   };
 };
@@ -142,7 +144,7 @@ export function eraseEventFromHistory(history: EventHistory, eventId: string) {
     if (!history[field]) continue;
     history[field] = history[field].filter(row => {
       if (row.kind !== "event" || row.eventId !== eventId) return true;
-      if (row.evidence) photoIds.push(row.evidence.id);
+      if (row.evidence && !row.evidence.linkUrl) photoIds.push(row.evidence.id);
       return false;
     });
   }
@@ -304,7 +306,7 @@ function saveEventRoundCount(
   requireValue(data.previousQuantity === previous, "Số lượt đã thay đổi. Tải lại danh sách rồi thử lại.");
   requireValue(source !== "review" || !!existing && existing.status !== "withdrawn", "Không tìm thấy đăng ký đang xử lý.");
   requireValue(source !== "review" || !event.requiresEvidence || current.some(row => row.status === "confirmed"),
-    "Mở và duyệt ảnh minh chứng trước khi nhập số lượt.");
+    "Mở và duyệt minh chứng trước khi nhập số lượt.");
   requireValue(source !== "direct" || canAttendEvent(member, event), "Thành viên không hoạt động vào ngày tính điểm của sự kiện.");
   const reason = text(data.reason);
   if (existing?.status === "declined" && source !== "photo" && count > 0) {
@@ -331,7 +333,7 @@ function saveEventRoundCount(
 
 export function reviewEventRegistration(
   club: Club, me: Member, data: Record<string, unknown>, log: (message: string) => void,
-  checkedPhoto?: string,
+  checkedEvidence?: string,
 ) {
   requireValue(me.active && me.role === "admin", "Chỉ BĐH được duyệt đăng ký sự kiện.");
   const row = club.activityRegistrations?.find(r => r.id === data.id);
@@ -342,14 +344,14 @@ export function reviewEventRegistration(
   requireValue(!event.cancelledAt, "Sự kiện đã hủy.");
   requireValue(typeof data.confirmed === "boolean", "Kết quả xác nhận không hợp lệ.");
   requireValue(!row.supersededBy && row.status !== "withdrawn", "Đăng ký này đã rút hoặc đã gộp vào kết quả.");
-  requireValue(event.scoringMode !== "perRound" || checkedPhoto, "Nhập tổng số lượt ở kết quả của thành viên.");
+  requireValue(event.scoringMode !== "perRound" || checkedEvidence, "Nhập tổng số lượt ở kết quả của thành viên.");
   const next = data.confirmed ? "confirmed" : "declined";
   if (row.status === next) return;
   const now = Date.now();
   if (event.requiresEvidence && (row.status === "pending" || next === "confirmed")) {
     requireValue(now < eventEvidenceExpiry(event), "Đã hết hạn duyệt minh chứng.");
-    requireValue(checkedPhoto && row.evidence?.id === checkedPhoto,
-      "Mở và duyệt ảnh minh chứng trước khi xác nhận đăng ký này.");
+    requireValue(checkedEvidence && row.evidence?.id === checkedEvidence,
+      "Mở và duyệt minh chứng trước khi xác nhận đăng ký này.");
   }
   if (event.scoringMode === "perRound" && data.confirmed) {
     const member = club.members.find(item => item.id === row.memberId);
@@ -369,7 +371,7 @@ export function reviewEventRegistration(
   if (contributionPoints === undefined) delete row.contributionPoints;
   else row.contributionPoints = contributionPoints;
   delete row.confirmedDirectly;
-  if (checkedPhoto && row.evidence) delete row.evidence.review;
+  if (checkedEvidence && row.evidence) delete row.evidence.review;
   log(`${data.confirmed ? "Xác nhận tham gia" : "Không xác nhận"} ${event.name}: ${club.members.find(m => m.id === row.memberId)?.name ?? "Thành viên"}, ${row.quantity} lượt ngày ${row.date}${reason ? "; " + reason : ""}`);
 }
 
@@ -402,6 +404,8 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     const description = action === "editEvent" && data.description === undefined
       ? existing?.description ?? ""
       : text(data.description, eventDescriptionLimit);
+    requireValue(data.descriptionFormat === undefined || data.descriptionFormat === "emphasis", "Định dạng mô tả không hợp lệ.");
+    const descriptionFormat = data.descriptionFormat ?? existing?.descriptionFormat;
     const location = action === "editEvent" && data.location === undefined
       ? existing?.location ?? ""
       : text(data.location, eventLocationLimit);
@@ -415,7 +419,8 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
       : scoringMode ? `${eventScoringLabels[scoringMode]} · ${points} điểm` : `${points} điểm/lượt đầu`;
     if (existing) {
       requireValue(!existing.cancelledAt, "Sự kiện đã hủy.");
-      const same = existing.name === name && (existing.description ?? "") === description && (existing.location ?? "") === location &&
+      const same = existing.name === name && (existing.description ?? "") === description && existing.descriptionFormat === descriptionFormat &&
+        (existing.location ?? "") === location &&
         existing.startDate === startDate && existing.endDate === endDate && existing.points === points &&
         (existing.startTime ?? "") === startTime && (existing.endTime ?? "") === endTime &&
         !!existing.requiresEvidence === requiresEvidence && existing.participationMultiplier === participationMultiplier &&
@@ -457,12 +462,13 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
           if (evidenceExpired) delete row.evidence;
         }
       }
-      Object.assign(existing, { name, description, location, ...schedule, ...scoring, requiresEvidence });
+      Object.assign(existing, { name, description, descriptionFormat, location, ...schedule, ...scoring, requiresEvidence });
       log(`Sửa sự kiện ${name}: ${startDate} – ${endDate}, ${scoringLabel}`);
       return true;
     }
     requireValue(endDate >= today(), "Ngày kết thúc sự kiện không được trước hôm nay.");
-    (club.events ??= []).push({ id, name, description, location, ...schedule, ...scoring, requiresEvidence, createdAt: new Date().toISOString(), createdBy: me.id });
+    (club.events ??= []).push({ id, name, description, descriptionFormat, location, ...schedule, ...scoring,
+      requiresEvidence, createdAt: new Date().toISOString(), createdBy: me.id });
     log(`Tạo sự kiện ${name}: ${startDate} – ${endDate}, ${scoringLabel}`);
     return true;
   }
