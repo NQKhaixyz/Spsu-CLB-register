@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyAction, type Identity } from "../lib/actions";
 import { createClub, today, uid, type Member } from "../lib/club";
-import { applyRequestedFeedbackReset, feedbackBodyLimit, feedbackRecallWindow, memberFeedbackView, recallMemberFeedback } from "../lib/feedback";
+import { applyRequestedFeedbackReset, editMemberFeedback, feedbackBodyLimit, feedbackRecallWindow, memberFeedbackView, recallMemberFeedback } from "../lib/feedback";
 import { eraseMemberData } from "../lib/member-deletion";
 import { workspaceView } from "../lib/workspace-view";
 
@@ -118,4 +118,49 @@ test("The requested feedback reset clears public and anonymous entries once and 
   });
   assert.equal(applyRequestedFeedbackReset(club), receipt);
   assert.equal(memberFeedbackView(club, first.id)[0].body, "Góp ý sau khi đặt lại");
+});
+
+test("Only the sender can edit feedback and the same recipients see the revised content with anonymity intact", () => {
+  const { club, admin, sender, first, second } = fixture();
+  const draft = { id: uid(), body: "Góp ý trước khi sửa", recipientIds: [first.id, second.id], anonymous: true };
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  const item = club.memberFeedback![0];
+  const createdAt = item.createdAt;
+  const newBody = { id: draft.id, body: "  Góp ý đã sửa  ", anonymous: false, recipientIds: [admin.id] };
+  for (const viewer of [first, second, admin]) {
+    assert.throws(() => applyAction(club, identity(viewer), "editFeedback", newBody), /Chỉ người gửi/);
+  }
+  assert.throws(() => applyAction(club, identity(sender), "editFeedback", { ...newBody, body: " " }), /ký tự/);
+  assert.throws(() => applyAction(club, identity(sender), "editFeedback", { ...newBody, body: "x".repeat(feedbackBodyLimit + 1) }), /ký tự/);
+  const late = createdAt + feedbackRecallWindow + 1;
+  editMemberFeedback(club, sender, newBody, late);
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  applyAction(club, identity(sender), "editFeedback", newBody);
+  assert.equal(item.body, "Góp ý đã sửa");
+  assert.equal(item.editedAt, late);
+  assert.equal(club.logs.length, 0);
+  for (const viewer of [first, second, admin, sender]) {
+    const [view] = memberFeedbackView(club, viewer.id, late);
+    assert.deepEqual(view.recipientIds, [first.id, second.id]);
+    assert.equal(view.authorId, undefined);
+    assert.equal(view.anonymous, true);
+    assert.equal(view.canEdit, viewer.id === sender.id ? true : undefined);
+    assert.equal(view.body, "Góp ý đã sửa");
+    assert.equal(view.createdAt, createdAt);
+    assert.equal(view.editedAt, late);
+    assert.equal(view.recallUntil, undefined);
+  }
+  const repeat = { id: draft.id, body: "Góp ý đã chỉnh lần nữa" };
+  assert.throws(() => applyAction(club, identity(sender), "editFeedback", repeat), /vừa được chỉnh sửa/);
+  editMemberFeedback(club, sender, { ...repeat, previousEditedAt: late }, late);
+  assert.equal(item.editedAt, late + 1);
+});
+
+test("Editing a recalled feedback cannot restore it", () => {
+  const { club, sender, first } = fixture();
+  const draft = { id: uid(), body: "Góp ý cần thu hồi", recipientIds: [first.id], anonymous: false };
+  applyAction(club, identity(sender), "sendFeedback", draft);
+  applyAction(club, identity(sender), "recallFeedback", { id: draft.id });
+  assert.throws(() => applyAction(club, identity(sender), "editFeedback", { id: draft.id, body: "Nội dung mới" }), /đã được thu hồi/);
+  assert.deepEqual(memberFeedbackView(club, first.id), []);
 });

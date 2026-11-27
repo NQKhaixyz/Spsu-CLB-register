@@ -2,7 +2,7 @@
 import { CalendarDays, ChevronDown, ImageIcon, MapPin, Plus } from "lucide-react";
 import { useCallback, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
-import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, eventPointsPerRound, eventRoundRegistration, recordedEventQuantity, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, eventScoringLabels, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type EventScoringMode, type ManualActivityKind } from "../lib/activity";
+import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, defaultEventPoints, eventQuantityPoints, eventRoundRegistration, recordedEventQuantity, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { EvidencePanel } from "./duty-evidence";
@@ -18,7 +18,7 @@ const formData = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); return
 
 function eventPointsLabel(event: ClubEvent) {
   if (event.scoringMode === "contribution") return "BĐH chấm điểm theo đóng góp từng thành viên";
-  if (event.scoringMode === "perRound") return "0,25 điểm × số lượt đã duyệt";
+  if (event.scoringMode === "perRound") return `${formatScore(event.points)} điểm × số lượt đã duyệt`;
   if (event.participationMultiplier !== undefined) return `${formatScore(event.points)} điểm lượt đầu · Hệ số ×${formatScore(event.participationMultiplier)}`;
   return `${formatScore(event.points)} điểm mỗi thành viên được duyệt`;
 }
@@ -223,7 +223,8 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         const perRound = event.scoringMode === "perRound";
         const recorded = recordedEventQuantity(group);
         const participant = club.members.find(m => m.id === r.memberId);
-        const points = cancelled || r.status !== "confirmed" ? 0 : perRound ? recorded * eventPointsPerRound : activityPointsFor(club, r);
+        const points = cancelled || r.status !== "confirmed" ? 0
+          : perRound ? eventQuantityPoints(event.points, recorded) : activityPointsFor(club, r);
         const photoButton = ({ row, view }: (typeof photos)[number], index?: number) => <Button
           key={row.id} variant={view.canReview || (view.canUpload && (!view.evidence || row.status === "declined")) ? "primary" : "secondary"}
           disabled={busy} onClick={() => setProof({ row, event })}>
@@ -322,7 +323,7 @@ function RoundCountDialog({ event, member, row, previousQuantity, busy, onAction
       if (await onAction("saveEventRounds", { eventId: event.id, memberId: member.id,
         quantity: Number(count), previousQuantity, reason: fields.reason }, "Đã lưu số lượt tham gia", false)) onClose();
     }}>
-      <EventRoundField value={count} onChange={setCount} showPoints={member.role !== "admin"} />
+      <EventRoundField value={count} onChange={setCount} pointsPerRound={member.role === "member" ? event.points : undefined} />
       {row.status === "declined" && Number(count) > 0 &&
         <Field label="Lý do điều chỉnh"><textarea name="reason" required minLength={3} maxLength={500} /></Field>}
       <p className="hint">Nhập tổng số lượt thực tế. Nhập 0 để bỏ điểm sự kiện của người này</p>
@@ -391,7 +392,7 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
       </Field>}
       {previous?.status === "declined" && <Field label="Lý do thay đổi kết quả"><textarea key={memberId} name="reason" required minLength={3} maxLength={500} /></Field>}
       {contribution && selected && <ContributionField key={selected.id} />}
-      {perRound && selected && <EventRoundField value={roundQuantity} onChange={setRoundQuantity} min={1} />}
+      {perRound && selected && <EventRoundField value={roundQuantity} onChange={setRoundQuantity} min={1} pointsPerRound={event.points} />}
       <p className="hint">Xác nhận sẽ ghi {perRound ? "tổng số lượt và điểm tương ứng" : contribution ? "số điểm bạn nhập" : event.participationMultiplier !== undefined
         ? "điểm theo thứ tự lượt đã duyệt" : `${formatScore(event.points)} điểm`} vào tuần {dateLabel(weekId(event.endDate))} – {dateLabel(addDays(weekId(event.endDate), 6), true)}{event.requiresEvidence ? " · Lượt được BĐH xác nhận trực tiếp được miễn gửi ảnh" : ""}</p>
       <div className="form-footer">
@@ -497,7 +498,10 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
 }
 function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy: boolean; onAction: Act; onClose: () => void }) {
   const [id] = useState(uid);
-  const [scoringMode, setScoringMode] = useState<EventScoringMode | "legacy">(event ? event.scoringMode ?? "legacy" : "single");
+  const [scoreSource, setScoreSource] = useState<"shared" | "individual" | "legacy">(
+    event?.scoringMode === "contribution" ? "individual" : event && !event.scoringMode ? "legacy" : "shared");
+  const [participation, setParticipation] = useState<"single" | "perRound">(event?.scoringMode === "perRound" ? "perRound" : "single");
+  const [sharedPoints, setSharedPoints] = useState(String(event && event.scoringMode !== "contribution" ? event.points : defaultEventPoints));
   const currentDay = today();
   const [startDate, setStartDate] = useState(event?.startDate ?? currentDay);
   const [endDate, setEndDate] = useState(event?.endDate ?? currentDay);
@@ -508,7 +512,8 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
     const action = event ? "editEvent" : "createEvent";
     const message = event ? "Đã cập nhật sự kiện" : "Đã tạo sự kiện và mở đăng ký";
     if (await onAction(action, { ...fields, id: event?.id ?? id, requiresEvidence: fields.requiresEvidence === "on",
-      scoringMode: scoringMode === "legacy" ? undefined : scoringMode }, message, false)) onClose();
+      scoringMode: scoreSource === "legacy" ? undefined : scoreSource === "individual" ? "contribution" : participation,
+      points: scoreSource === "shared" ? Number(sharedPoints) : undefined }, message, false)) onClose();
   }}>
     <Field label="Tên sự kiện"><input name="name" defaultValue={event?.name} required minLength={2} maxLength={160} placeholder="Ví dụ: Hỗ trợ ngày hội sinh viên" autoFocus /></Field>
     <Field label="Địa điểm (không bắt buộc)"><input name="location" defaultValue={event?.location} maxLength={eventLocationLimit} /></Field>
@@ -520,17 +525,30 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
     </div>
     <p className="hint event-schedule-hint">Giờ Việt Nam · Có thể để trống</p>
     <Field label="Mô tả sự kiện (không bắt buộc)"><textarea name="description" defaultValue={event?.description ?? ""} maxLength={eventDescriptionLimit} rows={3} /></Field>
-    <Field label="Cách tính điểm">
-      <select value={scoringMode} onChange={e => setScoringMode(e.target.value as EventScoringMode | "legacy")}>
+    <Field label="Cách nhập điểm">
+      <select value={scoreSource} onChange={e => setScoreSource(e.target.value as typeof scoreSource)}>
         {event && !event.scoringMode && <option value="legacy">Giữ cách tính hiện tại</option>}
-        <option value="single">{eventScoringLabels.single} · 0,25 điểm</option>
-        <option value="perRound">{eventScoringLabels.perRound} · 0,25 điểm mỗi lượt</option>
-        <option value="contribution">{eventScoringLabels.contribution}</option>
+        <option value="shared">Điểm chung cho sự kiện</option>
+        <option value="individual">Điểm riêng từng người</option>
       </select>
     </Field>
-    {scoringMode === "legacy" && event && <p className="hint">{eventPointsLabel(event)}</p>}
-    {scoringMode === "perRound" && <p className="hint">Thành viên đăng ký một lần. BĐH nhập tổng số lượt thực tế, mỗi lượt cộng 0,25 điểm</p>}
-    {scoringMode === "contribution" && <p className="hint">BĐH nhập số điểm riêng cho từng thành viên khi xác nhận tham gia</p>}
+    {scoreSource === "shared" && <>
+      <Field label="Mức điểm">
+        <input type="number" inputMode="decimal" min={0} max={100000} step="0.01" required
+          value={sharedPoints} onChange={e => setSharedPoints(e.target.value)} />
+      </Field>
+      <Field label="Cách tính theo lượt">
+        <select value={participation} onChange={e => setParticipation(e.target.value as typeof participation)}>
+          <option value="single">Tính một lần</option>
+          <option value="perRound">Tính theo số lượt</option>
+        </select>
+      </Field>
+      <p className="hint">{participation === "perRound"
+        ? "BĐH nhập tổng số lượt thực tế. Điểm bằng mức điểm nhân với số lượt"
+        : "Mỗi thành viên được duyệt nhận mức điểm đã nhập một lần"}</p>
+    </>}
+    {scoreSource === "legacy" && event && <p className="hint">{eventPointsLabel(event)}</p>}
+    {scoreSource === "individual" && <p className="hint">BĐH nhập số điểm riêng cho từng thành viên khi xác nhận tham gia</p>}
     <label className="event-history"><input type="checkbox" name="requiresEvidence" defaultChecked={event?.requiresEvidence} /> Yêu cầu ảnh minh chứng</label>
     <p className="hint">Khi bật, thành viên đăng ký rồi gửi ảnh để BĐH duyệt và tính điểm, hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam</p>
     <p className="hint">Các lượt đã duyệt được tính vào tuần kết thúc sự kiện</p>

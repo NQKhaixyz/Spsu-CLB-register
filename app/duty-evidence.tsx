@@ -218,7 +218,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
               onChange={event => setContribution(event.target.value)} />
           </Field>}
           {data.recordedRounds !== undefined &&
-            <EventRoundField value={roundQuantity} onChange={setRoundQuantity} showPoints={showRoundPoints} />}
+            <EventRoundField value={roundQuantity} onChange={setRoundQuantity} pointsPerRound={showRoundPoints ? data.pointsPerRound : undefined} />}
           <Field label="Ghi chú duyệt">
             <textarea rows={2} maxLength={500} value={note} onChange={event => setNote(event.target.value)} placeholder="Nhập lý do nếu từ chối" />
           </Field>

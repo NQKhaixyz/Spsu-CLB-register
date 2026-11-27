@@ -3,7 +3,11 @@ import type { Club, Member } from "./club";
 import type { PhotoEvidenceView } from "./photo-evidence";
 
 export const eventPhotoId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-export type EventEvidenceView = PhotoEvidenceView<"attached"> & { requiresContributionPoints?: true; recordedRounds?: number };
+export type EventEvidenceView = PhotoEvidenceView<"attached"> & {
+  requiresContributionPoints?: true;
+  recordedRounds?: number;
+  pointsPerRound?: number;
+};
 
 export function eventEvidenceTarget(club: Club, viewer: Member, registrationId: string) {
   const row = club.activityRegistrations?.find(registration => registration.id === registrationId);

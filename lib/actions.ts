@@ -42,7 +42,7 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
-import { eraseFeedbackMembers, recallMemberFeedback, sendMemberFeedback } from "./feedback";
+import { editMemberFeedback, eraseFeedbackMembers, recallMemberFeedback, sendMemberFeedback } from "./feedback";
 import { semesterMonthLimit, validSemesterScoreRange } from "./semester-scores";
 import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
 import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
@@ -130,6 +130,10 @@ export function applyAction(
   check(me?.active, "Tài khoản chưa có hồ sơ hoặc đã ngừng hoạt động.");
   if (action === "sendFeedback") {
     sendMemberFeedback(club, me, data);
+    return;
+  }
+  if (action === "editFeedback") {
+    editMemberFeedback(club, me, data);
     return;
   }
   if (action === "recallFeedback") {

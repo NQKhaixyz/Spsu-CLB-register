@@ -23,7 +23,13 @@
 
 .feedback-author { display: flex; align-items: center; gap: 10px; }
 .feedback-author > div { display: grid; justify-items: start; min-width: 0; gap: 2px; }
-.feedback-author time { color: var(--muted); font-size: .8125rem; }
+.feedback-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: var(--muted);
+  font-size: .8125rem;
+}
 .feedback-anonymous {
   display: inline-grid;
   place-items: center;
@@ -54,10 +60,11 @@
 }
 .feedback-recipients button:hover { background: #e7efe2; }
 .feedback-body { margin: 0; color: var(--ink); white-space: pre-wrap; line-height: 1.6; }
-.feedback-entry > .text-button { justify-self: start; }
 .feedback-recall { display: grid; gap: 8px; }
 .feedback-recall p { margin: 0; }
-.feedback-recall-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.feedback-entry-actions { display: flex; gap: 8px 14px; flex-wrap: wrap; }
+.feedback-edit { display: grid; gap: 10px; }
+.feedback-edit .field { margin: 0; }
 
 .feedback-composer { display: grid; gap: 16px; }
 .feedback-composer .field { margin: 0; }

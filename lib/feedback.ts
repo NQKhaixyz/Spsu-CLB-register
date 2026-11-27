@@ -11,8 +11,9 @@ export type FeedbackDraft = {
   body: string;
 };
 
-export type StoredFeedback = FeedbackDraft & { authorId: string; createdAt: number; recalledAt?: number };
-export type FeedbackView = FeedbackDraft & { authorId?: string; createdAt: number; recallUntil?: number };
+export type FeedbackEdit = { id: string; body: string; previousEditedAt?: number };
+export type StoredFeedback = FeedbackDraft & { authorId: string; createdAt: number; editedAt?: number; recalledAt?: number };
+export type FeedbackView = FeedbackDraft & { authorId?: string; createdAt: number; editedAt?: number; canEdit?: true; recallUntil?: number };
 export type FeedbackResetReceipt = { id: string; at: number; removed: number; visibleBefore: number };
 export const requestedFeedbackResetId = "reset-feedback-2026-11-27";
 
@@ -31,16 +32,21 @@ export function applyRequestedFeedbackReset(club: Club, now = Date.now()): Feedb
   return receipt;
 }
 
+function feedbackBody(value: unknown) {
+  const body = typeof value === "string" ? value.trim() : "";
+  if (!body || body.length > feedbackBodyLimit) {
+    throw new Error(`Nhập feedback từ 1 đến ${feedbackBodyLimit.toLocaleString("vi-VN")} ký tự`);
+  }
+  return body;
+}
+
 export function sendMemberFeedback(club: Club, author: Member, data: Record<string, unknown>) {
   const { id, anonymous } = data;
   if (typeof id !== "string" || !feedbackId.test(id)) {
     throw new Error("Mã feedback không hợp lệ. Mở lại phần gửi feedback rồi thử lại");
   }
   if (typeof anonymous !== "boolean") throw new Error("Chọn cách hiển thị tên người gửi");
-  const body = typeof data.body === "string" ? data.body.trim() : "";
-  if (!body || body.length > feedbackBodyLimit) {
-    throw new Error(`Nhập feedback từ 1 đến ${feedbackBodyLimit.toLocaleString("vi-VN")} ký tự`);
-  }
+  const body = feedbackBody(data.body);
   const roster = new Set(club.members.map(member => member.id));
   const targets = data.recipientIds;
   if (!Array.isArray(targets) || !targets.length || targets.length > roster.size ||
@@ -53,12 +59,26 @@ export function sendMemberFeedback(club: Club, author: Member, data: Record<stri
     if (existing.recalledAt !== undefined && existing.authorId === author.id) return;
     const sameRecipients = existing.recipientIds.length === recipientIds.length &&
       existing.recipientIds.every((recipient, index) => recipient === recipientIds[index]);
-    if (existing.authorId !== author.id || existing.anonymous !== anonymous || existing.body !== body || !sameRecipients) {
+    if (existing.authorId !== author.id || existing.anonymous !== anonymous || !sameRecipients ||
+      (existing.editedAt === undefined && existing.body !== body)) {
       throw new Error("Feedback này đã được lưu với thông tin khác. Mở mục Feedback để kiểm tra");
     }
     return;
   }
   (club.memberFeedback ??= []).unshift({ id, recipientIds, anonymous, body, authorId: author.id, createdAt: Date.now() });
+}
+
+export function editMemberFeedback(club: Club, author: Member, data: Record<string, unknown>, now = Date.now()) {
+  const item = club.memberFeedback?.find(entry => entry.id === data.id && entry.authorId === author.id);
+  if (!item) throw new Error("Chỉ người gửi mới có thể sửa feedback của mình");
+  if (item.recalledAt !== undefined) throw new Error("Feedback này đã được thu hồi");
+  const body = feedbackBody(data.body);
+  if (item.body === body) return;
+  if (item.editedAt !== data.previousEditedAt) {
+    throw new Error("Feedback vừa được chỉnh sửa. Cập nhật dữ liệu rồi mở lại để sửa");
+  }
+  item.body = body;
+  item.editedAt = Math.max(now, (item.editedAt ?? item.createdAt) + 1);
 }
 
 export function recallMemberFeedback(club: Club, author: Member, id: unknown, now = Date.now()) {
@@ -78,11 +98,13 @@ export function memberFeedbackView(club: Club, viewerId: string, now = Date.now(
     if (item.recalledAt !== undefined) return [];
     const recipientIds = item.recipientIds.filter(id => members.has(id));
     if (!recipientIds.length || !members.has(item.authorId)) return [];
-    const { id, body, anonymous, createdAt } = item;
+    const { id, body, anonymous, createdAt, editedAt } = item;
     const recallUntil = createdAt + feedbackRecallWindow;
-    return [{ id, recipientIds, body, anonymous, createdAt,
+    const own = viewerId === item.authorId;
+    return [{ id, recipientIds, body, anonymous, createdAt, editedAt,
       ...(anonymous ? {} : { authorId: item.authorId }),
-      ...(viewerId === item.authorId && now < recallUntil ? { recallUntil } : {}),
+      ...(own ? { canEdit: true as const } : {}),
+      ...(own && now < recallUntil ? { recallUntil } : {}),
     }];
   });
 }

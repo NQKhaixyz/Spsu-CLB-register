@@ -15,8 +15,10 @@ const changed = () => new AuthError("Minh chứng vừa thay đổi. Mở lại 
 
 function viewFor(club: Club, row: ActivityRegistration, event: ClubEvent, member: Member) {
   const view = eventEvidenceView(row, event, member);
-  if (view.canReview && event.scoringMode === "perRound")
+  if (view.canReview && event.scoringMode === "perRound") {
     view.recordedRounds = recordedEventQuantity(memberEventRegistrations(club, event.id, row.memberId));
+    view.pointsPerRound = event.points;
+  }
   return view;
 }
 

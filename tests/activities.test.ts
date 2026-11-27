@@ -133,10 +133,11 @@ test("Multi-round events use the per-event multiplier for each approved round an
   assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 0);
 });
 
-test("The entry for total event rounds counts only the quantity BĐH saves and is consistent in reports", async () => {
+test("The event's configured points are used once or multiplied by the recorded quantity in reports", async () => {
   const club = fixture();
-  const single = { ...eventData("event-fixed-one"), scoringMode: "single", participationMultiplier: 10 };
-  const perRound = { ...eventData("event-fixed-many"), scoringMode: "perRound" };
+  const single = { ...eventData("event-fixed-one", 0.45), scoringMode: "single", participationMultiplier: 10 };
+  const perRound = { ...eventData("event-fixed-many", 0.3), scoringMode: "perRound" };
+  assert.throws(() => applyAction(club, admin, "createEvent", { ...perRound, points: 0.333 }), /2 chữ số thập phân/);
   applyAction(club, admin, "createEvent", single);
   applyAction(club, admin, "createEvent", perRound);
   applyAction(club, user, "registerEvent", { eventId: single.id });
@@ -158,13 +159,13 @@ test("The entry for total event rounds counts only the quantity BĐH saves and i
   assert.throws(() => applyAction(club, admin, "saveEventRounds", { ...count, quantity: 8 }), /Số lượt đã thay đổi/);
   assert.equal(rounds.quantity, 3);
   assert.equal(club.events![0].participationMultiplier, undefined);
-  assert.deepEqual([one, rounds].map(row => activityPointsFor(club, row)), [0.25, 0.75]);
+  assert.deepEqual([one, rounds].map(row => activityPointsFor(club, row)), [0.45, 0.9]);
   assert.throws(() => applyAction(club, admin, "editEvent", { ...perRound, scoringMode: "single" }), /nhiều lượt/);
-  applyAction(club, admin, "editEvent", { ...perRound, location: "C1" });
+  applyAction(club, admin, "editEvent", { ...perRound, points: undefined, location: "C1" });
   const month = today().slice(0, 7);
   assert.equal(weeklyScoreFor(club, "a1", weekId()).activityCounts.event, 4);
-  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 1);
-  assert.equal(monthlyScoreboard(club, month).find(row => row.memberId === "a1")?.points, 1);
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 1.35);
+  assert.equal(monthlyScoreboard(club, month).find(row => row.memberId === "a1")?.points, 1.35);
   const direct = { eventId: perRound.id, memberId: "a2", quantity: 4, previousQuantity: 0 };
   applyAction(club, admin, "addEventParticipant", direct);
   applyAction(club, admin, "addEventParticipant", direct);
@@ -172,15 +173,18 @@ test("The entry for total event rounds counts only the quantity BĐH saves and i
   const book = new ExcelJS.Workbook();
   await book.xlsx.load((await makeReport(club, month)).buffer);
   const detail = book.getWorksheet("Chi tiết hoạt động")!;
-  assert.deepEqual([4, 5, 6].map(row => [detail.getCell(row, 6).value, detail.getCell(row, 8).value]),
-    [[1, 0.25], [3, 0.75], [4, 1]]);
+  assert.deepEqual([4, 5, 6].map(row => [detail.getCell(row, 6).value, detail.getCell(row, 7).value, detail.getCell(row, 8).value]),
+    [[1, 0.45, 0.45], [3, 0.3, 0.9], [4, 0.3, 1.2]]);
+  applyAction(club, admin, "editEvent", { ...perRound, points: 0.4 });
+  assert.equal(rounds.quantity, 3);
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 1.65);
   applyAction(club, admin, "saveEventRounds", { ...count, previousQuantity: 3, quantity: 0 });
-  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 0.25);
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 0.45);
 });
 
 test("Older visit registrations keep their points until the total is reviewed once with an eligible photo", async () => {
   const club = fixture();
-  const data = { ...eventData("event-batch-photo"), scoringMode: "perRound", requiresEvidence: true };
+  const data = { ...eventData("event-batch-photo"), points: undefined, scoringMode: "perRound", requiresEvidence: true };
   applyAction(club, admin, "createEvent", data);
   const event = club.events![0];
   applyAction(club, user, "registerEvent", { eventId: event.id });

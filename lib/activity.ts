@@ -27,7 +27,8 @@ export type CommitteeRates = Partial<Record<StoredCommitteeKind, number>>;
 export type ActivityRates = Partial<Record<ActivityKind, number>>;
 export const eventDescriptionLimit = 1000;
 export const eventLocationLimit = 200;
-export const eventPointsPerRound = 0.25;
+export const defaultEventPoints = 0.25;
+export const eventQuantityPoints = (points: number, count: number) => Math.round(points * 100) * count / 100;
 export const eventRoundQuantityLimit = 10000;
 export const isEventRoundQuantity = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= eventRoundQuantityLimit;
@@ -202,8 +203,7 @@ export function activityUnitPoints(club: Club, row: ActivityPointRow) {
     const event = eventForActivity(club, row);
     if (!event || event.cancelledAt) return 0;
     if (event.scoringMode === "contribution") return row.contributionPoints ?? 0;
-    if (event.scoringMode) return eventPointsPerRound;
-    if (event.participationMultiplier === undefined || !row.memberId || !row.id) return event.points;
+    if (event.scoringMode || event.participationMultiplier === undefined || !row.memberId || !row.id) return event.points;
     const round = eventRounds(club, event.id, row.memberId).findIndex(approved => approved.id === row.id) + 1;
     return round > 0 ? eventRoundCents(event, round) / 100 : event.points;
   }
@@ -211,8 +211,9 @@ export function activityUnitPoints(club: Club, row: ActivityPointRow) {
 }
 
 export function activityPointsFor(club: Club, row: ActivityPointRow & { quantity: number }) {
-  if ((row.kind === "committee" || row.kind === "special") && row.points !== undefined) return activityUnitPoints(club, row);
-  return row.quantity * activityUnitPoints(club, row);
+  const unit = activityUnitPoints(club, row);
+  if ((row.kind === "committee" || row.kind === "special") && row.points !== undefined) return unit;
+  return row.kind === "event" ? eventQuantityPoints(unit, row.quantity) : row.quantity * unit;
 }
 
 export function activityName(club: Club, row: { kind: ActivityKind; eventId?: string; committee?: StoredCommitteeKind }) {
@@ -386,8 +387,10 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     if (action === "editEvent") requireValue(existing, "Không tìm thấy sự kiện.");
     requireValue(data.scoringMode === undefined || isEventScoringMode(data.scoringMode), "Chọn cách tính điểm sự kiện hợp lệ.");
     const scoringMode = data.scoringMode ?? existing?.scoringMode;
-    const points = scoringMode ? (scoringMode === "contribution" ? 0 : eventPointsPerRound)
-      : pointAmount(data.points ?? existing?.points, "Điểm sự kiện phải từ 0 đến 100.000, tối đa 2 chữ số thập phân.");
+    const previousPoints = existing?.scoringMode === scoringMode ? existing?.points : undefined;
+    const requestedPoints = data.points === undefined ? previousPoints ?? (scoringMode ? defaultEventPoints : undefined) : data.points;
+    const points = scoringMode === "contribution" ? 0
+      : pointAmount(requestedPoints, "Điểm sự kiện phải từ 0 đến 100.000, tối đa 2 chữ số thập phân.");
     const startTime = data.startTime === undefined ? existing?.startTime ?? "" : data.startTime;
     const endTime = data.endTime === undefined ? existing?.endTime ?? "" : data.endTime;
     requireValue(optionalTime(startTime) && optionalTime(endTime), "Giờ sự kiện phải theo dạng HH:mm.");
@@ -408,7 +411,8 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
       : pointAmount(data.participationMultiplier, "Hệ số nhân phải là số từ 1 đến 100.000, tối đa 2 chữ số thập phân.");
     requireValue(participationMultiplier === undefined || participationMultiplier >= 1, "Hệ số nhân phải từ 1 trở lên.");
     const scoring = { scoringMode, points, participationMultiplier };
-    const scoringLabel = scoringMode ? eventScoringLabels[scoringMode] : `${points} điểm/lượt đầu`;
+    const scoringLabel = scoringMode === "contribution" ? eventScoringLabels.contribution
+      : scoringMode ? `${eventScoringLabels[scoringMode]} · ${points} điểm` : `${points} điểm/lượt đầu`;
     if (existing) {
       requireValue(!existing.cancelledAt, "Sự kiện đã hủy.");
       const same = existing.name === name && (existing.description ?? "") === description && (existing.location ?? "") === location &&

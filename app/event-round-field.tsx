@@ -1,13 +1,13 @@
 "use client";
 
-import { eventPointsPerRound, eventRoundQuantityLimit, isEventRoundQuantity } from "../lib/activity";
+import { eventQuantityPoints, eventRoundQuantityLimit, isEventRoundQuantity } from "../lib/activity";
 import { Field } from "./ui";
 
-export function EventRoundField({ value, onChange, min = 0, showPoints = true }: {
+export function EventRoundField({ value, onChange, min = 0, pointsPerRound }: {
   value: string;
   onChange: (value: string) => void;
   min?: number;
-  showPoints?: boolean;
+  pointsPerRound?: number;
 }) {
   const count = Number(value);
   return <>
@@ -15,7 +15,7 @@ export function EventRoundField({ value, onChange, min = 0, showPoints = true }:
       <input name="quantity" type="number" inputMode="numeric" min={min} max={eventRoundQuantityLimit}
         step={1} required value={value} onChange={event => onChange(event.target.value)} />
     </Field>
-    {showPoints && value && isEventRoundQuantity(count) && count >= min &&
-      <p className="hint">Điểm sự kiện dự kiến <strong>{(count * eventPointsPerRound).toLocaleString("vi-VN")} điểm</strong></p>}
+    {pointsPerRound !== undefined && value !== "" && isEventRoundQuantity(count) && count >= min &&
+      <p className="hint">Điểm sự kiện dự kiến <strong>{eventQuantityPoints(pointsPerRound, count).toLocaleString("vi-VN")} điểm</strong></p>}
   </>;
 }

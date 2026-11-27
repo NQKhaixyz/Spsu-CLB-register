@@ -23,7 +23,7 @@ import DutyEvidenceAction from "./duty-evidence";
 import DutyWeekActions from "./duty-week-actions";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
-import { FeedbackPage, type RecallFeedback, type SubmitFeedback } from "./feedback";
+import { FeedbackPage, type EditFeedback, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import { AcademicWeekSettings } from "./academic-week-settings";
 import { isBulletinId } from "../lib/bulletin";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
@@ -435,6 +435,7 @@ export default function Workspace() {
     }
   }
   const submitFeedback: SubmitFeedback = (draft, onError) => act("sendFeedback", draft, "Đã gửi feedback", false, onError);
+  const editFeedback: EditFeedback = (draft, onError) => act("editFeedback", draft, "Đã chỉnh sửa feedback", false, onError);
   const recallFeedback: RecallFeedback = (id, onError) => act("recallFeedback", { id }, "Đã thu hồi feedback", false, onError);
   function dismissBulletinLink() {
     const url = new URL(window.location.href);
@@ -3393,7 +3394,7 @@ export default function Workspace() {
                 onAction={(action, data) => act(action, data, action === "deleteSharedLink" ? "Đã xóa link" : action === "moveSharedLink" ? "Đã đổi thứ tự link" : "Đã lưu link", false)} />
             </section>
           ) : activeTab === "feedback" ? (
-            <FeedbackPage entries={view.feedback ?? []} busy={busy} onSubmit={submitFeedback} onRecall={recallFeedback} />
+            <FeedbackPage entries={view.feedback ?? []} busy={busy} onSubmit={submitFeedback} onEdit={editFeedback} onRecall={recallFeedback} />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (
@@ -3444,6 +3445,7 @@ export default function Workspace() {
         feedback={(view.feedback ?? []).filter(item => item.recipientIds.includes(profileMember.id))}
         busy={busy}
         onSubmitFeedback={submitFeedback}
+        onEditFeedback={editFeedback}
         onRecallFeedback={recallFeedback}
         onClose={closeProfile}
         onEditAvatar={profileMember.id === me.id ? () => { closeProfile(); setAvatarEditing(true); } : undefined}
