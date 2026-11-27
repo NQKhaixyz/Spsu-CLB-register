@@ -15,8 +15,8 @@ export type ScoreScope = (typeof scopes)[number]["id"];
 type ScopeProps = { memberId?: string; scope: ScoreScope; onScopeChange: (scope: ScoreScope) => void };
 type ScorePeriod = "tuần" | "tháng";
 type ScoreTier = NonNullable<ReturnType<typeof monthlyScoreTier>>;
-type RankedScoreRow = ScoreboardRow & { rank?: number; tier?: ScoreTier };
 type ScoreTableRow = ScoreboardRow & { studentId?: string; avatarId?: string; lateDeduction?: number };
+type RankedScoreRow = ScoreTableRow & { rank?: number; tier?: ScoreTier };
 
 const numbers = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
 export const formatScore = (value: number) => numbers.format(value);
@@ -60,12 +60,8 @@ function ScoreMetric({ label, count, unit, points }: {
   </div>;
 }
 
-function RankCrest() {
-  return <span className="score-rank-crest" aria-hidden="true"><span /></span>;
-}
-
-function RankTitle({ label }: { label: string }) {
-  return <span className="score-rank-title"><strong>{label}</strong></span>;
+function RankTitle({ tier }: { tier: ScoreTier }) {
+  return <span className="score-rank-title" data-tier={tier.id}>{tier.label}</span>;
 }
 
 export function RankNumber({ rank }: { rank: number }) {
@@ -73,10 +69,20 @@ export function RankNumber({ rank }: { rank: number }) {
 }
 
 function ScoreRank({ tier, rank }: { tier?: ScoreTier; rank?: number }) {
-  if (!tier) return rank === undefined ? <span className="muted" aria-hidden="true">—</span> : <RankNumber rank={rank} />;
-  return <span className="score-rank-plate score-rank-frame" data-tier={tier.id}>
-    <RankCrest />
-    <RankTitle label={tier.label} />
+  if (tier) return <RankTitle tier={tier} />;
+  return rank === undefined ? <span className="muted" aria-hidden="true">—</span> : <RankNumber rank={rank} />;
+}
+
+function ScoreAvatar({ row, index, showNumber = false }: {
+  row: RankedScoreRow; index: number; showNumber?: boolean;
+}) {
+  return <span className="score-avatar" data-tier={row.tier?.id}>
+    <Avatar name={row.name} photoId={row.avatarId} index={index} />
+    {row.tier && <>
+      <span className="score-avatar-sheen" aria-hidden="true" />
+      <span className="score-avatar-gem" aria-hidden="true" />
+    </>}
+    {showNumber && row.rank !== undefined && <RankNumber rank={row.rank} />}
   </span>;
 }
 
@@ -85,17 +91,16 @@ function MobileScoreList({ rows, memberId, period }: {
 }) {
   const group = useId();
   const metrics = period === "tuần" ? weekDetailOrder : monthDetailOrder;
-  return <ul className="mobile-score-list" role="list" aria-label={`Bảng điểm ${period}`}>
-    {rows.map(row => {
-      const { tier, rank } = row;
-      return <li key={row.memberId}>
+  return <ul className="mobile-score-list ranked-score-list" role="list" aria-label={`Bảng điểm ${period}`}>
+    {rows.map((row, index) => (
+      <li key={row.memberId}>
         <details name={group}>
-          <summary className={tier ? "score-rank-frame" : undefined} data-tier={tier?.id}>
-            {tier ? <RankCrest /> : <ScoreRank rank={rank} />}
+          <summary>
+            <ScoreAvatar row={row} index={index} showNumber />
             <span className="mobile-score-name">
-              {tier && <RankTitle label={tier.label} />}
               <strong>{row.name}</strong>
               {memberId === row.memberId && <small className="score-self">Bạn</small>}
+              {row.tier && <RankTitle tier={row.tier} />}
               {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
             </span>
             <strong className={`mobile-score-total${row.points < 0 ? " score-negative" : ""}`}>
@@ -111,8 +116,8 @@ function MobileScoreList({ rows, memberId, period }: {
               unit="lượt" points={row.activityPoints?.[kind]} />)}
           </dl>
         </details>
-      </li>;
-    })}
+      </li>
+    ))}
   </ul>;
 }
 
@@ -176,9 +181,9 @@ export function Scoreboard({ title, period, rows, memberId, scope, onScopeChange
               </span>;
               return <tr key={row.memberId}>
                 <td className="score-rank-column"><ScoreRank tier={row.tier} rank={row.rank} /></td>
-                <td>{adminReport ? <div className="person-cell">
-                  <Avatar name={row.name} photoId={row.avatarId} index={index} />{name}
-                </div> : name}</td>
+                <td><div className="score-person">
+                  <ScoreAvatar row={row} index={index} />{name}
+                </div></td>
                 <td className="score-numeric">{adminReport ? <span className={`score ${row.points < 0 ? "negative" : ""}`}>{signedScore(row.points)}</span> :
                   <strong>{formatScore(row.points)}</strong>}</td>
                 {adminReport && <td className="muted mono">{row.studentId}</td>}
@@ -229,7 +234,7 @@ function useMonthlyScores(month: string, revision?: number) {
 }
 
 export function WeeklyScoreboard({ week, revision, rows, ...scopeProps }: ScopeProps & {
-  week: string; revision: number; rows: ScoreboardRow[];
+  week: string; revision: number; rows: ScoreTableRow[];
 }) {
   // The selected week's Monday determines the frame month.
   const month = week.slice(0, 7);
@@ -248,7 +253,9 @@ export function WeeklyScoreboard({ week, revision, rows, ...scopeProps }: ScopeP
     period="tuần" rows={rows} monthRanks={monthRanks} frameNotice={frameNotice} {...scopeProps} />;
 }
 
-export function MemberMonthlyScoreboard({ month, ...scopeProps }: ScopeProps & { month: string }) {
+export function MemberMonthlyScoreboard({ month, avatarForMember, ...scopeProps }: ScopeProps & {
+  month: string; avatarForMember: (memberId: string) => string | undefined;
+}) {
   const { result, retry } = useMonthlyScores(month);
   if (!result) return <p className="notice neutral" role="status">Đang tải bảng điểm tháng…</p>;
   if ("error" in result) return (
@@ -256,5 +263,6 @@ export function MemberMonthlyScoreboard({ month, ...scopeProps }: ScopeProps & {
       <Button variant="secondary" onClick={retry}>Thử lại</Button>
     </div>
   );
-  return <Scoreboard title={monthLabel(month)} period="tháng" rows={result.rows} {...scopeProps} />;
+  const rows = result.rows.map(row => ({ ...row, avatarId: avatarForMember(row.memberId) }));
+  return <Scoreboard title={monthLabel(month)} period="tháng" rows={rows} {...scopeProps} />;
 }

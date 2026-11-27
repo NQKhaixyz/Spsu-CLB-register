@@ -2356,7 +2356,7 @@ export default function Workspace() {
     return <WeeklyScoreboard week={week.id} revision={view!.revision}
       rows={weeklyScores.map(row => {
         const member = findMember(row.memberId);
-        return { ...row, name: member?.name ?? "", committeeNames: memberCommitteeNames(member) };
+        return { ...row, name: member?.name ?? "", committeeNames: memberCommitteeNames(member), avatarId: member?.avatarId };
       })}
       memberId={isAdmin ? undefined : me!.id} scope={scoreScope} onScopeChange={setScoreScope} />;
   }
@@ -3375,7 +3375,7 @@ export default function Workspace() {
           ) : activeTab === "reports" ? (
             isAdmin ? reports() : <>
               <div className="page-heading score-page-heading"><h1>Điểm tháng</h1>{monthSelect}</div>
-              <MemberMonthlyScoreboard key={`${me.id}:${month}:${view.revision}`} month={month} memberId={me.id}
+              <MemberMonthlyScoreboard key={`${me.id}:${month}:${view.revision}`} month={month} memberId={me.id} avatarForMember={id => findMember(id)?.avatarId}
                 scope={scoreScope} onScopeChange={setScoreScope} />
             </>
           ) : activeTab === "preferences" ? (
