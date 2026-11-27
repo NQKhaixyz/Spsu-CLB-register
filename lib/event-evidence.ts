@@ -3,7 +3,7 @@ import type { Club, Member } from "./club";
 import type { PhotoEvidenceView } from "./photo-evidence";
 
 export const eventPhotoId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-export type EventEvidenceView = PhotoEvidenceView<"attached"> & { requiresContributionPoints?: true };
+export type EventEvidenceView = PhotoEvidenceView<"attached"> & { requiresContributionPoints?: true; recordedRounds?: number };
 
 export function eventEvidenceTarget(club: Club, viewer: Member, registrationId: string) {
   const row = club.activityRegistrations?.find(registration => registration.id === registrationId);
@@ -21,7 +21,8 @@ export function eventEvidenceView(row: ActivityRegistration, event: ClubEvent, v
   const evidence = !event.cancelledAt && !expired && row.evidence ? {
     id: row.evidence.id,
     submittedAt: row.evidence.submittedAt,
-    status: savedReview?.status ?? (row.status === "confirmed" ? "approved" as const : row.status === "declined" ? "rejected" as const : "pending" as const),
+    status: savedReview?.status ?? (row.status === "confirmed" ? "approved" as const : row.status === "declined" ? "rejected" as const
+      : row.supersededBy ? "attached" as const : "pending" as const),
     expiresAt,
     reviewedAt: reviewedAt ? Date.parse(reviewedAt) : null,
     reviewNote: (savedReview ? savedReview.note : row.decision) ?? "",
@@ -29,9 +30,9 @@ export function eventEvidenceView(row: ActivityRegistration, event: ClubEvent, v
   return {
     evidence, expiresAt, expired,
     ...(event.scoringMode === "contribution" && viewer.role === "admin" ? { requiresContributionPoints: true } : {}),
-    canUpload: !event.cancelledAt && !expired && !!event.requiresEvidence && viewer.id === row.memberId &&
+    canUpload: !row.supersededBy && !event.cancelledAt && !expired && !!event.requiresEvidence && viewer.id === row.memberId &&
       (row.status === "pending" || row.status === "declined"),
-    canReview: !event.cancelledAt && !!event.requiresEvidence && !!evidence && viewer.role === "admin" && row.status === "pending",
+    canReview: !row.supersededBy && !event.cancelledAt && !!event.requiresEvidence && !!evidence && viewer.role === "admin" && row.status === "pending",
   };
 }
 

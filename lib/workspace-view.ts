@@ -115,7 +115,7 @@ export function workspaceView(
     delete club.demoArchive;
     delete club.dutyWithdrawal;
   }
-  const { memberFeedback: _privateFeedback, ...visibleClub } = club;
+  const { memberFeedback: _privateFeedback, feedbackResetReceipt: _feedbackResetReceipt, ...visibleClub } = club;
   const view = currentTerminology({ club: visibleClub, me, isAdmin: !!isAdmin, setup: !me,
     identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, currentMonthScores,
     personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin, feedback });

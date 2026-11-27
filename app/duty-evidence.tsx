@@ -2,13 +2,14 @@
 
 import { Camera, ImagePlus, Image as ImageIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
-import { isPointAmount } from "../lib/activity";
+import { isEventRoundQuantity, isPointAmount } from "../lib/activity";
 import type { EvidenceAssignment } from "../lib/duty-evidence";
 import type { EventEvidenceView } from "../lib/event-evidence";
 import type { PhotoEvidenceView } from "../lib/photo-evidence";
 import { preparePhoto } from "./prepare-photo";
 import { Badge, Button, Field } from "./ui";
 import { displayMessage } from "../lib/display-message";
+import { EventRoundField } from "./event-round-field";
 
 const statusLabels = {
   attached: { badge: "neutral", label: "Ảnh đính kèm" },
@@ -56,16 +57,18 @@ export default function DutyEvidenceAction({ target, canSend, isAdmin, label, va
   );
 }
 
-export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
+export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = true, onSaved }: {
   id?: string;
   endpoint: string;
   event?: boolean;
+  showRoundPoints?: boolean;
   onSaved?: () => void;
 }) {
   const [data, setData] = useState<EventEvidenceView | null>(null);
   const [draft, setDraft] = useState<{ photo: Blob; url: string } | null>(null);
   const [note, setNote] = useState("");
   const [contribution, setContribution] = useState("");
+  const [roundQuantity, setRoundQuantity] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,7 +158,9 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: data.evidence.id, status, note,
-        contributionPoints: status === "approved" && data.requiresContributionPoints ? Number(contribution) : undefined }),
+        contributionPoints: status === "approved" && data.requiresContributionPoints ? Number(contribution) : undefined,
+        quantity: status === "approved" && data.recordedRounds !== undefined ? Number(roundQuantity) : undefined,
+        previousQuantity: data.recordedRounds }),
     }, status === "approved" ? (event ? "Đã duyệt minh chứng và ghi điểm sự kiện" : "Đã duyệt minh chứng") : "Đã từ chối minh chứng");
   }
 
@@ -212,12 +217,17 @@ export function EvidencePanel({ id, endpoint, event = false, onSaved }: {
             <input type="number" inputMode="decimal" min={0} max={100000} step="0.01" value={contribution}
               onChange={event => setContribution(event.target.value)} />
           </Field>}
+          {data.recordedRounds !== undefined &&
+            <EventRoundField value={roundQuantity} onChange={setRoundQuantity} showPoints={showRoundPoints} />}
           <Field label="Ghi chú duyệt">
             <textarea rows={2} maxLength={500} value={note} onChange={event => setNote(event.target.value)} placeholder="Nhập lý do nếu từ chối" />
           </Field>
           <div className="duty-evidence-actions">
-            <Button disabled={busy || (data.requiresContributionPoints && (!contribution || !isPointAmount(Number(contribution))))}
-              onClick={() => review("approved")}>{event ? "Duyệt ảnh và tính điểm" : "Duyệt ảnh"}</Button>
+            <Button disabled={busy || (data.requiresContributionPoints && (!contribution || !isPointAmount(Number(contribution)))) ||
+              (data.recordedRounds !== undefined && (!roundQuantity || !isEventRoundQuantity(Number(roundQuantity))))}
+              onClick={() => review("approved")}>
+              {data.recordedRounds !== undefined ? "Duyệt ảnh và lưu số lượt" : event ? "Duyệt ảnh và tính điểm" : "Duyệt ảnh"}
+            </Button>
             <Button variant="danger" disabled={busy || !note.trim()} onClick={() => review("rejected")}>Từ chối ảnh</Button>
           </div>
         </>

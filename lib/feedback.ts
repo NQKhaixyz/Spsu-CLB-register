@@ -13,6 +13,23 @@ export type FeedbackDraft = {
 
 export type StoredFeedback = FeedbackDraft & { authorId: string; createdAt: number; recalledAt?: number };
 export type FeedbackView = FeedbackDraft & { authorId?: string; createdAt: number; recallUntil?: number };
+export type FeedbackResetReceipt = { id: string; at: number; removed: number; visibleBefore: number };
+export const requestedFeedbackResetId = "reset-feedback-2026-11-27";
+
+export function applyRequestedFeedbackReset(club: Club, now = Date.now()): FeedbackResetReceipt {
+  if (club.feedbackResetReceipt?.id === requestedFeedbackResetId) return club.feedbackResetReceipt;
+  const entries = club.memberFeedback ?? [];
+  const receipt = {
+    id: requestedFeedbackResetId, at: now, removed: entries.length,
+    visibleBefore: entries.filter(entry => entry.recalledAt === undefined).length,
+  };
+  delete club.memberFeedback;
+  club.feedbackResetReceipt = receipt;
+  club.logs.unshift({ at: new Date(now).toISOString(), actor: "Chủ quản trị",
+    text: `Đặt lại dữ liệu Feedback · Đã xóa ${receipt.visibleBefore} feedback hiển thị` });
+  if (club.logs.length > 2000) club.logs.length = 2000;
+  return receipt;
+}
 
 export function sendMemberFeedback(club: Club, author: Member, data: Record<string, unknown>) {
   const { id, anonymous } = data;

@@ -2,13 +2,14 @@
 import { CalendarDays, ChevronDown, ImageIcon, MapPin, Plus } from "lucide-react";
 import { useCallback, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
-import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, eventScoringLabels, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type EventScoringMode, type ManualActivityKind } from "../lib/activity";
+import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, eventPointsPerRound, eventRoundRegistration, recordedEventQuantity, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, eventScoringLabels, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type EventScoringMode, type ManualActivityKind } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { EvidencePanel } from "./duty-evidence";
 import { Avatar, Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
 import { MemberName, MemberOption } from "./member-identity";
 import { formatScore } from "./scoreboard";
+import { EventRoundField } from "./event-round-field";
 type ActivityProps = {club:Club;me:Member;isAdmin:boolean;week:string;busy:boolean;onAction:Act};
 type Act = (action: string, data: Record<string, unknown>, message: string, close?: boolean) => Promise<boolean>;
 type EventChange = "cancel" | "restore" | "delete";
@@ -29,6 +30,17 @@ function ContributionField({ initial }: { initial?: number }) {
   </Field>;
 }
 
+function eventRegistrationGroups(event: ClubEvent, rows: ActivityRegistration[]) {
+  if (event.scoringMode !== "perRound") return rows.filter(row => !row.supersededBy).map(row => [row]);
+  const groups = new Map<string, ActivityRegistration[]>();
+  for (const row of rows) {
+    const group = groups.get(row.memberId);
+    if (group) group.push(row);
+    else groups.set(row.memberId, [row]);
+  }
+  return [...groups.values()];
+}
+
 function eventScheduleLabel({ startDate, startTime, endDate, endTime }: ClubEvent) {
   const date = dateLabel(startDate, true);
   if (startDate !== endDate) {
@@ -47,11 +59,12 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const [showHistory, setShowHistory] = useState(false);
   const [eventFilter, setEventFilter] = useState("");
   const [review, setReview] = useState<{row:ActivityRegistration; confirmed:boolean} | null>(null);
+  const [roundEdit, setRoundEdit] = useState<{ event: ClubEvent; member: Member; row: ActivityRegistration; previousQuantity: number }>();
   const [contributionId, setContributionId] = useState<string>();
   const [proof, setProof] = useState<{ row: ActivityRegistration; event: ClubEvent } | null>(null);
   const requestsByEvent = useRef(new Map<string, string>());
   const results = useRef<HTMLElement>(null);
-  const close = useCallback(() => { setReview(null); setEventDialog(null); setProof(null); setContributionId(undefined); }, []);
+  const close = useCallback(() => { setReview(null); setEventDialog(null); setProof(null); setContributionId(undefined); setRoundEdit(undefined); }, []);
   const now = Date.now();
   const currentDay = today(new Date(now));
   const events = [...(club.events ?? [])].sort((a, b) => a.startDate.localeCompare(b.startDate) ||
@@ -62,25 +75,33 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const registrations = (club.activityRegistrations ?? []).filter(r => r.kind === "event" && (isAdmin || r.memberId === me.id));
   const cards = visibleEvents.map(event => {
     const eventRows = registrations.filter(row => row.eventId === event.id);
-    const ownRows = eventRows.filter(row => row.memberId === me.id && row.status !== "withdrawn");
+    const groups = eventRegistrationGroups(event, eventRows);
+    const ownRows = eventRows.filter(row => row.memberId === me.id && !row.supersededBy && row.status !== "withdrawn");
     const proofRows = (isAdmin ? eventRows : ownRows).filter(row => {
       const evidence = eventEvidenceView(row, event, me);
       return isAdmin ? evidence.canReview : evidence.canUpload && (!evidence.evidence || row.status === "declined");
     });
     const awaitingRegistration = isAdmin && !event.cancelledAt && !event.requiresEvidence
-      ? eventRows.filter(row => row.status === "pending").length : 0;
-    return { event, eventRows, ownRows, proofRows, awaitingRegistration };
+      ? groups.filter(group => group.some(row => !row.supersededBy && row.status === "pending")).length : 0;
+    return { event, eventRows, groups, ownRows, proofRows, awaitingRegistration };
   }).sort((a, b) => Number(!!b.proofRows.length) - Number(!!a.proofRows.length) ||
     Number(!!b.awaitingRegistration) - Number(!!a.awaitingRegistration) ||
     Number(isEventOpen(b.event, currentDay)) - Number(isEventOpen(a.event, currentDay)));
-  const rows = registrations
-    .filter(row => selectedEvent ? row.eventId === selectedEvent : visibleEventIds.has(row.eventId ?? ""))
-    .map(row => {
-      const event = eventForActivity(club, row);
-      const evidence = event && (event.requiresEvidence || row.evidence) ? eventEvidenceView(row, event, me) : undefined;
-      const ready = row.status === "pending" && !event?.cancelledAt && (!event?.requiresEvidence || evidence?.canReview);
-      return { row, event, evidence, ready };
-    })
+  const rows = cards.filter(({ event }) => !selectedEvent || event.id === selectedEvent)
+    .flatMap(({ event, groups }) => groups.flatMap(group => {
+      const perRound = event.scoringMode === "perRound";
+      const row = perRound ? eventRoundRegistration(group) : group[0];
+      if (!row) return [];
+      const evidence = event.requiresEvidence || row.evidence ? eventEvidenceView(row, event, me) : undefined;
+      const photos = group.flatMap(item => {
+        if (item.status === "withdrawn" || (!item.evidence && item !== row)) return [];
+        const view = eventEvidenceView(item, event, me);
+        return view.evidence || view.canUpload ? [{ row: item, view }] : [];
+      });
+      const pending = group.find(item => !item.supersededBy && item.status === "pending");
+      const ready = !!pending && !event.cancelledAt && (!event.requiresEvidence || photos.some(item => item.view.canReview));
+      return [{ row, event, group, evidence, photos, pending, ready }];
+    }))
     .sort((a, b) => Number(!!b.ready) - Number(!!a.ready) ||
       b.row.submittedAt.localeCompare(a.row.submittedAt));
   const editingEvent = eventDialog?.mode === "edit" ? eventDialog.event : undefined;
@@ -122,7 +143,8 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         </label>
       </div>
       {cards.length ? <div className="activity-list">{cards.map(({ event, eventRows, ownRows, proofRows, awaitingRegistration }) => {
-        const own = ownRows[0];
+        const perRound = event.scoringMode === "perRound";
+        const own = perRound ? eventRoundRegistration(ownRows) : ownRows[0];
         const multiple = allowsMultipleEventRounds(event);
         const ended = event.endDate < currentDay;
         const cancelled = !!event.cancelledAt;
@@ -151,7 +173,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
             }}>
               <ImageIcon size={16} aria-hidden="true" />
               {isAdmin ? "Duyệt minh chứng" : actionableProof.status === "declined" ? "Gửi lại minh chứng" : "Gửi minh chứng"}
-              {(isAdmin || multiple) && <span className="activity-count">{proofRows.length}</span>}
+              {(isAdmin || multiple) && <span className="activity-count">{perRound ? new Set(proofRows.map(row => row.memberId)).size : proofRows.length}</span>}
             </Button>}
             {awaitingRegistration > 0 && <Button disabled={busy} onClick={() => showRegistrations(event.id)}>
               Duyệt đăng ký <span className="activity-count">{awaitingRegistration}</span>
@@ -186,7 +208,9 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
               {eventRegistrationLabel(own, evidence)}
             </Badge>}
             {multiple && ownRows.length > 0 && !cancelled && <span>{ownRows.length} lượt của bạn</span>}
-            {isAdmin && !cancelled && <span>{eventRows.filter(row => row.status === "confirmed").length} lượt đã duyệt</span>}
+            {perRound && !isAdmin && !cancelled && own?.status === "confirmed" &&
+              <span>{recordedEventQuantity(ownRows)} lượt đã ghi nhận</span>}
+            {isAdmin && !cancelled && <span>{recordedEventQuantity(eventRows)} lượt đã duyệt</span>}
           </div>
         </article>;
       })}</div> : <Empty title="Chưa có sự kiện đang mở">{isAdmin ? "Bấm Tạo sự kiện để nhập tên, điểm và khoảng ngày diễn ra" : "Sự kiện do BĐH tạo sẽ xuất hiện ở đây để bạn đăng ký"}</Empty>}
@@ -194,9 +218,17 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     <section className="panel activity-panel event-results" ref={results} tabIndex={-1}>
       <PanelHead title={isAdmin ? "Duyệt đăng ký sự kiện" : "Kết quả tham gia của tôi"} description="Lượt được BĐH duyệt tính điểm vào tuần kết thúc sự kiện" />
       <div className="activity-search"><Field label="Lọc theo sự kiện"><select value={selectedEvent} onChange={e=>setEventFilter(e.target.value)}><option value="">Tất cả sự kiện</option>{visibleEvents.map(event=><option key={event.id} value={event.id}>{event.name}{event.cancelledAt ? " (đã hủy)" : ""}</option>)}</select></Field></div>
-      {rows.length ? <div className="activity-list">{rows.map(({ row: r, event, evidence }) => {
-        const cancelled = !!event?.cancelledAt;
+      {rows.length ? <div className="activity-list">{rows.map(({ row: r, event, group, evidence, photos, pending }) => {
+        const cancelled = !!event.cancelledAt;
+        const perRound = event.scoringMode === "perRound";
+        const recorded = recordedEventQuantity(group);
         const participant = club.members.find(m => m.id === r.memberId);
+        const points = cancelled || r.status !== "confirmed" ? 0 : perRound ? recorded * eventPointsPerRound : activityPointsFor(club, r);
+        const photoButton = ({ row, view }: (typeof photos)[number], index?: number) => <Button
+          key={row.id} variant={view.canReview || (view.canUpload && (!view.evidence || row.status === "declined")) ? "primary" : "secondary"}
+          disabled={busy} onClick={() => setProof({ row, event })}>
+          {eventEvidenceButton(row, view)}{index !== undefined && ` · ${index + 1}`}
+        </Button>;
         return <article className="activity-item" key={r.id}>
         <div><strong>{activityName(club,r)}{allowsMultipleEventRounds(event) && ` · Lượt ${roundNumber(r)}`}</strong>
         <p className="event-participant">
@@ -204,17 +236,28 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
           <span><MemberName memberId={r.memberId} /> · {cancelled ? "Ngày kết thúc dự kiến" : "Ngày tính điểm"}: {dateLabel(r.date,true)}</span>
         </p>{r.note?<p>{r.note}</p>:null}
         <Badge status={cancelled ? "absent" : r.status==="confirmed"?"attending":r.status==="pending"?"pending":"neutral"}>{cancelled ? "Sự kiện đã hủy" : eventRegistrationLabel(r, evidence)}</Badge>
-        {participant?.role !== "admin" && <p className="hint">{formatScore(!cancelled && r.status==="confirmed" ? activityPointsFor(club,r) : 0)} điểm đã ghi nhận{r.decision?` · ${r.decision}`:""}</p>}</div>
+        {perRound && !cancelled && r.status === "confirmed" && <p className="hint">
+          {recorded} lượt đã ghi nhận{participant?.role === "member" && ` · ${formatScore(points)} điểm`}{r.decision && ` · ${r.decision}`}
+        </p>}
+        {!perRound && participant?.role !== "admin" && <p className="hint">{formatScore(points)} điểm đã ghi nhận{r.decision?` · ${r.decision}`:""}</p>}</div>
         <div className="activity-actions">
-        {event && !cancelled && r.status !== "withdrawn" && (evidence?.canUpload || evidence?.evidence) ? <Button
-          variant={evidence.canReview || (evidence.canUpload && (!evidence.evidence || r.status === "declined")) ? "primary" : "secondary"}
-          disabled={busy} onClick={() => setProof({ row: r, event })}>{eventEvidenceButton(r, evidence)}</Button> : null}
-        {isAdmin && !cancelled && r.status!=="withdrawn" ? <>
+        {!cancelled && photos.length === 1 && photoButton(photos[0])}
+        {!cancelled && photos.length > 1 && <details className="event-manage">
+          <summary>Minh chứng · {photos.length} ảnh</summary>
+          <div className="activity-actions">{photos.map(photoButton)}</div>
+        </details>}
+        {perRound && isAdmin && !cancelled && r.status !== "withdrawn" && participant &&
+          (!event.requiresEvidence || r.status === "confirmed") && <Button disabled={busy}
+            onClick={() => setRoundEdit({ event, member: participant, row: r, previousQuantity: recorded })}>
+            {r.status === "confirmed" ? "Chỉnh số lượt" : "Nhập số lượt"}
+          </Button>}
+        {!perRound && isAdmin && !cancelled && r.status!=="withdrawn" ? <>
           {event?.scoringMode === "contribution" && r.status === "confirmed" && participant?.role === "member" &&
             <Button variant="secondary" disabled={busy} onClick={() => setContributionId(r.id)}>Chỉnh điểm đóng góp</Button>}
           {!event?.requiresEvidence && r.status!=="confirmed"?<Button disabled={busy} onClick={()=>setReview({row:r,confirmed:true})}>Duyệt tham gia</Button>:null}
           {r.status==="confirmed" || (!event?.requiresEvidence && r.status!=="declined") ? <Button variant="secondary" disabled={busy} onClick={()=>setReview({row:r,confirmed:false})}>{r.status==="confirmed"?"Hủy duyệt":"Không duyệt"}</Button>:null}
-        </>:null}{!cancelled && r.memberId===me.id && r.status==="pending"?<Button variant="secondary" disabled={busy} onClick={()=>onAction("withdrawActivity",{id:r.id},"Đã rút đăng ký",false)}>Rút đăng ký</Button>:null}</div>
+        </>:null}{!cancelled && pending?.memberId === me.id && <Button variant="secondary" disabled={busy}
+          onClick={() => onAction("withdrawActivity", { id: pending.id }, "Đã rút đăng ký", false)}>Rút đăng ký</Button>}</div>
       </article>;
       })}</div>:<Empty title="Chưa có người tham gia">Danh sách sẽ hiển thị khi có thành viên đăng ký hoặc được BĐH thêm vào sự kiện</Empty>}
     </section>
@@ -229,6 +272,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     {isAdmin && participantEvent && (
       <AddParticipantDialog key={participantEvent.id} event={participantEvent} members={club.members} registrations={registrations} busy={busy} onAction={onAction} onClose={close} />
     )}
+    {isAdmin && roundEdit && <RoundCountDialog {...roundEdit} busy={busy} onAction={onAction} onClose={close} />}
     {isAdmin && contributionRow && <Dialog title="Chỉnh điểm đóng góp"
       description={<>{activityName(club, contributionRow)} · <MemberName memberId={contributionRow.memberId} /></>} onClose={close} busy={busy}>
       <form onSubmit={async e => {
@@ -260,9 +304,31 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     {proof ? <Dialog title="Minh chứng sự kiện"
       description={<>{proof.event.name} · <MemberName memberId={proof.row.memberId} />
         {allowsMultipleEventRounds(proof.event) && ` · Lượt ${roundNumber(proof.row)}`}</>} onClose={close}>
-      <EvidencePanel key={proof.row.id} endpoint={"/api/event-evidence?" + new URLSearchParams({ registrationId: proof.row.id })} event onSaved={onEvidenceSaved} />
+      <EvidencePanel key={proof.row.id} endpoint={"/api/event-evidence?" + new URLSearchParams({ registrationId: proof.row.id })}
+        event showRoundPoints={club.members.find(member => member.id === proof.row.memberId)?.role === "member"} onSaved={onEvidenceSaved} />
     </Dialog> : null}
   </div>;
+}
+
+function RoundCountDialog({ event, member, row, previousQuantity, busy, onAction, onClose }: {
+  event: ClubEvent; member: Member; row: ActivityRegistration; previousQuantity: number;
+  busy: boolean; onAction: Act; onClose: () => void;
+}) {
+  const [count, setCount] = useState(row.status === "confirmed" ? String(previousQuantity) : "");
+  return <Dialog title={row.status === "confirmed" ? "Chỉnh số lượt tham gia" : "Nhập số lượt tham gia"}
+    description={<>{event.name} · <MemberName memberId={member.id} /></>} onClose={onClose} busy={busy}>
+    <form onSubmit={async e => {
+      const fields = formData(e);
+      if (await onAction("saveEventRounds", { eventId: event.id, memberId: member.id,
+        quantity: Number(count), previousQuantity, reason: fields.reason }, "Đã lưu số lượt tham gia", false)) onClose();
+    }}>
+      <EventRoundField value={count} onChange={setCount} showPoints={member.role !== "admin"} />
+      {row.status === "declined" && Number(count) > 0 &&
+        <Field label="Lý do điều chỉnh"><textarea name="reason" required minLength={3} maxLength={500} /></Field>}
+      <p className="hint">Nhập tổng số lượt thực tế. Nhập 0 để bỏ điểm sự kiện của người này</p>
+      <FormFooter label="Lưu số lượt" onCancel={onClose} busy={busy} />
+    </form>
+  </Dialog>;
 }
 
 function AddParticipantDialog({ event, members, registrations, busy, onAction, onClose }: {
@@ -272,12 +338,16 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
   const [query, setQuery] = useState("");
   const [memberId, setMemberId] = useState("");
   const [roundId, setRoundId] = useState<string>();
+  const [roundQuantity, setRoundQuantity] = useState("1");
   const [requestId] = useState(uid);
   const multiple = allowsMultipleEventRounds(event);
+  const perRound = event.scoringMode === "perRound";
   const contribution = event.scoringMode === "contribution";
   const eventRows = registrations.filter(row => row.eventId === event.id);
-  const singleRound = (id: string) => eventRows.find(row => row.memberId === id && row.status !== "withdrawn")
-    ?? eventRows.find(row => row.memberId === id);
+  const singleRound = (id: string) => {
+    const rows = eventRows.filter(row => row.memberId === id && !row.supersededBy);
+    return perRound ? eventRoundRegistration(rows) : rows.find(row => row.status !== "withdrawn") ?? rows[0];
+  };
   const candidates = members.filter(member => member.role !== "admin" && canAttendEvent(member, event) &&
     (multiple || singleRound(member.id)?.status !== "confirmed"));
   const search = query.trim().toLocaleLowerCase("vi");
@@ -297,14 +367,15 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
         registrationId: multiple ? previous?.id ?? requestId : undefined,
         previousStatus: previous?.status, previousDecisionAt: previous?.reviewedAt ?? previous?.submittedAt,
         contributionPoints: contribution ? Number(fields.contributionPoints) : undefined,
+        ...(perRound ? { quantity: Number(roundQuantity), previousQuantity: recordedEventQuantity(memberRows) } : {}),
       }, `Đã ghi nhận ${selected.name} tham gia sự kiện`, false);
       if (ok) onClose();
     }}>
       <Field label="Tìm theo tên hoặc MSSV">
-        <input type="search" value={query} onChange={e => { setQuery(e.target.value); setMemberId(""); setRoundId(undefined); }} />
+        <input type="search" value={query} onChange={e => { setQuery(e.target.value); setMemberId(""); setRoundId(undefined); setRoundQuantity("1"); }} />
       </Field>
       <Field label="Thành viên">
-        <select required name="memberId" value={selected?.id ?? ""} onChange={e => { setMemberId(e.target.value); setRoundId(undefined); }}>
+        <select required name="memberId" value={selected?.id ?? ""} onChange={e => { setMemberId(e.target.value); setRoundId(undefined); setRoundQuantity("1"); }}>
           <option value="" disabled>{matches.length ? "Chọn thành viên" : "Không tìm thấy thành viên phù hợp"}</option>
           {matches.map(member => {
             const row = multiple ? undefined : singleRound(member.id);
@@ -320,7 +391,8 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
       </Field>}
       {previous?.status === "declined" && <Field label="Lý do thay đổi kết quả"><textarea key={memberId} name="reason" required minLength={3} maxLength={500} /></Field>}
       {contribution && selected && <ContributionField key={selected.id} />}
-      <p className="hint">Xác nhận sẽ ghi {contribution ? "số điểm bạn nhập" : event.participationMultiplier !== undefined
+      {perRound && selected && <EventRoundField value={roundQuantity} onChange={setRoundQuantity} min={1} />}
+      <p className="hint">Xác nhận sẽ ghi {perRound ? "tổng số lượt và điểm tương ứng" : contribution ? "số điểm bạn nhập" : event.participationMultiplier !== undefined
         ? "điểm theo thứ tự lượt đã duyệt" : `${formatScore(event.points)} điểm`} vào tuần {dateLabel(weekId(event.endDate))} – {dateLabel(addDays(weekId(event.endDate), 6), true)}{event.requiresEvidence ? " · Lượt được BĐH xác nhận trực tiếp được miễn gửi ảnh" : ""}</p>
       <div className="form-footer">
         <Button variant="secondary" onClick={onClose} disabled={busy}>Quay lại</Button>
@@ -457,7 +529,7 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
       </select>
     </Field>
     {scoringMode === "legacy" && event && <p className="hint">{eventPointsLabel(event)}</p>}
-    {scoringMode === "perRound" && <p className="hint">Thành viên có thể đăng ký nhiều lần. Mỗi lượt được duyệt cộng 0,25 điểm</p>}
+    {scoringMode === "perRound" && <p className="hint">Thành viên đăng ký một lần. BĐH nhập tổng số lượt thực tế, mỗi lượt cộng 0,25 điểm</p>}
     {scoringMode === "contribution" && <p className="hint">BĐH nhập số điểm riêng cho từng thành viên khi xác nhận tham gia</p>}
     <label className="event-history"><input type="checkbox" name="requiresEvidence" defaultChecked={event?.requiresEvidence} /> Yêu cầu ảnh minh chứng</label>
     <p className="hint">Khi bật, thành viên đăng ký rồi gửi ảnh để BĐH duyệt và tính điểm, hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam</p>

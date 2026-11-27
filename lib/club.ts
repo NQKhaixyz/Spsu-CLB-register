@@ -6,8 +6,9 @@ import type { CommitteeMembership } from "./committees";
 import type { FontId } from "./interface-fonts";
 import type { SidebarTab } from "./workspace-navigation";
 import type { MemberPosition } from "./member-positions";
-import type { FeedbackView, StoredFeedback } from "./feedback";
+import type { FeedbackResetReceipt, FeedbackView, StoredFeedback } from "./feedback";
 import type { ScoreStanding } from "./score-ranks";
+import type { SemesterScoreRange } from "./semester-scores";
 import {
   academicWeekFor,
   activeAvailabilityDatasetFor,
@@ -137,6 +138,7 @@ export type AvailabilitySettings = AcademicWeekAnchor & {
 };
 export type Club = {
   ownerId: string;
+  semesterScoreRange?: SemesterScoreRange;
   academicWeekAnchors?: AcademicWeekAnchor[];
   name: string;
   demo: boolean;
@@ -146,6 +148,7 @@ export type Club = {
   links?: SharedLink[];
   bulletinPosts?: BulletinPost[];
   memberFeedback?: StoredFeedback[];
+  feedbackResetReceipt?: FeedbackResetReceipt;
   bulletinUploads?: BulletinUpload[];
   rules: Rule[];
   activityRegistrations?: ActivityRegistration[];

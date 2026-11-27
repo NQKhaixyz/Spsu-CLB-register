@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyAction, type Identity } from "../lib/actions";
 import { createClub, today, uid, type Member } from "../lib/club";
-import { feedbackBodyLimit, feedbackRecallWindow, memberFeedbackView, recallMemberFeedback } from "../lib/feedback";
+import { applyRequestedFeedbackReset, feedbackBodyLimit, feedbackRecallWindow, memberFeedbackView, recallMemberFeedback } from "../lib/feedback";
 import { eraseMemberData } from "../lib/member-deletion";
 import { workspaceView } from "../lib/workspace-view";
 
@@ -94,4 +94,28 @@ test("Only the sender can recall feedback during the first 30 minutes, without r
   for (const viewer of [admin, sender, first, second]) {
     assert.deepEqual(workspaceView(club, identity(viewer), 1).feedback, []);
   }
+});
+
+test("The requested feedback reset clears public and anonymous entries once and keeps feedback sent after it", () => {
+  const { club, admin, sender, first, second } = fixture();
+  const initialMembers = club.members.map(member => member.id);
+  for (const anonymous of [true, false]) {
+    applyAction(club, identity(sender), "sendFeedback", {
+      id: uid(), body: "Góp ý trước khi đặt lại", anonymous, recipientIds: [first.id, second.id],
+    });
+  }
+  const receipt = applyRequestedFeedbackReset(club);
+  assert.equal(receipt.visibleBefore, 2);
+  assert.equal(club.memberFeedback, undefined);
+  assert.deepEqual(club.members.map(member => member.id), initialMembers);
+  for (const viewer of [first, second, admin]) {
+    const view = workspaceView(club, identity(viewer), 1);
+    assert.deepEqual(view.feedback, []);
+    assert.equal("feedbackResetReceipt" in view.club, false);
+  }
+  applyAction(club, identity(sender), "sendFeedback", {
+    id: uid(), body: "Góp ý sau khi đặt lại", anonymous: true, recipientIds: [first.id],
+  });
+  assert.equal(applyRequestedFeedbackReset(club), receipt);
+  assert.equal(memberFeedbackView(club, first.id)[0].body, "Góp ý sau khi đặt lại");
 });

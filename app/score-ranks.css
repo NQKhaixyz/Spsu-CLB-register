@@ -21,6 +21,15 @@
 }
 .semester-score-filters .field { margin: 0; min-width: 0; }
 .semester-score-filters select { min-width: 0; width: 100%; }
+.semester-score-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.semester-score-actions .hint { margin: 0; }
+.semester-loading { padding: 0 16px; }
 
 .score-rank-number {
   display: inline-grid;

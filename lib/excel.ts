@@ -36,7 +36,7 @@ export async function makeReport(club: Club, month: string, asOf = today()) {
     .map(shift => ({ ...shift, assignments: shift.assignments.filter(a => !hidden.has(a.memberId)) })) }));
   const eventIds = new Set((club.events ?? []).map(event => event.id));
   const activityRegistrations = (club.activityRegistrations ?? [])
-    .filter(r => !hidden.has(r.memberId) && r.kind === "event" && eventIds.has(r.eventId ?? "") && r.date.slice(0, 7) === month);
+    .filter(r => !r.supersededBy && !hidden.has(r.memberId) && r.kind === "event" && eventIds.has(r.eventId ?? "") && r.date.slice(0, 7) === month);
   const pendingDuties = schedules
     .flatMap((s) => s.shifts.flatMap((t) => t.assignments))
     .filter((a) => a.result === "unverified").length;

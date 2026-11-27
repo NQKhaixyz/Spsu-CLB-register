@@ -43,6 +43,7 @@ import {
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
 import { eraseFeedbackMembers, recallMemberFeedback, sendMemberFeedback } from "./feedback";
+import { semesterMonthLimit, validSemesterScoreRange } from "./semester-scores";
 import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
 import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
@@ -291,6 +292,15 @@ export function applyAction(
   }
   if (applyActivityAction(club, me, action, data, note)) return;
   check(admin, "Chỉ BĐH được thực hiện thao tác này.");
+  if (action === "setSemesterScoreRange") {
+    const from = typeof data.from === "string" ? data.from : "";
+    const through = typeof data.through === "string" ? data.through : "";
+    check(validSemesterScoreRange(from, through), `Chọn khoảng tháng hợp lệ, tối đa ${semesterMonthLimit} tháng.`);
+    if (club.semesterScoreRange?.from === from && club.semesterScoreRange.through === through) return;
+    club.semesterScoreRange = { from, through };
+    note(`Công bố bảng điểm học kỳ ${from} – ${through}`);
+    return;
+  }
   if (action === "setAcademicWeekAnchor") {
     const date = typeof data.date === "string" ? data.date : "";
     const anchorWeek = typeof data.weekNumber === "number" || typeof data.weekNumber === "string" ? Number(data.weekNumber) : NaN;

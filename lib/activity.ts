@@ -28,6 +28,9 @@ export type ActivityRates = Partial<Record<ActivityKind, number>>;
 export const eventDescriptionLimit = 1000;
 export const eventLocationLimit = 200;
 export const eventPointsPerRound = 0.25;
+export const eventRoundQuantityLimit = 10000;
+export const isEventRoundQuantity = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= eventRoundQuantityLimit;
 export const eventScoringLabels = {
   single: "Tính theo 1 lượt",
   perRound: "Tính theo số lượt",
@@ -81,6 +84,7 @@ export type ActivityRegistration = {
   reviewedBy?: string;
   decision?: string;
   confirmedDirectly?: true;
+  supersededBy?: string;
   contributionPoints?: number;
   evidence?: {
     id: string;
@@ -108,7 +112,8 @@ export const activityStatusLabels = {
   withdrawn: "Đã rút đăng ký",
 };
 export const registrationStatusLabel = (row: ActivityRegistration) =>
-  row.status === "confirmed" && row.confirmedDirectly ? "BĐH xác nhận trực tiếp" : activityStatusLabels[row.status];
+  row.status === "confirmed" && row.quantity === 0 ? "Đã ghi nhận 0 lượt"
+    : row.status === "confirmed" && row.confirmedDirectly ? "BĐH xác nhận trực tiếp" : activityStatusLabels[row.status];
 export const activityRate = (club: Club, kind: ActivityKind, date: string) =>
   rulesFor(club, date.slice(0, 7)).activities?.[kind] ?? 0;
 const committeeRate = (club: Club, committee: StoredCommitteeKind, date: string) =>
@@ -119,7 +124,7 @@ export const isEventOpen = (event: ClubEvent, date: string) => !event.cancelledA
 export const canAttendEvent = (member: Member, event: ClubEvent) =>
   (member.active || !!member.left) && isMemberOnDate(member, event.endDate);
 export const allowsMultipleEventRounds = (event?: Pick<ClubEvent, "scoringMode" | "participationMultiplier">) =>
-  !!event && (event.scoringMode === "perRound" || (event.scoringMode === undefined && event.participationMultiplier !== undefined));
+  !!event && event.scoringMode === undefined && event.participationMultiplier !== undefined;
 export const eventEvidenceExpiry = (event: ClubEvent) =>
   Date.parse(addDays(event.endDate, 3) + "T00:00:00+07:00");
 
@@ -155,9 +160,25 @@ function eventRoundCents(event: Pick<ClubEvent, "points" | "participationMultipl
 }
 
 export function eventRounds(club: Club, eventId: string, memberId: string) {
+  return memberEventRegistrations(club, eventId, memberId).filter(row => !row.supersededBy && row.status === "confirmed");
+}
+
+export function memberEventRegistrations(club: Club, eventId: string, memberId: string) {
   return (club.activityRegistrations ?? []).filter(row =>
-    row.kind === "event" && row.eventId === eventId && row.memberId === memberId && row.status === "confirmed",
-  );
+    row.kind === "event" && row.eventId === eventId && row.memberId === memberId);
+}
+
+export function recordedEventQuantity(rows: readonly ActivityRegistration[]) {
+  return rows.reduce((total, row) => total + (!row.supersededBy && row.status === "confirmed" ? row.quantity : 0), 0);
+}
+
+export function eventRoundRegistration(rows: readonly ActivityRegistration[]) {
+  const active = rows.filter(row => !row.supersededBy);
+  return active.find(row => row.status === "confirmed")
+    ?? active.find(row => row.status === "pending" && row.evidence)
+    ?? active.find(row => row.status === "pending")
+    ?? active.find(row => row.status === "declined")
+    ?? active[0];
 }
 
 function checkEventPointsFit(event: Pick<ClubEvent, "points" | "participationMultiplier">, count: number) {
@@ -205,7 +226,7 @@ export function activityName(club: Club, row: { kind: ActivityKind; eventId?: st
 export function creditedActivities(club: Club) {
   const eventIds = new Set((club.events ?? []).filter(event => !event.cancelledAt).map(event => event.id));
   return [
-    ...(club.activityRegistrations ?? []).filter(r => r.kind === "event" && r.status === "confirmed" && eventIds.has(r.eventId ?? "")),
+    ...(club.activityRegistrations ?? []).filter(r => r.kind === "event" && !r.supersededBy && r.status === "confirmed" && eventIds.has(r.eventId ?? "")),
     ...(club.manualActivities ?? []).filter(r => isManualActivityKind(r.kind) && r.quantity > 0),
     ...(club.pointDeductions ?? []).filter(r => !r.cancelledAt).map(r => ({ ...r, kind: "deduction" as const, quantity: r.points })),
   ];
@@ -231,7 +252,7 @@ const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) &&
 const optionalTime = (value: unknown): value is string =>
   typeof value === "string" && (value === "" || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value));
 function quantity(value: unknown, min: number) {
-  requireValue(typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= 10000,
+  requireValue(isEventRoundQuantity(value) && value >= min,
     `Số lượt phải là số nguyên từ ${min} đến 10.000.`);
   return value;
 }
@@ -264,8 +285,47 @@ function eventRegistration(club: Club, event: ClubEvent, memberId: string, id: u
     requireValue(!existing || (existing.kind === "event" && existing.eventId === event.id && existing.memberId === memberId), "Mã lượt tham gia đã được sử dụng.");
     return existing;
   }
-  const memberRows = rows.filter(row => row.kind === "event" && row.eventId === event.id && row.memberId === memberId);
+  const memberRows = memberEventRegistrations(club, event.id, memberId).filter(row => !row.supersededBy);
+  if (event.scoringMode === "perRound") return eventRoundRegistration(memberRows);
   return memberRows.find(row => row.status !== "withdrawn") ?? memberRows[0];
+}
+
+function saveEventRoundCount(
+  club: Club, reviewer: Member, event: ClubEvent, member: Member, data: Record<string, unknown>,
+  log: (message: string) => void, source: "review" | "direct" | "photo", photoRow?: ActivityRegistration,
+) {
+  const count = quantity(data.quantity, source === "direct" ? 1 : 0);
+  const records = memberEventRegistrations(club, event.id, member.id);
+  const existing = photoRow ?? eventRoundRegistration(records);
+  const current = records.filter(row => !row.supersededBy && row.status !== "withdrawn");
+  const previous = recordedEventQuantity(current);
+  if (source !== "photo" && current.length === 1 && existing?.status === "confirmed" && existing.quantity === count) return;
+  requireValue(data.previousQuantity === previous, "Số lượt đã thay đổi. Tải lại danh sách rồi thử lại.");
+  requireValue(source !== "review" || !!existing && existing.status !== "withdrawn", "Không tìm thấy đăng ký đang xử lý.");
+  requireValue(source !== "review" || !event.requiresEvidence || current.some(row => row.status === "confirmed"),
+    "Mở và duyệt ảnh minh chứng trước khi nhập số lượt.");
+  requireValue(source !== "direct" || canAttendEvent(member, event), "Thành viên không hoạt động vào ngày tính điểm của sự kiện.");
+  const reason = text(data.reason);
+  if (existing?.status === "declined" && source !== "photo" && count > 0) {
+    requireValue(reason.length >= 3, "Ghi lý do khi sửa kết quả đã xác nhận.");
+  }
+  const at = new Date().toISOString();
+  const row = existing ?? newEventRegistration(event, member.id, at);
+  if (row.evidence) {
+    if (source === "photo") delete row.evidence.review;
+    else if (!row.evidence.review && row.status !== "confirmed") {
+      row.evidence.review = row.status === "declined"
+        ? { status: "rejected", at: row.reviewedAt, note: row.decision } : { status: "attached" };
+    }
+  }
+  Object.assign(row, { date: event.endDate, week: weekId(event.endDate), quantity: count,
+    status: "confirmed", reviewedAt: at, reviewedBy: reviewer.id, decision: reason });
+  if (source === "direct") row.confirmedDirectly = true;
+  else if (source === "photo") delete row.confirmedDirectly;
+  if (!existing) (club.activityRegistrations ??= []).push(row);
+  // Keep original evidence and decisions for the old per-visit registrations.
+  for (const other of current) if (other !== row) other.supersededBy = row.id;
+  log(`Ghi số lượt ${event.name} · ${member.name} · ${previous} thành ${count} lượt${reason ? " · " + reason : ""}`);
 }
 
 export function reviewEventRegistration(
@@ -280,7 +340,8 @@ export function reviewEventRegistration(
   requireValue(event, "Không tìm thấy sự kiện của đăng ký.");
   requireValue(!event.cancelledAt, "Sự kiện đã hủy.");
   requireValue(typeof data.confirmed === "boolean", "Kết quả xác nhận không hợp lệ.");
-  requireValue(row.status !== "withdrawn", "Thành viên đã rút đăng ký này.");
+  requireValue(!row.supersededBy && row.status !== "withdrawn", "Đăng ký này đã rút hoặc đã gộp vào kết quả.");
+  requireValue(event.scoringMode !== "perRound" || checkedPhoto, "Nhập tổng số lượt ở kết quả của thành viên.");
   const next = data.confirmed ? "confirmed" : "declined";
   if (row.status === next) return;
   const now = Date.now();
@@ -288,6 +349,12 @@ export function reviewEventRegistration(
     requireValue(now < eventEvidenceExpiry(event), "Đã hết hạn duyệt minh chứng.");
     requireValue(checkedPhoto && row.evidence?.id === checkedPhoto,
       "Mở và duyệt ảnh minh chứng trước khi xác nhận đăng ký này.");
+  }
+  if (event.scoringMode === "perRound" && data.confirmed) {
+    const member = club.members.find(item => item.id === row.memberId);
+    requireValue(member, "Không tìm thấy thành viên.");
+    saveEventRoundCount(club, me, event, member, data, log, "photo", row);
+    return;
   }
   const reason = text(data.reason);
   requireValue(row.status === "pending" || reason.length >= 3, "Ghi lý do khi sửa kết quả đã xác nhận.");
@@ -306,7 +373,7 @@ export function reviewEventRegistration(
 }
 
 export function applyActivityAction(club: Club, me: Member, action: string, data: Record<string, unknown>, log: (message: string) => void) {
-  if (!["createEvent", "editEvent", "cancelEvent", "restoreEvent", "registerEvent", "addEventParticipant", "saveEventContribution", "registerActivity", "withdrawActivity", "reviewActivity", "saveManualActivity", "deductPoints", "cancelPointDeduction"].includes(action)) return false;
+  if (!["createEvent", "editEvent", "cancelEvent", "restoreEvent", "registerEvent", "addEventParticipant", "saveEventContribution", "saveEventRounds", "registerActivity", "withdrawActivity", "reviewActivity", "saveManualActivity", "deductPoints", "cancelPointDeduction"].includes(action)) return false;
   requireValue(me.active, "Tài khoản đã ngừng hoạt động.");
   if (action === "createEvent" || action === "editEvent") {
     requireValue(me.role === "admin", "Chỉ BĐH được quản lý sự kiện.");
@@ -354,22 +421,25 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
         "Sự kiện đã được lưu với nội dung khác. Tải lại trang.");
       const counts = new Map<string, number>();
       const eventRows = (club.activityRegistrations ?? []).filter(row => row.kind === "event" && row.eventId === id);
-      const multiple = allowsMultipleEventRounds(scoring);
+      const multiple = scoringMode === "perRound" || allowsMultipleEventRounds(scoring);
       for (const row of eventRows) {
-        if (row.status === "withdrawn" || (multiple && row.status !== "confirmed")) continue;
-        counts.set(row.memberId, (counts.get(row.memberId) ?? 0) + 1);
+        if (row.supersededBy || row.status === "withdrawn" || (multiple && row.status !== "confirmed")) continue;
+        const rounds = existing.scoringMode === "perRound" && row.status === "confirmed" ? Math.max(1, row.quantity) : 1;
+        counts.set(row.memberId, (counts.get(row.memberId) ?? 0) + rounds);
       }
       for (const count of counts.values()) {
         requireValue(multiple || count <= 1, "Sự kiện đã có người đăng ký nhiều lượt. Chọn cách tính theo số lượt để giữ các đăng ký này.");
         checkEventPointsFit(scoring, count);
       }
       if (scoringMode !== existing.scoringMode) {
-        const previousAwards = scoringMode === "contribution" ? eventRows.filter(row => row.status === "confirmed").map(row => ({
+        const previousAwards = scoringMode === "contribution" ? eventRows.filter(row => !row.supersededBy && row.status === "confirmed").map(row => ({
           row, points: pointAmount(activityPointsFor(club, row), eventContributionError),
         })) : [];
         for (const row of eventRows) {
           delete row.contributionPoints;
-          if (scoringMode !== "perRound") row.quantity = 1;
+          if (row.supersededBy || scoringMode === "perRound") continue;
+          if (row.quantity === 0 && row.status === "confirmed" && scoringMode !== "contribution") row.status = "declined";
+          row.quantity = 1;
         }
         for (const award of previousAwards) award.row.contributionPoints = award.points;
       }
@@ -408,6 +478,7 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     requireValue(isMemberOnDate(me, today()) && isMemberOnDate(me, event.endDate), "Thành viên chưa hoạt động trong thời gian sự kiện.");
     if (existing) {
       existing.status = "pending";
+      existing.quantity = 1;
       existing.submittedAt = new Date().toISOString();
       delete existing.reviewedAt;
       delete existing.reviewedBy;
@@ -423,14 +494,27 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
   }
   if (action === "withdrawActivity") {
     const row = club.activityRegistrations?.find((r) => r.id === data.id && r.memberId === me.id);
-    requireValue(row?.status === "pending", "Chỉ rút đăng ký của bạn khi đang chờ xác nhận.");
-    requireValue(!eventForActivity(club, row)?.cancelledAt, "Sự kiện đã hủy.");
-    row.status = "withdrawn";
-    delete row.evidence;
+    requireValue(row?.status === "pending" && !row.supersededBy, "Chỉ rút đăng ký của bạn khi đang chờ xác nhận.");
+    const event = eventForActivity(club, row);
+    requireValue(!event?.cancelledAt, "Sự kiện đã hủy.");
+    const targets = event?.scoringMode === "perRound"
+      ? memberEventRegistrations(club, event.id, me.id).filter(item => !item.supersededBy && item.status === "pending") : [row];
+    for (const pending of targets) {
+      pending.status = "withdrawn";
+      delete pending.evidence;
+    }
     log(`Rút đăng ký ${activityName(club, row)} ngày ${row.date}`);
     return true;
   }
   requireValue(me.role === "admin", "Chỉ BĐH được xác nhận hoặc nhập điểm hoạt động.");
+  if (action === "saveEventRounds") {
+    const event = club.events?.find(item => item.id === data.eventId);
+    requireValue(event?.scoringMode === "perRound" && !event.cancelledAt, "Chỉ nhập số lượt cho sự kiện đang tính theo số lượt.");
+    const member = club.members.find(item => item.id === data.memberId);
+    requireValue(member, "Không tìm thấy thành viên.");
+    saveEventRoundCount(club, me, event, member, data, log, "review");
+    return true;
+  }
   if (action === "saveEventContribution") {
     const row = club.activityRegistrations?.find(item => item.id === data.id);
     const event = row && eventForActivity(club, row);
@@ -450,6 +534,10 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     requireValue(!event.cancelledAt, "Sự kiện đã hủy.");
     const member = club.members.find(item => item.id === data.memberId);
     requireValue(member && member.role !== "admin", "Chỉ thêm tài khoản thành viên vào danh sách tính điểm sự kiện.");
+    if (event.scoringMode === "perRound") {
+      saveEventRoundCount(club, me, event, member, data, log, "direct");
+      return true;
+    }
     const existing = eventRegistration(club, event, member.id, data.registrationId);
     if (existing?.status === "confirmed") return true;
     requireValue(canAttendEvent(member, event), "Thành viên không hoạt động vào ngày tính điểm của sự kiện.");

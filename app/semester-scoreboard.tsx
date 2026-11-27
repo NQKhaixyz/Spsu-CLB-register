@@ -1,46 +1,112 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { monthLabel, type Club } from "../lib/club";
-import { semesterScores } from "../lib/semester-scores";
+import { semesterMonthLimit, semesterScores, validSemesterScoreRange, type publishedSemesterScores, type SemesterScoreRange } from "../lib/semester-scores";
 import { formatScore, RankNumber } from "./scoreboard";
-import { Empty, Field } from "./ui";
+import { Button, Empty, Field } from "./ui";
 import { MemberName } from "./member-identity";
 
 const monthChoiceLabel = (month: string) => `${month.slice(5)}/${month.slice(0, 4)}`;
+const rangeLabel = (range: SemesterScoreRange) => `${monthChoiceLabel(range.from)} – ${monthChoiceLabel(range.through)}`;
 
-export default function SemesterScoreboard({ club, monthChoices, initialMonth }: {
-  club: Club; monthChoices: string[]; initialMonth: string;
+export default function SemesterScoreboard({ club, monthChoices, initialMonth, busy, onSave }: {
+  club: Club; monthChoices: string[]; initialMonth: string; busy: boolean;
+  onSave: (range: SemesterScoreRange) => Promise<boolean>;
 }) {
-  const [range, setRange] = useState(() => ({ from: initialMonth, through: initialMonth }));
-  const accordion = useId();
-  const { months, rows } = useMemo(() => semesterScores(club, range.from, range.through), [club, range]);
-  const teamTotal = Number(rows.reduce((sum, row) => sum + row.points, 0).toFixed(10));
+  const [draft, setDraft] = useState<SemesterScoreRange>();
+  const published = club.semesterScoreRange;
+  const { from, through } = draft ?? published ?? { from: initialMonth, through: initialMonth };
+  const choices = [...new Set([...monthChoices, from, through])].sort();
+  const valid = validSemesterScoreRange(from, through);
+  const current = published?.from === from && published.through === through;
+  const result = useMemo(() => semesterScores(club, from, through), [club, from, through]);
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (valid && await onSave({ from, through })) setDraft(undefined);
+  }
+
   return <>
     <div className="page-heading score-page-heading"><h1>Tổng kết học kỳ</h1></div>
     <section className="panel score-panel">
-      <div className="semester-score-filters">
+      <form className="semester-score-filters" onSubmit={save}>
         <Field label="Từ tháng">
-          <select value={range.from} onChange={event => {
-            const from = event.target.value;
-            setRange(current => ({ from, through: current.through < from ? from : current.through }));
+          <select disabled={busy} value={from} onChange={event => {
+            const next = event.target.value;
+            setDraft({ from: next, through: through < next ? next : through });
           }}>
-            {monthChoices.map(month => <option key={month} value={month}>{monthChoiceLabel(month)}</option>)}
+            {choices.map(month => <option key={month} value={month}>{monthChoiceLabel(month)}</option>)}
           </select>
         </Field>
         <Field label="Đến tháng">
-          <select value={range.through} onChange={event => {
-            const through = event.target.value;
-            setRange(current => ({ ...current, through }));
-          }}>
-            {monthChoices.filter(month => month >= range.from).map(month => <option key={month} value={month}>{monthChoiceLabel(month)}</option>)}
+          <select disabled={busy} value={through} onChange={event => setDraft({ from, through: event.target.value })}>
+            {choices.filter(month => month >= from).map(month => <option key={month} value={month}>{monthChoiceLabel(month)}</option>)}
           </select>
         </Field>
-      </div>
-      {rows.length > 0 ? <>
+        <div className="semester-score-actions">
+          <Button type="submit" disabled={busy || current || !valid}>Công bố kỳ tổng kết</Button>
+          <p className="hint">{!valid ? `Chọn tối đa ${semesterMonthLimit} tháng`
+            : published ? `Đang công bố ${rangeLabel(published)}` : "Thành viên xem được khoảng tháng sau khi BĐH công bố"}</p>
+        </div>
+      </form>
+      <SemesterResults key={`${from}:${through}`} {...result} />
+    </section>
+  </>;
+}
+
+export function MemberSemesterScoreboard() {
+  const [report, setReport] = useState<ReturnType<typeof publishedSemesterScores>>();
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let request: AbortController | undefined;
+    async function load() {
+      request?.abort();
+      const controller = new AbortController();
+      request = controller;
+      try {
+        const response = await fetch("/api/scores/semester", { signal: controller.signal });
+        if (!response.ok) throw new Error("Không tải được bảng điểm học kỳ");
+        const data = await response.json() as { report: ReturnType<typeof publishedSemesterScores> };
+        if (controller.signal.aborted) return;
+        setReport(data.report);
+        setError("");
+      } catch (reason) {
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Không tải được bảng điểm học kỳ");
+      }
+    }
+    function refreshIfVisible() {
+      if (!document.hidden) void load();
+    }
+    void load();
+    const timer = window.setInterval(refreshIfVisible, 30_000);
+    window.addEventListener("focus", refreshIfVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshIfVisible);
+      request?.abort();
+    };
+  }, [retry]);
+  return <>
+    <div className="page-heading score-page-heading"><h1>Tổng kết học kỳ</h1>
+      {report && <p>Kỳ tổng kết {rangeLabel(report.range)}</p>}
+    </div>
+    <section className="panel score-panel">
+      {report ? <SemesterResults key={rangeLabel(report.range)} months={report.months} rows={report.rows} />
+        : error ? <Empty title={error}><Button variant="secondary" onClick={() => setRetry(value => value + 1)}>Thử lại</Button></Empty>
+        : report === null ? <Empty title="BĐH chưa công bố bảng điểm học kỳ" />
+        : <p className="hint semester-loading" role="status">Đang tải bảng điểm học kỳ…</p>}
+    </section>
+  </>;
+}
+
+function SemesterResults({ months, rows }: ReturnType<typeof semesterScores>) {
+  const accordion = useId();
+  const teamTotal = Number(rows.reduce((sum, row) => sum + row.points, 0).toFixed(10));
+  return rows.length > 0 ? <>
         <p className="score-tally"><strong>Tổng điểm toàn Đội</strong> {formatScore(teamTotal)} · {rows.length} thành viên</p>
-        <ul key={`${range.from}:${range.through}`} className="mobile-score-list" role="list" aria-label="Tổng kết học kỳ">
+        <ul className="mobile-score-list" role="list" aria-label="Tổng kết học kỳ">
           {rows.map(row => <li key={row.memberId}>
             <details name={accordion}>
               <summary>
@@ -81,7 +147,5 @@ export default function SemesterScoreboard({ club, monthChoices, initialMonth }:
             </tr>)}</tbody>
           </table>
         </div>
-      </> : <Empty title="Chưa có thành viên trong khoảng tháng này" />}
-    </section>
-  </>;
+  </> : <Empty title="Chưa có thành viên trong khoảng tháng này" />;
 }

@@ -8,7 +8,7 @@ import { detachExpiredEventPhotos, eventEvidenceTarget, eventEvidenceView } from
 import { eventPhotoKey, purgeExpiredEventPhotos } from "../lib/event-photo-storage";
 import { monthlyScoreboard, workspaceView } from "../lib/workspace-view";
 import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
-import { semesterScores } from "../lib/semester-scores";
+import { publishedSemesterScores, semesterScores } from "../lib/semester-scores";
 import { makeReport } from "../lib/excel";
 import ExcelJS from "exceljs";
 const admin={userId:"owner-activity",displayName:"Admin",email:""};
@@ -74,6 +74,14 @@ test("Semester totals sum each monthly report across years and include members o
     [paused.id, 1.25, 3, { "2026-12": 1.25 }],
   ]);
   assert.deepEqual(semesterScores(club, "2027-01", "2026-12").months, []);
+  assert.equal(publishedSemesterScores(club), null);
+  const range = { from: "2026-12", through: "2027-01" };
+  assert.throws(() => applyAction(club, user, "setSemesterScoreRange", range), /BĐH/);
+  assert.throws(() => applyAction(club, admin, "setSemesterScoreRange", { ...range, through: "2026-10" }), /khoảng tháng/);
+  assert.throws(() => applyAction(club, admin, "setSemesterScoreRange", { ...range, through: "2032-01" }), /khoảng tháng/);
+  applyAction(club, admin, "setSemesterScoreRange", range);
+  assert.deepEqual(workspaceView(club, user, 2).club.semesterScoreRange, range);
+  assert.deepEqual(publishedSemesterScores(club, "2027-01-31"), { range, ...result });
 });
 
 test("Multi-round events use the per-event multiplier for each approved round and keep reviews, photos and Excel aligned", async () => {
@@ -125,7 +133,7 @@ test("Multi-round events use the per-event multiplier for each approved round an
   assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 0);
 });
 
-test("Fixed event modes credit 0.25 for a single member or each approved round, consistently in reports", async () => {
+test("The entry for total event rounds counts only the quantity BĐH saves and is consistent in reports", async () => {
   const club = fixture();
   const single = { ...eventData("event-fixed-one"), scoringMode: "single", participationMultiplier: 10 };
   const perRound = { ...eventData("event-fixed-many"), scoringMode: "perRound" };
@@ -136,20 +144,67 @@ test("Fixed event modes credit 0.25 for a single member or each approved round, 
   for (const registrationId of ["fixed-round-1", "fixed-round-2", "fixed-round-2", "fixed-round-3"]) {
     applyAction(club, user, "registerEvent", { eventId: perRound.id, registrationId });
   }
-  const [one, first, second, third] = club.activityRegistrations!;
-  assert.equal(club.activityRegistrations!.length, 4);
-  for (const row of [one, first, second]) applyAction(club, admin, "reviewActivity", { id: row.id, confirmed: true });
-  assert.equal(third.status, "pending");
+  const [one, rounds] = club.activityRegistrations!;
+  assert.equal(club.activityRegistrations!.length, 2);
+  applyAction(club, admin, "reviewActivity", { id: one.id, confirmed: true });
+  assert.throws(() => applyAction(club, admin, "reviewActivity", { id: rounds.id, confirmed: true }), /tổng số lượt/);
+  const count = { eventId: perRound.id, memberId: "a1", quantity: 3, previousQuantity: 0 };
+  assert.throws(() => applyAction(club, user, "saveEventRounds", count), /Chỉ BĐH/);
+  for (const quantity of [-1, 2.5, 10001]) {
+    assert.throws(() => applyAction(club, admin, "saveEventRounds", { ...count, quantity }), /Số lượt/);
+  }
+  applyAction(club, admin, "saveEventRounds", count);
+  applyAction(club, admin, "saveEventRounds", count);
+  assert.throws(() => applyAction(club, admin, "saveEventRounds", { ...count, quantity: 8 }), /Số lượt đã thay đổi/);
+  assert.equal(rounds.quantity, 3);
   assert.equal(club.events![0].participationMultiplier, undefined);
-  assert.deepEqual([one, first, second].map(row => activityPointsFor(club, row)), [0.25, 0.25, 0.25]);
+  assert.deepEqual([one, rounds].map(row => activityPointsFor(club, row)), [0.25, 0.75]);
   assert.throws(() => applyAction(club, admin, "editEvent", { ...perRound, scoringMode: "single" }), /nhiều lượt/);
+  applyAction(club, admin, "editEvent", { ...perRound, location: "C1" });
   const month = today().slice(0, 7);
-  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 0.75);
-  assert.equal(monthlyScoreboard(club, month).find(row => row.memberId === "a1")?.points, 0.75);
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityCounts.event, 4);
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 1);
+  assert.equal(monthlyScoreboard(club, month).find(row => row.memberId === "a1")?.points, 1);
+  const direct = { eventId: perRound.id, memberId: "a2", quantity: 4, previousQuantity: 0 };
+  applyAction(club, admin, "addEventParticipant", direct);
+  applyAction(club, admin, "addEventParticipant", direct);
+  assert.deepEqual(club.activityRegistrations!.filter(row => row.memberId === "a2").map(row => row.quantity), [4]);
   const book = new ExcelJS.Workbook();
   await book.xlsx.load((await makeReport(club, month)).buffer);
   const detail = book.getWorksheet("Chi tiết hoạt động")!;
-  assert.deepEqual([4, 5, 6, 7].map(row => detail.getCell(row, 8).value), [0.25, 0.25, 0.25, 0]);
+  assert.deepEqual([4, 5, 6].map(row => [detail.getCell(row, 6).value, detail.getCell(row, 8).value]),
+    [[1, 0.25], [3, 0.75], [4, 1]]);
+  applyAction(club, admin, "saveEventRounds", { ...count, previousQuantity: 3, quantity: 0 });
+  assert.equal(weeklyScoreFor(club, "a1", weekId()).activityPoints.event, 0.25);
+});
+
+test("Older visit registrations keep their points until the total is reviewed once with an eligible photo", async () => {
+  const club = fixture();
+  const data = { ...eventData("event-batch-photo"), scoringMode: "perRound", requiresEvidence: true };
+  applyAction(club, admin, "createEvent", data);
+  const event = club.events![0];
+  applyAction(club, user, "registerEvent", { eventId: event.id });
+  const pending = club.activityRegistrations![0];
+  pending.evidence = { id: crypto.randomUUID(), submittedAt: Date.now() };
+  const count = { eventId: event.id, memberId: pending.memberId, quantity: 5, previousQuantity: 0 };
+  assert.throws(() => applyAction(club, admin, "saveEventRounds", count), /duyệt ảnh/);
+  const approved = { ...pending, id: "old-visit-approved", status: "confirmed" as const, evidence: undefined };
+  const secondPhoto = { ...pending, id: "old-visit-with-photo", evidence: { ...pending.evidence, id: crypto.randomUUID() } };
+  club.activityRegistrations!.push(approved, secondPhoto);
+  assert.equal(weeklyScoreFor(club, pending.memberId, weekId()).activityPoints.event, 0.25);
+  assert.throws(() => reviewEventRegistration(club, club.members[0], { ...count, id: pending.id, confirmed: true }, () => {}, pending.evidence!.id), /đã thay đổi/);
+  reviewEventRegistration(club, club.members[0], { ...count, id: pending.id, confirmed: true, previousQuantity: 1 }, () => {}, pending.evidence.id);
+  assert.equal(pending.quantity, 5);
+  assert.deepEqual(club.activityRegistrations!.slice(1).map(row => row.supersededBy), [pending.id, pending.id]);
+  assert.equal(eventEvidenceView(secondPhoto, event, club.members[0]).canReview, false);
+  assert.equal(eventEvidenceView(secondPhoto, event, club.members[0]).evidence?.id, secondPhoto.evidence.id);
+  assert.equal(weeklyScoreFor(club, pending.memberId, weekId()).activityCounts.event, 5);
+  assert.equal(weeklyScoreFor(club, pending.memberId, weekId()).activityPoints.event, 1.25);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load((await makeReport(club, today().slice(0, 7))).buffer);
+  const detail = book.getWorksheet("Chi tiết hoạt động")!;
+  assert.equal(detail.actualRowCount, 4);
+  assert.deepEqual([detail.getCell(4, 6).value, detail.getCell(4, 8).value], [5, 1.25]);
 });
 
 test("Contribution events require an individual award on approval or direct addition and allow later adjustments", async () => {

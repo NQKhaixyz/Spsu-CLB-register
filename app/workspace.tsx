@@ -14,7 +14,7 @@ import { isMemberPosition, memberPositions, memberPositionLabels, memberRoleLabe
 import { FontSettings } from "./font-settings";
 import { AvatarEditor } from "./avatar-editor";
 import { MemberMonthlyScoreboard, Scoreboard, WeeklyScoreboard, type ScoreScope } from "./scoreboard";
-import SemesterScoreboard from "./semester-scoreboard";
+import SemesterScoreboard, { MemberSemesterScoreboard } from "./semester-scoreboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
@@ -532,8 +532,7 @@ export default function Workspace() {
         </Button>
       </div>
     );
-  const activeTab = !isAdmin && tab === "semesterScores" ? "reports"
-    : !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
+  const activeTab = !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
   const activeSidebarTab = sidebarTabs.find(id => sidebarGroups[id].sections.includes(activeTab));
   const headerTitle = activeSidebarTab ? sidebarTabLabels[activeSidebarTab]
     : activeTab === "overview" ? "Tổng quan" : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
@@ -552,11 +551,13 @@ export default function Workspace() {
       : [],
   );
   const currentDay = today();
-  const activityPending = (club.activityRegistrations ?? []).filter(row => {
-    if (row.kind !== "event" || row.status !== "pending") return false;
+  const pendingEventKeys = new Set((club.activityRegistrations ?? []).flatMap(row => {
+    if (row.kind !== "event" || row.status !== "pending" || row.supersededBy) return [];
     const event = eventForActivity(club, row);
-    return !!event && (event.requiresEvidence ? eventEvidenceView(row, event, me).canReview : isEventOpen(event, currentDay));
-  }).length;
+    if (!event || !(event.requiresEvidence ? eventEvidenceView(row, event, me).canReview : isEventOpen(event, currentDay))) return [];
+    return [event.scoringMode === "perRound" ? `${event.id}:${row.memberId}` : row.id];
+  }));
+  const activityPending = pendingEventKeys.size;
   const pendingTotal = pending.length + activityPending;
   const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "bulletin" ? [
     { id: "bulletin", label: "Bài đăng" },
@@ -564,7 +565,7 @@ export default function Workspace() {
   ] : activeSidebarTab === "scoreboard" ? [
     { id: "weeklyScores", label: "Điểm tuần" },
     { id: "reports", label: "Điểm tháng" },
-    ...(isAdmin ? [{ id: "semesterScores" as const, label: "Học kỳ" }] : []),
+    { id: "semesterScores", label: "Học kỳ" },
   ] : activeSidebarTab === "activity" ? [
     { id: "meetings", label: "Đăng ký họp", pending: pending.length },
     { id: "duties", label: "Lịch trực C1" },
@@ -3396,7 +3397,9 @@ export default function Workspace() {
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (
-            <SemesterScoreboard club={club} monthChoices={monthChoices} initialMonth={month} />
+            isAdmin ? <SemesterScoreboard club={club} monthChoices={monthChoices} initialMonth={month} busy={busy}
+              onSave={range => act("setSemesterScoreRange", range, "Đã công bố kỳ tổng kết", false)} />
+              : <MemberSemesterScoreboard key={view.revision} />
           ) : activeTab === "reports" ? (
             isAdmin ? reports() : <>
               <div className="page-heading score-page-heading"><h1>Điểm tháng</h1>{monthSelect}</div>

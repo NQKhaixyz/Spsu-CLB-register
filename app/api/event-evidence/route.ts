@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { eventContributionError, isPointAmount, reviewEventRegistration } from "../../../lib/activity";
+import { eventContributionError, isEventRoundQuantity, isPointAmount, memberEventRegistrations, recordedEventQuantity, reviewEventRegistration, type ActivityRegistration, type ClubEvent } from "../../../lib/activity";
+import type { Club, Member } from "../../../lib/club";
 import { eventEvidenceTarget, eventEvidenceView, eventPhotoId } from "../../../lib/event-evidence";
 import { eventPhotoKey, eventPhotoStagingMs, removeEventPhoto } from "../../../lib/event-photo-storage";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
@@ -12,6 +13,13 @@ export const dynamic = "force-dynamic";
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: privatePhotoHeaders });
 const changed = () => new AuthError("Minh chứng vừa thay đổi. Mở lại để xem bản mới.", 409);
 
+function viewFor(club: Club, row: ActivityRegistration, event: ClubEvent, member: Member) {
+  const view = eventEvidenceView(row, event, member);
+  if (view.canReview && event.scoringMode === "perRound")
+    view.recordedRounds = recordedEventQuantity(memberEventRegistrations(club, event.id, row.memberId));
+  return view;
+}
+
 async function context(request: Request) {
   const user = await getNativeUserWithClub(request);
   if (!user) throw new AuthError("Vui lòng đăng nhập.", 401);
@@ -22,7 +30,7 @@ async function context(request: Request) {
   if (!target) throw new AuthError("Bạn không có quyền xem minh chứng này.", 403);
   const bucket = env.BUCKET;
   if (!bucket) throw new AuthError("Kho ảnh chưa được kết nối. Vui lòng thử lại sau.", 503);
-  return { user, registrationId, search, bucket, view: eventEvidenceView(target.row, target.event, user.member) };
+  return { user, registrationId, search, bucket, view: viewFor(user.club, target.row, target.event, user.member) };
 }
 
 function errorResponse(error: unknown) {
@@ -98,13 +106,13 @@ export async function PATCH(request: Request) {
     if (user.member.role !== "admin") throw new AuthError("Chỉ BĐH được duyệt minh chứng.", 403);
     if (view.expired) throw new AuthError("Đã hết hạn duyệt minh chứng.", 410);
     const bytes = await readBody(request, "application/json", 8192, "Ghi chú quá dài.");
-    let input: { id?: unknown; status?: unknown; note?: unknown; contributionPoints?: unknown } | null;
+    let input: { id?: unknown; status?: unknown; note?: unknown; contributionPoints?: unknown; quantity?: unknown; previousQuantity?: unknown } | null;
     try {
       input = JSON.parse(new TextDecoder().decode(bytes));
     } catch {
       throw new AuthError("Kết quả duyệt không hợp lệ.", 400);
     }
-    const { id, status, note, contributionPoints } = input ?? {};
+    const { id, status, note, contributionPoints, quantity, previousQuantity } = input ?? {};
     if (typeof id !== "string" || !eventPhotoId.test(id) || (status !== "approved" && status !== "rejected")) {
       throw new AuthError("Kết quả duyệt không hợp lệ.", 400);
     }
@@ -118,13 +126,17 @@ export async function PATCH(request: Request) {
       const target = eventEvidenceTarget(club, member, registrationId);
       if (!target) throw changed();
       const { row, event } = target;
-      const current = eventEvidenceView(row, event, member);
+      const current = viewFor(club, row, event, member);
       if (current.expired) throw new AuthError("Đã hết hạn duyệt minh chứng.", 410);
       if (!current.canReview || current.evidence?.id !== id) throw changed();
       if (status === "approved" && current.requiresContributionPoints && !isPointAmount(contributionPoints)) {
         throw new AuthError(eventContributionError, 400);
       }
-      reviewEventRegistration(club, member, { id: row.id, confirmed: status === "approved", reason, contributionPoints }, text => {
+      if (status === "approved" && current.recordedRounds !== undefined) {
+        if (!isEventRoundQuantity(quantity)) throw new AuthError("Nhập số lượt nguyên từ 0 đến 10.000.", 400);
+        if (previousQuantity !== current.recordedRounds) throw changed();
+      }
+      reviewEventRegistration(club, member, { id: row.id, confirmed: status === "approved", reason, contributionPoints, quantity, previousQuantity }, text => {
         club.logs.unshift({ at: new Date().toISOString(), actor: member.name, actorId: member.id, text });
         club.logs = club.logs.slice(0, 2000);
       }, id);
