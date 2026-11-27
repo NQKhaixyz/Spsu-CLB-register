@@ -101,6 +101,23 @@
   padding: 4px 7px;
   font-size: .81rem;
 }
+.score-sharing-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+  min-width: 0;
+  max-width: 100%;
+  margin-block: 3px 1px;
+}
+.score-sharing-tags > :is(.sharing-tag, .sharing-code) {
+  display: inline-block;
+  margin: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  font-size: .75rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .sharing-milestones:empty { display: none; }
 .sharing-milestones span { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; }
 .sharing-profile { padding: 10px clamp(12px, 5vw, 24px); }

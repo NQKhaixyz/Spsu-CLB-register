@@ -4,11 +4,10 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { monthLabel, today, type Club } from "../lib/club";
 import { semesterMonthLimit, semesterScores, validSemesterScoreRange, type publishedSemesterScores, type SemesterScoreRange } from "../lib/semester-scores";
-import { formatScore, RankNumber, SharingScoreMetrics } from "./scoreboard";
+import { formatScore, RankNumber, ScoreMemberName, SharingScoreMetrics } from "./scoreboard";
 import type { SharingScoreIndex } from "../lib/sharing-scores";
 import { sharingKinds, sharingScoreLabels } from "../lib/sharing-types";
 import { Button, Empty, Field } from "./ui";
-import { MemberName } from "./member-identity";
 
 const monthChoiceLabel = (month: string) => `${month.slice(5)}/${month.slice(0, 4)}`;
 const rangeLabel = (range: SemesterScoreRange) => `${monthChoiceLabel(range.from)} – ${monthChoiceLabel(range.through)}`;
@@ -120,7 +119,7 @@ function SemesterResults({ months, rows }: ReturnType<typeof semesterScores>) {
               <summary>
                 <RankNumber rank={row.rank} />
                 <span className="mobile-score-name">
-                  <MemberName as="strong" memberId={row.memberId} name={row.name} />
+                  <ScoreMemberName memberId={row.memberId} name={row.name} />
                   <small className="score-committee">{row.committeeNames}</small>
                 </span>
                 <strong className={`mobile-score-total${row.points < 0 ? " score-negative" : ""}`}>
@@ -149,7 +148,7 @@ function SemesterResults({ months, rows }: ReturnType<typeof semesterScores>) {
             </tr></thead>
             <tbody>{rows.map(row => <tr key={row.memberId}>
               <td className="score-rank-column"><RankNumber rank={row.rank} /></td>
-              <td><MemberName as="strong" memberId={row.memberId} name={row.name} /><small className="score-committee">{row.committeeNames}</small></td>
+              <td><ScoreMemberName memberId={row.memberId} name={row.name} /><small className="score-committee">{row.committeeNames}</small></td>
               <td className="score-numeric"><strong>{formatScore(row.points)}</strong></td>
               {months.map(month => <td key={month} className="score-numeric">
                 {row.byMonth[month] === undefined ? "—" : formatScore(row.byMonth[month])}

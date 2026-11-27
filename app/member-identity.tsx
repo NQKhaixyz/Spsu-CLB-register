@@ -21,8 +21,8 @@ type MemberIdentity = {
 export const MemberIdentityContext = createContext<MemberIdentity | null>(null);
 export const useMemberIdentity = () => useContext(MemberIdentityContext);
 
-export function MemberName({ memberId, name, as: Tag = "span", className, showSharing = true }: {
-  memberId?: string; name?: string; as?: "span" | "strong"; className?: string; showSharing?: boolean;
+export function MemberName({ memberId, name, as: Tag = "span", className, showSharing = true, showGuildCode = true }: {
+  memberId?: string; name?: string; as?: "span" | "strong"; className?: string; showSharing?: boolean; showGuildCode?: boolean;
 }) {
   const identity = useMemberIdentity();
   const member = memberId ? identity?.members.get(memberId) : undefined;
@@ -30,7 +30,7 @@ export function MemberName({ memberId, name, as: Tag = "span", className, showSh
   const group = memberId && showSharing ? identity?.sharingGroups?.get(memberId) : undefined;
   return <Tag className={className ? `member-name ${className}` : "member-name"} data-weekly-rank={rank}>
     {name ?? member?.name ?? "Thành viên"}
-    {group?.kind === "guild" && <span className="sharing-code" title={group.name}>#{group.code}</span>}
+    {showGuildCode && group?.kind === "guild" && <span className="sharing-code" title={group.name}>#{group.code}</span>}
     {group?.kind === "cupid" && <span className="sharing-name-wing" title="Cupid"><Feather size={12} aria-label="Cupid" /></span>}
   </Tag>;
 }

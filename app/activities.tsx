@@ -9,7 +9,7 @@ import { sharingKinds, sharingScoreLabels, sharingSourceKey } from "../lib/shari
 import { EvidencePanel } from "./duty-evidence";
 import { Avatar, Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
 import { MemberName, MemberOption } from "./member-identity";
-import { formatScore } from "./scoreboard";
+import { formatScore, ScoreMemberName } from "./scoreboard";
 import { EventRoundField } from "./event-round-field";
 import { BulletinText } from "./bulletin-text";
 import { TextEmphasisEditor } from "./text-emphasis-editor";
@@ -490,7 +490,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
         {members.map(m => {
           const score = scoresByMember.get(m.id);
           return <tr key={m.id}>
-            <td><MemberName memberId={m.id} /><small className="score-committee">{memberCommitteeNames(m)}</small>{isAdmin ? <div className="member-point-actions">
+            <td><ScoreMemberName memberId={m.id} /><small className="score-committee">{memberCommitteeNames(m)}</small>{isAdmin ? <div className="member-point-actions">
               <Button variant="secondary" aria-label={`Nhập điểm · ${m.name}`} disabled={busy} onClick={() => {setDeducting(false); setMember(m);}}>Nhập điểm</Button>
               <Button variant="secondary" aria-label={`Trừ điểm · ${m.name}`} disabled={busy} onClick={() => {setDeducting(true); setMember(m);}}>Trừ điểm</Button>
             </div> : null}</td>

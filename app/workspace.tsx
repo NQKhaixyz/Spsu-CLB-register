@@ -277,7 +277,7 @@ export default function Workspace() {
     }
   }, []);
   useEffect(() => {
-    if (tab !== "members" && tab !== "feedback" && !profileId) return;
+    if (tab !== "members" && tab !== "feedback" && !sidebarGroups.scoreboard.sections.includes(tab) && !profileId) return;
     const controller = new AbortController();
     void load(controller.signal).then(() => {
       if (feedbackTarget && !controller.signal.aborted) setLoadedFeedbackTarget(feedbackTarget);
@@ -463,6 +463,7 @@ export default function Workspace() {
   }
   const go = (next: Tab) => {
     if (next !== "bulletin") dismissBulletinLink();
+    if (next === tab && sidebarGroups.scoreboard.sections.includes(next)) void load();
     setFeedbackTarget(undefined);
     setSharingTarget(undefined);
     setTab(next);
