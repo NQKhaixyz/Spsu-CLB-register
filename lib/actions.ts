@@ -42,7 +42,7 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
-import { editMemberFeedback, eraseFeedbackMembers, recallMemberFeedback, sendMemberFeedback } from "./feedback";
+import { editMemberFeedback, eraseFeedbackMembers, recallMemberFeedback, replyToFeedback, sendMemberFeedback, setFeedbackConsent } from "./feedback";
 import { semesterMonthLimit, validSemesterScoreRange } from "./semester-scores";
 import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
 import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
@@ -60,6 +60,11 @@ const str = (value: unknown, max = 500) =>
   String(value ?? "")
     .trim()
     .slice(0, max);
+function bulletinCommentContent(value: unknown) {
+  const content = typeof value === "string" ? value.trim() : "";
+  check(content.length > 0 && content.length <= bulletinCommentLimit, `Nhập bình luận từ 1 đến ${bulletinCommentLimit} ký tự.`);
+  return content;
+}
 const checkStudentId = (studentId: string) =>
   check(!["admin", "member"].includes(studentId.toLowerCase()), "MSSV trùng tên đăng nhập dành riêng. Vui lòng nhập MSSV khác.");
 const validDate = (date: string) =>
@@ -140,6 +145,14 @@ export function applyAction(
     recallMemberFeedback(club, me, data.id);
     return;
   }
+  if (action === "replyToFeedback") {
+    replyToFeedback(club, me, data);
+    return;
+  }
+  if (action === "setFeedbackConsent") {
+    setFeedbackConsent(club, me, data);
+    return;
+  }
   if (action === "setMyFont") {
     check(data.memberId === undefined || data.memberId === me.id, "Bạn chỉ có thể đổi phông chữ cho tài khoản của mình.");
     check(isFontId(data.font), "Phông chữ không hợp lệ.");
@@ -204,23 +217,42 @@ export function applyAction(
     note("Cập nhật nguyện vọng trực thêm");
     return;
   }
-  if (action === "setBulletinLike" || action === "setBulletinSaved" || action === "commentOnBulletin" || action === "setBulletinCommentLike") {
+  if (["setBulletinLike", "setBulletinSaved", "commentOnBulletin", "setBulletinCommentLike", "editBulletinComment", "deleteBulletinComment"].includes(action)) {
     const post = club.bulletinPosts?.find(item => item.id === data.postId);
     const now = Date.now();
     check(post && isBulletinPublished(post, now), "Bản tin chưa đăng hoặc đã hết hạn.");
     if (action === "commentOnBulletin") {
       const { id, replyTo } = data;
-      const content = typeof data.content === "string" ? data.content.trim() : "";
+      const content = bulletinCommentContent(data.content);
       check(isBulletinId(id), "Mã bình luận không hợp lệ.");
-      check(content.length > 0 && content.length <= bulletinCommentLimit, `Nhập bình luận từ 1 đến ${bulletinCommentLimit} ký tự.`);
-      check(replyTo === undefined || (isBulletinId(replyTo) && post.comments?.some(comment => comment.id === replyTo)),
-        "Không tìm thấy bình luận bạn đang trả lời.");
       const existing = post.comments?.find(comment => comment.id === id);
       if (existing) {
-        check(existing.memberId === me.id && existing.content === content && existing.replyTo === replyTo, "Bình luận đã được lưu với nội dung khác.");
+        check(existing.memberId === me.id && existing.replyTo === replyTo &&
+          (existing.content === content || existing.editedAt !== undefined || existing.deletedAt !== undefined),
+        "Bình luận đã được lưu với nội dung khác.");
         return;
       }
+      check(replyTo === undefined || (isBulletinId(replyTo) && post.comments?.some(comment => comment.id === replyTo && comment.deletedAt === undefined)),
+        "Không tìm thấy bình luận bạn đang trả lời.");
       (post.comments ??= []).push({ id, memberId: me.id, content, createdAt: now, replyTo });
+    } else if (action === "editBulletinComment" || action === "deleteBulletinComment") {
+      const comment = post.comments?.find(item => item.id === data.commentId);
+      check(comment?.memberId === me.id, "Bạn chỉ có thể quản lý bình luận của mình.");
+      if (action === "deleteBulletinComment" && comment.deletedAt !== undefined) return;
+      check(comment.deletedAt === undefined, "Bình luận đã bị xóa.");
+      const content = action === "editBulletinComment" ? bulletinCommentContent(data.content) : "";
+      if (action === "editBulletinComment" && content === comment.content) return;
+      check(data.previousEditedAt === comment.editedAt, "Bình luận vừa được chỉnh sửa. Cập nhật dữ liệu rồi thử lại.");
+      if (action === "editBulletinComment") {
+        comment.content = content;
+        comment.editedAt = Math.max(now, (comment.editedAt ?? comment.createdAt) + 1);
+      } else {
+        // Retain the ID for existing replies and retries of the original send.
+        comment.content = "";
+        comment.deletedAt = now;
+        delete comment.editedAt;
+        delete comment.likedBy;
+      }
     } else {
       const selected = (ids: string[] | undefined, enabled: unknown) => {
         check(typeof enabled === "boolean", "Thao tác với bản tin không hợp lệ.");
@@ -233,7 +265,7 @@ export function applyAction(
       else if (action === "setBulletinSaved") post.savedBy = selected(post.savedBy, data.saved);
       else {
         const comment = post.comments?.find(item => item.id === data.commentId);
-        check(comment, "Không tìm thấy bình luận.");
+        check(comment && comment.deletedAt === undefined, "Không tìm thấy bình luận.");
         comment.likedBy = selected(comment.likedBy, data.liked);
       }
     }

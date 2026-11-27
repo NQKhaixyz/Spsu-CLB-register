@@ -4,13 +4,17 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { MessageSquare, Plus, UserRound } from "lucide-react";
 import { personKey } from "../lib/availability";
 import { uid } from "../lib/club";
-import { feedbackBodyLimit, type FeedbackDraft, type FeedbackEdit, type FeedbackView } from "../lib/feedback";
+import { feedbackBodyLimit, type FeedbackConsentDraft, type FeedbackDraft, type FeedbackEdit, type FeedbackReplyDraft, type FeedbackView } from "../lib/feedback";
 import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button, Dialog, Empty, Field, FormFooter } from "./ui";
 
 export type SubmitFeedback = (draft: FeedbackDraft, onError: (message: string) => void) => Promise<boolean>;
 export type EditFeedback = (draft: FeedbackEdit, onError: (message: string) => void) => Promise<boolean>;
 export type RecallFeedback = (id: string, onError: (message: string) => void) => Promise<boolean>;
+export type FeedbackConversationActions = {
+  onReply: (draft: FeedbackReplyDraft, onError: (message: string) => void) => Promise<boolean>;
+  onConsent: (draft: FeedbackConsentDraft, onError: (message: string) => void) => Promise<boolean>;
+};
 type FeedbackAction = { kind: "edit"; item: FeedbackView } | { kind: "recall"; id: string };
 
 const orderNames = new Intl.Collator("vi-VN");
@@ -82,7 +86,7 @@ export function FeedbackComposer({ initialRecipientId, busy, onSubmit, onSent, o
         <label><input type="radio" name="identity" value="public" defaultChecked /> Công khai tên</label>
         <label><input type="radio" name="identity" value="anonymous" /> Ẩn danh</label>
       </div>
-      <p className="feedback-visibility-note">Cả Đội xem được nội dung trên hồ sơ người nhận. Bạn có thể thu hồi trong 30 phút đầu</p>
+      <p className="feedback-visibility-note">Mỗi người nhận có một cuộc trao đổi riêng. Sửa, xóa, phản hồi và công khai trong 24 giờ đầu</p>
     </fieldset>
     {error && <p className="feedback-error" role="alert">{error}</p>}
     <FormFooter label="Gửi feedback" busy={busy} onCancel={onCancel} />
@@ -109,6 +113,7 @@ function EditFeedbackForm({ item, busy, onEdit, onClose }: {
     <Field label="Nội dung feedback">
       <textarea name="body" rows={4} required maxLength={feedbackBodyLimit} defaultValue={item.body} disabled={busy} />
     </Field>
+    {!!item.approvalCount && <p className="hint">Lưu nội dung mới sẽ đưa cuộc trao đổi về riêng tư để hai bên xem lại</p>}
     {error && <p className="feedback-error" role="alert">{error}</p>}
     <div className="feedback-entry-actions">
       <Button variant="secondary" disabled={busy} onClick={onClose}>Quay lại</Button>
@@ -117,16 +122,75 @@ function EditFeedbackForm({ item, busy, onEdit, onClose }: {
   </form>;
 }
 
-function FeedbackList({ entries, busy, onEdit, onRecall, linkRecipients = false }: {
-  entries: FeedbackView[]; busy: boolean; onEdit: EditFeedback; onRecall: RecallFeedback; linkRecipients?: boolean;
+function FeedbackConversation({ item, openForActions, busy, actions }: {
+  item: FeedbackView; openForActions: boolean; busy: boolean; actions: FeedbackConversationActions;
+}) {
+  const [draftId, setDraftId] = useState(uid);
+  const [error, setError] = useState("");
+  const canReply = openForActions && item.canReply;
+  const consent = openForActions ? item.consent : undefined;
+
+  async function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const body = String(new FormData(form).get("reply") ?? "").trim();
+    if (!body) {
+      setError("Nhập nội dung phản hồi");
+      return;
+    }
+    setError("");
+    if (await actions.onReply({ id: draftId, feedbackId: item.id, body }, setError)) {
+      form.reset();
+      setDraftId(uid());
+    }
+  }
+
+  if (!item.replies.length && !canReply && !consent) return null;
+  return <details className="feedback-conversation">
+    <summary>Phản hồi{item.replies.length > 0 && ` · ${item.replies.length}`}</summary>
+    {item.replies.length > 0 && <ol className="feedback-messages">
+      {item.replies.map(reply => <li key={reply.id}>
+        <header className="feedback-entry-meta">
+          {reply.anonymous ? <strong>Ẩn danh</strong> : <MemberName as="strong" memberId={reply.authorId} />}
+          <time dateTime={new Date(reply.createdAt).toISOString()}>{feedbackClock.format(reply.createdAt)}</time>
+        </header>
+        <p className="feedback-body">{reply.body}</p>
+      </li>)}
+    </ol>}
+    {canReply && <form className="feedback-edit" onSubmit={send}>
+      <Field label="Nội dung phản hồi">
+        <textarea name="reply" rows={3} required maxLength={feedbackBodyLimit} disabled={busy} />
+      </Field>
+      {!!item.approvalCount && <p className="hint">Phản hồi mới sẽ đưa cuộc trao đổi về riêng tư để hai bên xem lại</p>}
+      <div className="feedback-entry-actions">
+        <Button type="submit" disabled={busy}>Gửi phản hồi</Button>
+      </div>
+    </form>}
+    {consent && <div className="feedback-consent">
+      <p className="hint">Cuộc trao đổi tự công khai trên hồ sơ người nhận khi hai bên đều đồng ý</p>
+      <div className="feedback-entry-actions">
+        <Button variant="secondary" disabled={busy} onClick={() => {
+          setError("");
+          void actions.onConsent({ feedbackId: item.id, approved: !consent.approved, version: consent.version }, setError);
+        }}>{consent.approved ? "Rút đồng ý công khai" : "Đồng ý công khai"}</Button>
+        <span className="hint">{item.approvalCount ?? 0}/{item.approvalTotal} đã đồng ý</span>
+      </div>
+    </div>}
+    {error && <p className="feedback-error" role="alert">{error}</p>}
+  </details>;
+}
+
+function FeedbackList({ entries, busy, onEdit, onRecall, conversationActions, linkRecipients = false }: {
+  entries: FeedbackView[]; busy: boolean; onEdit: EditFeedback; onRecall: RecallFeedback;
+  conversationActions: FeedbackConversationActions; linkRecipients?: boolean;
 }) {
   const identity = useMemberIdentity();
   const [limit, setLimit] = useState(pageSize);
   const [action, setAction] = useState<FeedbackAction>();
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now);
-  const nextDeadline = entries.slice(0, limit).reduce((earliest, { recallUntil }) =>
-    recallUntil && recallUntil > now ? Math.min(earliest, recallUntil) : earliest, Infinity);
+  const nextDeadline = entries.slice(0, limit).reduce((earliest, { actionsUntil }) =>
+    actionsUntil > now ? Math.min(earliest, actionsUntil) : earliest, Infinity);
   useEffect(() => {
     if (!Number.isFinite(nextDeadline)) return;
     const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, nextDeadline - Date.now()) + 1);
@@ -137,9 +201,10 @@ function FeedbackList({ entries, busy, onEdit, onRecall, linkRecipients = false 
     <ol className="feedback-list">
       {entries.slice(0, limit).map(item => {
         const author = !item.anonymous && item.authorId ? identity?.members.get(item.authorId) : undefined;
-        const editItem = item.canEdit && action?.kind === "edit" && action.item.id === item.id ? action.item : undefined;
-        const canRecall = item.recallUntil !== undefined && item.recallUntil > now;
-        const confirming = canRecall && action?.kind === "recall" && action.id === item.id;
+        const openForActions = item.actionsUntil > now;
+        const canManage = item.canEdit && openForActions;
+        const editItem = canManage && action?.kind === "edit" && action.item.id === item.id ? action.item : undefined;
+        const confirming = canManage && action?.kind === "recall" && action.id === item.id;
         return <li key={item.id}>
           <article className="feedback-entry">
             <header className="feedback-author">
@@ -150,6 +215,8 @@ function FeedbackList({ entries, busy, onEdit, onRecall, linkRecipients = false 
                 <div className="feedback-entry-meta">
                   <time dateTime={new Date(item.createdAt).toISOString()}>{feedbackClock.format(item.createdAt)}</time>
                   {item.editedAt !== undefined && <span title={feedbackClock.format(item.editedAt)}>Đã chỉnh sửa</span>}
+                  <span>{item.isPublic ? "Công khai" : "Riêng tư"}</span>
+                  {!openForActions && <span>Đã khóa</span>}
                 </div>
               </div>
             </header>
@@ -165,23 +232,24 @@ function FeedbackList({ entries, busy, onEdit, onRecall, linkRecipients = false 
             {editItem ? <EditFeedbackForm item={editItem} busy={busy} onEdit={onEdit} onClose={() => setAction(undefined)} /> : <>
               <p className="feedback-body">{item.body}</p>
               {confirming ? <div className="feedback-recall">
-                <p>Thu hồi feedback khỏi mục Feedback và hồ sơ tất cả người nhận?</p>
+                <p>Xóa feedback này và các phản hồi?</p>
                 <div className="feedback-entry-actions">
                   <Button variant="secondary" disabled={busy} onClick={() => setAction(undefined)}>Quay lại</Button>
                   <Button variant="danger" disabled={busy} onClick={async () => {
                     setError("");
                     if (await onRecall(item.id, setError)) setAction(undefined);
-                  }}>Xác nhận thu hồi</Button>
+                  }}>Xác nhận xóa</Button>
                 </div>
                 {error && <p className="feedback-error" role="alert">{error}</p>}
-              </div> : (item.canEdit || canRecall) && <div className="feedback-entry-actions">
-                {item.canEdit && <button type="button" className="text-button" disabled={busy}
-                  onClick={() => setAction({ kind: "edit", item })}>Chỉnh sửa</button>}
-                {canRecall && <button type="button" className="text-button" disabled={busy} onClick={() => {
+              </div> : canManage && <div className="feedback-entry-actions">
+                <button type="button" className="text-button" disabled={busy}
+                  onClick={() => setAction({ kind: "edit", item })}>Chỉnh sửa</button>
+                <button type="button" className="text-button" disabled={busy} onClick={() => {
                   setError("");
                   setAction({ kind: "recall", id: item.id });
-                }}>Thu hồi</button>}
+                }}>Xóa feedback</button>
               </div>}
+              {!confirming && <FeedbackConversation item={item} openForActions={openForActions} busy={busy} actions={conversationActions} />}
             </>}
           </article>
         </li>;
@@ -191,8 +259,9 @@ function FeedbackList({ entries, busy, onEdit, onRecall, linkRecipients = false 
   </>;
 }
 
-export function FeedbackPage({ entries, busy, onSubmit, onEdit, onRecall }: {
+export function FeedbackPage({ entries, busy, onSubmit, onEdit, onRecall, conversationActions }: {
   entries: FeedbackView[]; busy: boolean; onSubmit: SubmitFeedback; onEdit: EditFeedback; onRecall: RecallFeedback;
+  conversationActions: FeedbackConversationActions;
 }) {
   const [composing, setComposing] = useState(false);
   const close = () => setComposing(false);
@@ -201,11 +270,11 @@ export function FeedbackPage({ entries, busy, onSubmit, onEdit, onRecall }: {
       <div className="page-heading">
         <div>
           <h1>Feedback</h1>
-          <p>Gửi góp ý đến một hoặc nhiều thành viên trong Đội</p>
+          <p>Trao đổi riêng với một hoặc nhiều thành viên trong Đội</p>
         </div>
         <Button onClick={() => setComposing(true)} disabled={busy}><Plus size={17} aria-hidden="true" /> Gửi feedback</Button>
       </div>
-      <FeedbackList entries={entries} busy={busy} onEdit={onEdit} onRecall={onRecall} linkRecipients />
+      <FeedbackList entries={entries} busy={busy} onEdit={onEdit} onRecall={onRecall} conversationActions={conversationActions} linkRecipients />
       {composing && <Dialog title="Gửi feedback" onClose={close} wide busy={busy}>
         <FeedbackComposer busy={busy} onSubmit={onSubmit} onSent={close} onCancel={close} />
       </Dialog>}
@@ -213,8 +282,9 @@ export function FeedbackPage({ entries, busy, onSubmit, onEdit, onRecall }: {
   );
 }
 
-export function ProfileFeedback({ recipientId, entries, busy, onSubmit, onEdit, onRecall }: {
+export function ProfileFeedback({ recipientId, entries, busy, onSubmit, onEdit, onRecall, conversationActions }: {
   recipientId: string; entries: FeedbackView[]; busy: boolean; onSubmit: SubmitFeedback; onEdit: EditFeedback; onRecall: RecallFeedback;
+  conversationActions: FeedbackConversationActions;
 }) {
   const [composing, setComposing] = useState(false);
   const [sent, setSent] = useState(false);
@@ -227,7 +297,7 @@ export function ProfileFeedback({ recipientId, entries, busy, onSubmit, onEdit, 
           <Plus size={16} aria-hidden="true" /> Gửi feedback
         </Button>
       </div>
-      <FeedbackList entries={entries} busy={busy} onEdit={onEdit} onRecall={onRecall} />
+      <FeedbackList entries={entries} busy={busy} onEdit={onEdit} onRecall={onRecall} conversationActions={conversationActions} />
     </>}
   </section>;
 }

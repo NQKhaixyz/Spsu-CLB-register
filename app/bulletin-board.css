@@ -298,6 +298,10 @@
   border-top: 1px solid #d1dec9;
 }
 .bulletin-comment-form > :is(.avatar, .avatar-frame) { margin-top: 4px; }
+.bulletin-comment-edited { color: var(--muted); font-size: .8125rem; }
+.bulletin-comment-change { display: grid; gap: 8px; min-width: 0; }
+.bulletin-comment-change .field, .bulletin-comment-change p { margin: 0; }
+.bulletin-comment-change > div { display: flex; gap: 8px; flex-wrap: wrap; }
 .bulletin-replying {
   display: flex;
   flex-wrap: wrap;

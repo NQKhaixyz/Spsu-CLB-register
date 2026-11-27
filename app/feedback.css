@@ -65,6 +65,15 @@
 .feedback-entry-actions { display: flex; gap: 8px 14px; flex-wrap: wrap; }
 .feedback-edit { display: grid; gap: 10px; }
 .feedback-edit .field { margin: 0; }
+.feedback-conversation { border-top: 1px solid var(--line); padding-top: 8px; min-width: 0; }
+.feedback-conversation summary { cursor: pointer; font-weight: 650; color: var(--green-dark); overflow-wrap: anywhere; }
+.feedback-conversation[open] summary { margin-bottom: 10px; }
+.feedback-messages { display: grid; gap: 12px; list-style: none; margin: 0 0 12px; padding: 0 0 0 12px; border-inline-start: 2px solid var(--line); }
+.feedback-messages li { min-width: 0; overflow-wrap: anywhere; }
+.feedback-messages .feedback-entry-meta strong { color: var(--ink); }
+.feedback-consent { display: grid; gap: 8px; margin-top: 12px; }
+.feedback-consent .hint, .feedback-edit .hint { margin: 0; }
+.feedback-consent .feedback-entry-actions { align-items: center; }
 
 .feedback-composer { display: grid; gap: 16px; }
 .feedback-composer .field { margin: 0; }

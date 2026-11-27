@@ -2,7 +2,7 @@
 
 import { Bookmark, CalendarClock, ChevronLeft, Ellipsis, Heart, ImagePlus, MessageCircle, Newspaper, Pencil, Plus, Share2, Trash2, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { bulletinCommentLimit, parseBulletinDate, type BulletinAuthor, type BulletinPostView } from "../lib/bulletin";
+import { bulletinCommentLimit, parseBulletinDate, type BulletinAuthor, type BulletinCommentView, type BulletinPostView } from "../lib/bulletin";
 import { uid, type Member } from "../lib/club";
 import { BulletinAttachments } from "./bulletin-attachments";
 import { BulletinComposer, bulletinVideoAccept, type BulletinMediaSelection } from "./bulletin-composer";
@@ -14,7 +14,8 @@ type BulletinViewer = Pick<Member, "id" | "name" | "avatarId">;
 type Overlay =
   | { mode: "edit"; id: string; original?: BulletinPostView; selection?: BulletinMediaSelection }
   | { mode: "delete" | "share"; original: BulletinPostView };
-type BulletinAction = "saveBulletinPost" | "deleteBulletinPost" | "setBulletinLike" | "setBulletinSaved" | "commentOnBulletin" | "setBulletinCommentLike";
+type BulletinAction = "saveBulletinPost" | "deleteBulletinPost" | "setBulletinLike" | "setBulletinSaved"
+  | "commentOnBulletin" | "setBulletinCommentLike" | "editBulletinComment" | "deleteBulletinComment";
 type Act = (action: BulletinAction, data: Record<string, unknown>, message: string) => Promise<boolean>;
 type Feed = "all" | "liked" | "saved" | "scheduled";
 const feedTabs: { id: Feed; label: string }[] = [
@@ -28,8 +29,8 @@ const bulletinClock = new Intl.DateTimeFormat("vi-VN", {
 });
 const compactCount = new Intl.NumberFormat("vi-VN", { notation: "compact" });
 
-function Byline({ author, time, scheduled = false, small = false }: {
-  author: BulletinAuthor; time?: number; scheduled?: boolean; small?: boolean;
+function Byline({ author, time, editedAt, scheduled = false, small = false }: {
+  author: BulletinAuthor; time?: number; editedAt?: number; scheduled?: boolean; small?: boolean;
 }) {
   return <div className="bulletin-byline">
     <Avatar memberId={author.memberId} name={author.name} photoId={author.avatarId} size={small ? "small" : ""} />
@@ -38,6 +39,7 @@ function Byline({ author, time, scheduled = false, small = false }: {
       {time !== undefined && <time dateTime={new Date(time).toISOString()}>
         {scheduled && "Hẹn đăng "}{bulletinClock.format(time)}
       </time>}
+      {editedAt !== undefined && <small className="bulletin-comment-edited" title={bulletinClock.format(editedAt)}>Đã chỉnh sửa</small>}
     </div>
   </div>;
 }
@@ -89,16 +91,18 @@ function CommentThread({ post, me, busy, act }: {
 }) {
   const [draftId, setDraftId] = useState(uid);
   const [replyId, setReplyId] = useState<string>();
+  const [change, setChange] = useState<{ mode: "edit" | "delete"; comment: BulletinCommentView }>();
   const editor = useRef<HTMLTextAreaElement>(null);
   const commentsById = new Map(post.comments.map(comment => [comment.id, comment]));
   const reply = replyId ? commentsById.get(replyId) : undefined;
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (replyId && !reply) return;
     const form = event.currentTarget;
     const content = new FormData(form).get("comment");
     if (await act("commentOnBulletin", {
-      id: draftId, postId: post.id, content, replyTo: reply?.id,
+      id: draftId, postId: post.id, content, replyTo: replyId,
     }, reply ? "Đã gửi trả lời" : "Đã gửi bình luận")) {
       form.reset();
       setReplyId(undefined);
@@ -106,16 +110,45 @@ function CommentThread({ post, me, busy, act }: {
     }
   }
 
+  async function saveComment(event: FormEvent<HTMLFormElement>, comment: BulletinCommentView) {
+    event.preventDefault();
+    const content = new FormData(event.currentTarget).get("content");
+    if (await act("editBulletinComment", { postId: post.id, commentId: comment.id, content,
+      previousEditedAt: comment.editedAt }, "Đã chỉnh sửa bình luận")) setChange(undefined);
+  }
+
   return <section className="bulletin-thread" aria-label="Bình luận">
     <h2>Bình luận <span>{post.comments.length}</span></h2>
     {post.comments.length ? <ol className="bulletin-replies">
       {post.comments.map(comment => {
         const parent = comment.replyTo ? commentsById.get(comment.replyTo) : undefined;
-        return <li key={comment.id} className={parent ? "bulletin-reply is-reply" : "bulletin-reply"}>
-          <Byline author={comment.author} time={comment.createdAt} small />
-          {parent && <span className="bulletin-reply-label">Trả lời <MemberName memberId={parent.author.memberId} name={parent.author.name} /></span>}
-          <p>{comment.content}</p>
-          <div className="bulletin-actions">
+        const pending = comment.canManage && change?.comment.id === comment.id ? change : undefined;
+        return <li key={comment.id} className={comment.replyTo ? "bulletin-reply is-reply" : "bulletin-reply"}>
+          <Byline author={comment.author} time={comment.createdAt} editedAt={comment.editedAt} small />
+          {comment.replyTo && <span className="bulletin-reply-label">
+            Trả lời {parent ? <MemberName memberId={parent.author.memberId} name={parent.author.name} /> : "bình luận đã xóa"}
+          </span>}
+          {pending?.mode === "edit" ? <form className="bulletin-comment-change"
+            onSubmit={event => void saveComment(event, pending.comment)}>
+            <Field label="Nội dung bình luận">
+              <textarea name="content" defaultValue={pending.comment.content} rows={3} required maxLength={bulletinCommentLimit} disabled={busy} />
+            </Field>
+            <div>
+              <Button variant="secondary" disabled={busy} onClick={() => setChange(undefined)}>Quay lại</Button>
+              <Button type="submit" disabled={busy}>Lưu thay đổi</Button>
+            </div>
+          </form> : <p>{comment.content}</p>}
+          {pending?.mode === "delete" && <div className="bulletin-comment-change">
+            <p>Xóa bình luận này?</p>
+            <div>
+              <Button variant="secondary" disabled={busy} onClick={() => setChange(undefined)}>Quay lại</Button>
+              <Button variant="danger" disabled={busy} onClick={async () => {
+                if (await act("deleteBulletinComment", { postId: post.id, commentId: comment.id,
+                  previousEditedAt: pending.comment.editedAt }, "Đã xóa bình luận")) setChange(undefined);
+              }}>Xác nhận xóa</Button>
+            </div>
+          </div>}
+          {!pending && <div className="bulletin-actions">
             <button type="button" aria-pressed={comment.liked} disabled={busy}
               onClick={() => void act("setBulletinCommentLike", {
                 postId: post.id, commentId: comment.id, liked: !comment.liked,
@@ -126,21 +159,28 @@ function CommentThread({ post, me, busy, act }: {
               setReplyId(comment.id);
               editor.current?.focus();
             }}>Trả lời</button>
-          </div>
+            {comment.canManage && <>
+              <button type="button" disabled={busy} aria-label="Chỉnh sửa bình luận"
+                onClick={() => setChange({ mode: "edit", comment })}>Chỉnh sửa</button>
+              <button type="button" disabled={busy} aria-label="Xóa bình luận"
+                onClick={() => setChange({ mode: "delete", comment })}>Xóa</button>
+            </>}
+          </div>}
         </li>;
       })}
     </ol> : <p className="hint">Chưa có bình luận</p>}
     <form className="bulletin-comment-form" onSubmit={send}>
       <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} />
       <div>
-        {reply && <div className="bulletin-replying">
-          <span>Đang trả lời <MemberName memberId={reply.author.memberId} name={reply.author.name} /></span>
+        {replyId && <div className="bulletin-replying">
+          {reply ? <span>Đang trả lời <MemberName memberId={reply.author.memberId} name={reply.author.name} /></span>
+            : <span>Bình luận bạn định trả lời đã bị xóa</span>}
           <button type="button" className="text-button" disabled={busy} onClick={() => setReplyId(undefined)}>Bỏ trả lời</button>
         </div>}
         <Field label={reply ? "Viết trả lời" : "Viết bình luận"}>
           <textarea id="bulletin-comment" ref={editor} name="comment" rows={2} maxLength={bulletinCommentLimit} required />
         </Field>
-        <Button type="submit" disabled={busy}>{reply ? "Gửi trả lời" : "Gửi bình luận"}</Button>
+        <Button type="submit" disabled={busy || (!!replyId && !reply)}>{replyId ? "Gửi trả lời" : "Gửi bình luận"}</Button>
       </div>
     </form>
   </section>;

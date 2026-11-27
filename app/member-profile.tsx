@@ -9,7 +9,7 @@ import { memberRoleLabel } from "../lib/member-positions";
 import { monthlyScoreTier } from "../lib/score-ranks";
 import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button } from "./ui";
-import { ProfileFeedback, type EditFeedback, type RecallFeedback, type SubmitFeedback } from "./feedback";
+import { ProfileFeedback, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import { formatScore } from "./scoreboard";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
@@ -74,7 +74,7 @@ function ProfileScores({ memberId }: { memberId: string }) {
   </dl>;
 }
 
-export function MemberProfileDialog({ member, details, scheduleOnly, feedback, busy, onSubmitFeedback, onEditFeedback, onRecallFeedback, onClose, onEditAvatar }: {
+export function MemberProfileDialog({ member, details, scheduleOnly, feedback, busy, onSubmitFeedback, onEditFeedback, onRecallFeedback, conversationActions, onClose, onEditAvatar }: {
   member: Member;
   details: Pick<AvailabilityDetail, "day" | "period" | "weeks" | "note">[];
   scheduleOnly: boolean;
@@ -83,6 +83,7 @@ export function MemberProfileDialog({ member, details, scheduleOnly, feedback, b
   onSubmitFeedback: SubmitFeedback;
   onEditFeedback: EditFeedback;
   onRecallFeedback: RecallFeedback;
+  conversationActions: FeedbackConversationActions;
   onClose: () => void;
   onEditAvatar?: () => void;
 }) {
@@ -141,7 +142,7 @@ export function MemberProfileDialog({ member, details, scheduleOnly, feedback, b
       {(scheduleOnly || section === "info") && <ProfileDetails member={member} details={details} scheduleOnly={scheduleOnly} />}
       {!scheduleOnly && <div hidden={section !== "feedback"}>
         <ProfileFeedback recipientId={member.id} entries={feedback} busy={busy}
-          onSubmit={onSubmitFeedback} onEdit={onEditFeedback} onRecall={onRecallFeedback} />
+          onSubmit={onSubmitFeedback} onEdit={onEditFeedback} onRecall={onRecallFeedback} conversationActions={conversationActions} />
       </div>}
       {onEditAvatar && !scheduleOnly && section === "info" && <footer className="member-profile-actions">
         <Button variant="secondary" onClick={onEditAvatar}>

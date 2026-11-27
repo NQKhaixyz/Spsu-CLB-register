@@ -209,6 +209,37 @@ test("Legacy bulletin authors come from matching creation logs and survive later
   assert.ok(!("createdBy" in bulletinView(c, pending).posts[0]));
 });
 
+test("Authors can edit and delete their bulletin comments while existing replies remain visible", () => {
+  const { c, pending } = fixture();
+  pending.userId = "comment-editor";
+  const reader = { userId: pending.userId, displayName: pending.name, email: "" };
+  const postId = "comment-edit-post";
+  applyAction(c, owner, "saveBulletinPost", { id: postId, title: "Bản tin", content: "Cùng trao đổi" });
+  const original = { id: "comment-original", postId, content: "Nội dung gốc" };
+  applyAction(c, reader, "commentOnBulletin", original);
+  const answer = { id: "comment-reply-1", postId, replyTo: original.id, content: "Cảm ơn bạn" };
+  applyAction(c, owner, "commentOnBulletin", answer);
+  const edit = { postId, commentId: original.id, content: "  Nội dung đã sửa  " };
+  assert.throws(() => applyAction(c, owner, "editBulletinComment", edit), /bình luận của mình/);
+  assert.throws(() => applyAction(c, owner, "deleteBulletinComment", edit), /bình luận của mình/);
+  applyAction(c, reader, "editBulletinComment", edit);
+  applyAction(c, reader, "commentOnBulletin", original);
+  const [updated, reply] = bulletinView(c, pending).posts[0].comments;
+  assert.equal(updated.canManage, true);
+  assert.equal(reply.canManage, false);
+  assert.equal(updated.content, "Nội dung đã sửa");
+  assert.ok(updated.editedAt && updated.editedAt > updated.createdAt);
+  assert.throws(() => applyAction(c, reader, "deleteBulletinComment", edit), /vừa được chỉnh sửa/);
+  const deletion = { ...edit, previousEditedAt: updated.editedAt };
+  applyAction(c, reader, "deleteBulletinComment", deletion);
+  applyAction(c, reader, "deleteBulletinComment", deletion);
+  applyAction(c, reader, "commentOnBulletin", original);
+  assert.deepEqual(bulletinView(c, pending).posts[0].comments.map(item => [item.id, item.replyTo]), [[answer.id, original.id]]);
+  assert.throws(() => applyAction(c, owner, "commentOnBulletin", { ...answer, id: "comment-new-reply" }), /Không tìm thấy bình luận/);
+  assert.throws(() => applyAction(c, reader, "editBulletinComment", deletion), /đã bị xóa/);
+  assert.equal(c.bulletinPosts?.[0].comments?.[0].content, "");
+});
+
 test("Bulletin formatting supports nested emphasis and preserves literal text in an older post", () => {
   const raw = "Đội *2026* và phần cần nhấn";
   const start = raw.indexOf("phần");

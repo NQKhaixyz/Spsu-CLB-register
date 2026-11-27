@@ -10,6 +10,8 @@ type BulletinComment = {
   memberId: string;
   content: string;
   createdAt: number;
+  editedAt?: number;
+  deletedAt?: number;
   replyTo?: string;
   likedBy?: string[];
 };
@@ -31,8 +33,9 @@ export type BulletinPost = {
 };
 
 export type BulletinAuthor = { memberId?: string; name: string; avatarId?: string };
-export type BulletinCommentView = Omit<BulletinComment, "memberId" | "likedBy"> & {
+export type BulletinCommentView = Omit<BulletinComment, "memberId" | "likedBy" | "deletedAt"> & {
   author: BulletinAuthor;
+  canManage: boolean;
   liked: boolean;
   likeCount: number;
 };
@@ -116,9 +119,10 @@ export function bulletinView(club: Club, viewer: Member, now = Date.now()) {
         liked: likedBy?.includes(viewer.id) ?? false,
         likeCount: likedBy?.length ?? 0,
         saved: savedBy?.includes(viewer.id) ?? false,
-        comments: (comments ?? []).map(({ memberId, likedBy, ...comment }) => ({
+        comments: (comments ?? []).filter(comment => comment.deletedAt === undefined).map(({ memberId, likedBy, deletedAt: _deletedAt, ...comment }) => ({
           ...comment,
           author: people.get(memberId) ?? { name: "Thành viên" },
+          canManage: memberId === viewer.id,
           liked: likedBy?.includes(viewer.id) ?? false,
           likeCount: likedBy?.length ?? 0,
         })),
