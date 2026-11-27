@@ -7,6 +7,7 @@ import "./screen-cat.css";
 import "./music.css";
 import "./duty-evidence-and-links.css";
 import "./activity-layout.css";
+import "./score-ranks.css";
 import { ScreenCat } from "../components/screen-cat";
 import { SiteUpdateNotice } from "./site-update";
 

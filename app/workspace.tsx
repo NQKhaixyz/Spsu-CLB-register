@@ -1,6 +1,6 @@
 "use client";
 import Activities, { WeeklyActivityPoints } from "./activities";
-import { visibleActivityKinds, activityLabels, eventForActivity, isEventOpen, ratedActivityKinds } from "../lib/activity";
+import { activityLabels, eventForActivity, isEventOpen, ratedActivityKinds } from "../lib/activity";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { canDeleteMember } from "../lib/member-deletion";
 import { committeeKinds, committeeLabels, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter } from "../lib/committees";
@@ -11,7 +11,8 @@ import { sidebarTabs, sidebarTabLabels, type SidebarTab } from "../lib/workspace
 import { isMemberPosition, memberPositions, memberPositionLabels, memberRoleLabel } from "../lib/member-positions";
 import { FontSettings } from "./font-settings";
 import { AvatarEditor } from "./avatar-editor";
-import { formatScore, MemberMonthlyScoreboard, MobileScoreList, Scoreboard, type ScoreScope } from "./scoreboard";
+import { MemberMonthlyScoreboard, Scoreboard, WeeklyScoreboard, type ScoreScope } from "./scoreboard";
+import SemesterScoreboard from "./semester-scoreboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
@@ -128,6 +129,7 @@ type Tab =
   | "links"
   | "members"
   | "reports"
+  | "semesterScores"
   | "settings"
   | "preferences"
   | "personal";
@@ -140,7 +142,7 @@ type Modal = {
   | { profile: { memberId: string; scheduleOnly: boolean }; content?: never }
 );
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
-  scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports"] },
+  scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin"] },
   links: { icon: Link2, sections: ["links"] },
@@ -492,7 +494,8 @@ export default function Workspace() {
         </Button>
       </div>
     );
-  const activeTab = !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
+  const activeTab = !isAdmin && tab === "semesterScores" ? "reports"
+    : !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
   const activeSidebarTab = sidebarTabs.find(id => sidebarGroups[id].sections.includes(activeTab));
   const headerTitle = activeSidebarTab ? sidebarTabLabels[activeSidebarTab]
     : activeTab === "overview" ? "Tổng quan" : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
@@ -519,6 +522,7 @@ export default function Workspace() {
   const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "scoreboard" ? [
     { id: "weeklyScores", label: "Điểm tuần" },
     { id: "reports", label: "Điểm tháng" },
+    ...(isAdmin ? [{ id: "semesterScores" as const, label: "Học kỳ" }] : []),
   ] : activeSidebarTab === "activity" ? [
     { id: "meetings", label: "Đăng ký họp", pending: pending.length },
     { id: "duties", label: "Lịch trực C1" },
@@ -1230,6 +1234,16 @@ export default function Workspace() {
       ))}
     </select>
   );
+  const monthChoices = [...new Set([
+    ...Array.from({ length: 48 }, (_, i) =>
+      new Date(Date.UTC(Number(currentDay.slice(0, 4)) - 1, i, 1)).toISOString().slice(0, 7)),
+    ...club.schedules.map(schedule => schedule.month),
+    ...club.weeks.map(w => (w.meetingDate || w.id).slice(0, 7)),
+    ...(club.manualActivities ?? []).map(row => row.date.slice(0, 7)),
+    ...(club.activityRegistrations ?? []).map(row => row.date.slice(0, 7)),
+    ...(club.pointDeductions ?? []).map(row => row.date.slice(0, 7)),
+    month,
+  ])].filter(value => /^\d{4}-(0[1-9]|1[0-2])$/.test(value)).sort().reverse();
   const monthSelect = (
     <label className="month-select">
       <CalendarDays size={16} />
@@ -1238,25 +1252,7 @@ export default function Workspace() {
         value={month}
         onChange={(e) => setMonth(e.target.value)}
       >
-        {Array.from(
-          new Set([
-            ...Array.from({ length: 48 }, (_, i) =>
-              new Date(Date.UTC(Number(today().slice(0, 4)) - 1, i, 1))
-                .toISOString()
-                .slice(0, 7),
-            ),
-            ...club.schedules.map((s) => s.month),
-            ...club.weeks.map((w) => (w.meetingDate || w.id).slice(0, 7)),
-            month,
-          ]),
-        )
-          .sort()
-          .reverse()
-          .map((value) => (
-            <option key={value} value={value}>
-              {monthLabel(value)}
-            </option>
-          ))}
+        {monthChoices.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}
       </select>
     </label>
   );
@@ -2357,7 +2353,7 @@ export default function Workspace() {
   }
 
   function weekScoreTable() {
-    return <Scoreboard title={`Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6))}`} period="tuần"
+    return <WeeklyScoreboard week={week.id} revision={view!.revision}
       rows={weeklyScores.map(row => {
         const member = findMember(row.memberId);
         return { ...row, name: member?.name ?? "", committeeNames: memberCommitteeNames(member) };
@@ -2589,7 +2585,11 @@ export default function Workspace() {
     const participants = reportMembers(club, month);
     const participantIds = new Set(participants.map(m => m.id));
     const total = participants.map((m) => ({
-      m,
+      memberId: m.id,
+      name: m.name,
+      committeeNames: memberCommitteeNames(m),
+      studentId: m.studentId,
+      avatarId: m.avatarId,
       ...scoreFor(club, m.id, month),
     }));
     const rule = rulesFor(club, month);
@@ -2656,72 +2656,8 @@ export default function Workspace() {
             </Button>
           </div>
         </div>
-        <section className="panel score-panel">
-          <PanelHead
-            title={monthLabel(month)}
-            description="Họp và phiếu điểm danh tính theo ngày họp; ca trực tính theo ngày trực thực tế"
-          />
-          {total.length ? <MobileScoreList key={month} period="tháng"
-            rows={total.map(({ m, ...score }) => ({ ...score, memberId: m.id, name: m.name, committeeNames: memberCommitteeNames(m) }))} />
-            : <Empty title="Chưa có thành viên trong tháng này" />}
-          {total.length > 0 && <div className="table-scroll score-desktop-table">
-            <table className="scoreboard-table" aria-label="Bảng điểm tháng">
-              <thead>
-                <tr>
-                  <th>THÀNH VIÊN</th>
-                  <th>MSSV</th>
-                  <th className="center">TRỰC ĐỦ</th>
-                  <th className="center">VẮNG TRỰC *</th>
-                  <th className="center">VẮNG HỌP *</th>
-                  <th className="center">ĐẠT PHIẾU ĐIỂM DANH</th>
-                  <th className="center">ĐI MUỘN</th>
-                  <th className="center">TRỪ ĐI MUỘN</th>
-                  <th className="center">ĐIỂM THÁNG</th>
-                  {visibleActivityKinds.map(k => <th className="center" key={k}>{activityLabels[k]}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {total.map((s, i) => (
-                  <tr key={s.m.id}>
-                    <td>
-                      <div className="person-cell">
-                        <Avatar name={s.m.name} photoId={s.m.avatarId} index={i} />
-                        <span className="score-name">
-                          <strong>{s.m.name}</strong>
-                          <small className="score-committee">{memberCommitteeNames(s.m)}</small>
-                        </span>
-                      </div>
-                    </td>
-                    <td className="muted mono">{s.m.studentId}</td>
-                    <td className="center">{s.completed}</td>
-                    <td className="center">{s.dutyMissed}</td>
-                    <td className="center">{s.meetingMissed}</td>
-                    <td className="center">{s.passed}</td>
-                    <td className="center">{s.lateCount}</td>
-                    <td className="center">
-                      {s.lateDeduction > 0 ? `−${s.lateDeduction}` : "0"}
-                    </td>
-                    <td className="center">
-                      <span
-                        className={`score ${s.points < 0 ? "negative" : ""}`}
-                      >
-                        {s.points > 0 ? "+" : ""}
-                        {formatScore(s.points)}
-                      </span>
-                    </td>
-                    {visibleActivityKinds.map(k => <td className="center" key={k}>{s.activityCounts[k]}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>}
-          <div className="table-footer score-desktop-table">
-            <span>
-              * Chỉ tính vắng không phép, không đạt phiếu điểm danh không bị trừ điểm
-            </span>
-            <FileSpreadsheet size={17} />
-          </div>
-        </section>
+        <Scoreboard title={monthLabel(month)} period="tháng" rows={total} adminReport
+          scope={scoreScope} onScopeChange={setScoreScope} />
         {reportSupport}
       </>
     );
@@ -3434,6 +3370,8 @@ export default function Workspace() {
             />
           ) : activeTab === "members" ? (
             members()
+          ) : activeTab === "semesterScores" ? (
+            <SemesterScoreboard club={club} monthChoices={monthChoices} initialMonth={month} />
           ) : activeTab === "reports" ? (
             isAdmin ? reports() : <>
               <div className="page-heading score-page-heading"><h1>Điểm tháng</h1>{monthSelect}</div>

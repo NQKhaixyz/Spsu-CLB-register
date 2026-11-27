@@ -7,6 +7,8 @@ import { committeeKinds } from "../lib/committees";
 import { detachExpiredEventPhotos, eventEvidenceTarget, eventEvidenceView } from "../lib/event-evidence";
 import { eventPhotoKey, purgeExpiredEventPhotos } from "../lib/event-photo-storage";
 import { monthlyScoreboard, workspaceView } from "../lib/workspace-view";
+import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
+import { semesterScores } from "../lib/semester-scores";
 import { makeReport } from "../lib/excel";
 import ExcelJS from "exceljs";
 const admin={userId:"owner-activity",displayName:"Admin",email:""};
@@ -19,6 +21,60 @@ function fixture(){
 }
 
 const eventData=(id="event-test-1",points=6,startDate=today(),endDate=today())=>({id,name:"Ngày hội C2",points,startDate,endDate});
+
+test("Score ranks are descending with deterministic ties and ten distinct monthly tiers", () => {
+  const rows = [
+    { memberId: "z", name: "Lan", points: -1 },
+    { memberId: "c", name: "Bình", points: 2.75 },
+    { memberId: "b", name: "An", points: 2.75 },
+    { memberId: "a", name: "An", points: 2.75 },
+    { memberId: "x", name: "Chi", points: 0 },
+    { memberId: "top", name: "Vũ", points: 4 },
+  ];
+  const ranked = rankScoreRows(rows);
+  assert.deepEqual(ranked.map(row => [row.memberId, row.rank]),
+    [["top", 1], ["a", 2], ["b", 3], ["c", 4], ["x", 5], ["z", 6]]);
+  assert.deepEqual(rows.map(row => row.memberId), ["z", "c", "b", "a", "x", "top"]);
+  const tiers = Array.from({ length: 10 }, (_, i) => monthlyScoreTier(i + 1));
+  assert.deepEqual(tiers.map(tier => tier?.label),
+    ["Thách đấu", "Đại cao thủ", "Cao thủ", "Kim cương", "Lục bảo", "Bạch kim", "Vàng", "Bạc", "Đồng", "Sắt"]);
+  assert.equal(new Set(tiers.map(tier => tier?.id)).size, 10);
+  assert.equal(monthlyScoreTier(11), undefined);
+});
+
+test("Semester totals sum each monthly report across years and include members only for their eligible months", () => {
+  const club = fixture();
+  const [, member, newcomer] = club.members;
+  newcomer.joined = "2027-01-01";
+  const paused = { ...member, id: "paused", name: "Paused", active: false, left: "2026-12-31" };
+  club.members.push(paused);
+  club.rules = [
+    { month: "2026-12", A: 1.25, B: 0, C: 0, D: 0 },
+    { month: "2027-01", A: 2.75, B: 0, C: 0, D: 0 },
+  ];
+  club.schedules = [
+    { month: "2026-12", published: true, shifts: [{
+      id: "dec-duty", date: "2026-12-22", period: "am",
+      assignments: [member, paused].map(person => ({ memberId: person.id, result: "completed" as const })),
+    }] },
+    { month: "2027-01", published: true, shifts: [{
+      id: "jan-duty", date: "2027-01-05", period: "am",
+      assignments: [member, newcomer].map(person => ({ memberId: person.id, result: "completed" as const })),
+    }] },
+  ];
+  club.pointDeductions = [{
+    id: "semester-deduction", memberId: member.id, week: "2027-01-04", date: "2027-01-05", points: 0.25,
+    reason: "Điểm trừ thử", createdAt: "", createdBy: "a0",
+  }];
+  const result = semesterScores(club, "2026-12", "2027-01", "2027-01-31");
+  assert.deepEqual(result.months, ["2026-12", "2027-01"]);
+  assert.deepEqual(result.rows.map(row => [row.memberId, row.points, row.rank, row.byMonth]), [
+    [member.id, 3.75, 1, { "2026-12": 1.25, "2027-01": 2.5 }],
+    [newcomer.id, 2.75, 2, { "2027-01": 2.75 }],
+    [paused.id, 1.25, 3, { "2026-12": 1.25 }],
+  ]);
+  assert.deepEqual(semesterScores(club, "2027-01", "2026-12").months, []);
+});
 
 test("Multi-round events use the per-event multiplier for each approved round and keep reviews, photos and Excel aligned", async () => {
   const c = fixture();
