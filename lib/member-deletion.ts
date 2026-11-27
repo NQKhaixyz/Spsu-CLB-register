@@ -3,6 +3,7 @@ import type { Assignment, AvailabilityDataset, Club, Member, Shift } from "./clu
 import { eventPhotoId } from "./event-evidence";
 import { bulletinAuthorId } from "./bulletin";
 import { eraseFeedbackMembers } from "./feedback";
+import { eraseSharingMembers } from "./sharing";
 
 export function canDeleteMember(club: Club, admin: Member, target: Member) {
   return admin.active && admin.role === "admin" && target.id !== admin.id &&
@@ -96,6 +97,7 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
     other.id !== member.id && personKey(other.name) === personKey(member.name),
   );
   const eventPhotos = new Set<string>();
+  eraseSharingMembers(club, new Set([member.id]));
   removeFromHistory(club, member.id, eventPhotos);
   eraseFeedbackMembers(club, new Set([member.id]));
   if (club.bulletinPosts) club.bulletinPosts = club.bulletinPosts.filter(post => bulletinAuthorId(club, post) !== member.id);

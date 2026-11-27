@@ -18,13 +18,18 @@ import {
 import { memberCommitteeNames } from "./committees";
 import { dutyAcademicWeek } from "./availability";
 import type { Worksheet } from "exceljs";
+import { roundSharingScore, sharingScoreBook, type SharingScoreIndex } from "./sharing-scores";
+import { sharingKinds, sharingScoreLabels } from "./sharing-types";
 
-export async function makeReport(club: Club, month: string, asOf = today()) {
+export async function makeReport(club: Club, month: string, asOf = today(),
+  sharingIndex: SharingScoreIndex = sharingScoreBook(club).index) {
   const { default: ExcelJS } = await import("exceljs");
   const book = new ExcelJS.Workbook();
   book.creator = "Nhịp Đội";
   book.created = new Date();
   const { hidden, members: participants } = monthlyReportRoster(club, month, asOf);
+  const scores = participants.map(member => scoreFor(club, member.id, month, undefined, sharingIndex));
+  const sharingColumns = sharingKinds.filter(kind => scores.some(score => score.sharingAdjustment[kind]));
   const membersById = new Map(club.members.filter(m => !hidden.has(m.id)).map(m => [m.id, m]));
   const member = (id: string) => membersById.get(id);
   const weeks = club.weeks.filter(
@@ -125,9 +130,10 @@ export async function makeReport(club: Club, month: string, asOf = today()) {
       "Điểm trừ đi muộn",
       "Ban trực thuộc",
       ...visibleActivityKinds.map(k => activityLabels[k] + (["deduction", "special", "committee"].includes(k) ? "" : " (lượt)")),
+      ...sharingColumns.map(kind => sharingScoreLabels[kind]),
     ],
     participants.map((m, i) => {
-      const s = scoreFor(club, m.id, month);
+      const s = scores[i];
       return [
         i + 1,
         m.studentId,
@@ -142,6 +148,7 @@ export async function makeReport(club: Club, month: string, asOf = today()) {
         s.lateDeduction,
         memberCommitteeNames(m),
         ...visibleActivityKinds.map(k => s.activityCounts[k]),
+        ...sharingColumns.map(kind => roundSharingScore(s.sharingAdjustment[kind])),
       ];
     }),
   );

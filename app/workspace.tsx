@@ -26,6 +26,9 @@ import BulletinBoard from "./bulletin-board";
 import { FeedbackPage, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import FeedbackNotifications from "./feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
+import SharingPanel from "./sharing-panel";
+import { indexSharingAdjustments } from "../lib/sharing-scores";
+import type { PublicSharingGroup } from "../lib/sharing-types";
 import { isBulletinId } from "../lib/bulletin";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
 import { activeAvailabilityDatasetFor, availabilityForDuty, profileAvailability, profileAvailabilityRows } from "../lib/availability";
@@ -186,6 +189,7 @@ export default function Workspace() {
   const [tab, setTab] = useState<Tab>("overview");
   const [linkedBulletin, setLinkedBulletin] = useState<string>();
   const [feedbackTarget, setFeedbackTarget] = useState<{ id: string }>();
+  const [sharingTarget, setSharingTarget] = useState<{ id: string }>();
   const [loadedFeedbackTarget, setLoadedFeedbackTarget] = useState<{ id: string }>();
   const [memberSection, setMemberSection] = useState<"profiles" | "availability">("profiles");
   const [editingWeeklyPoints, setEditingWeeklyPoints] = useState(false);
@@ -206,6 +210,7 @@ export default function Workspace() {
   const currentDate = today();
   const currentMonday = weekId(currentDate);
   const currentMonth = currentDate.slice(0, 7);
+  const sharingIndex = useMemo(() => indexSharingAdjustments(view?.sharingReport?.adjustments), [view?.sharingReport?.adjustments]);
   const memberIdentity = useMemo(() => {
     const members = new Map((view?.club.members ?? []).map(member => [member.id, member]));
     const scores = (view?.weeklyScores ?? []).filter(row => row.week === currentMonday && members.has(row.memberId));
@@ -217,7 +222,9 @@ export default function Workspace() {
       .map((id, index) => [id, index + 1]));
     const monthScores = view?.currentMonthScores;
     const monthlyScores = new Map((monthScores?.month === currentMonth ? monthScores.rows : []).map(row => [row.memberId, row]));
-    return { members, weeklyRanks, monthlyRanks, weeklyScores, monthlyScores, rankWeek: currentMonday, rankMonth: currentMonth, openProfile };
+    const sharingGroups = new Map<string, PublicSharingGroup>();
+    for (const group of view?.sharing?.groups ?? []) for (const memberId of group.memberIds) sharingGroups.set(memberId, group);
+    return { members, weeklyRanks, monthlyRanks, weeklyScores, monthlyScores, sharingGroups, rankWeek: currentMonday, rankMonth: currentMonth, openProfile };
   }, [view, currentMonday, currentMonth, openProfile]);
   const [avatarEditing, setAvatarEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -457,6 +464,7 @@ export default function Workspace() {
   const go = (next: Tab) => {
     if (next !== "bulletin") dismissBulletinLink();
     setFeedbackTarget(undefined);
+    setSharingTarget(undefined);
     setTab(next);
     setEditingWeeklyPoints(false);
     setFilter("all");
@@ -469,6 +477,12 @@ export default function Workspace() {
     closeProfile();
     go("feedback");
     setFeedbackTarget({ id });
+  }
+  function openSharingFromNotification(id: string) {
+    closeProfile();
+    go("personal");
+    setSharingTarget({ id });
+    void load();
   }
   if (loading) return <Loading />;
   if (auth) return <Login onSuccess={load} />;
@@ -1136,7 +1150,7 @@ export default function Workspace() {
     setBusy(true);
     try {
       const { makeReport, saveFile } = await import("../lib/excel");
-      const { buffer, warnings } = await makeReport(club, month);
+      const { buffer, warnings } = await makeReport(club, month, today(), sharingIndex);
       saveFile(
         buffer,
         `Nhịp-Đội-${month}${warnings.length ? "-ban-tam" : ""}.xlsx`,
@@ -2442,7 +2456,8 @@ export default function Workspace() {
         {isAdmin && editingWeeklyPoints ? <>
           <div className="member-section-tools">{committeeSelect()}</div>
           <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin week={week.id}
-            weeklyScores={weeklyScores} committeeFilter={committeeFilter} busy={busy} onAction={act} />
+            weeklyScores={weeklyScores} committeeFilter={committeeFilter} busy={busy} onAction={act}
+            lockedManualKeys={view?.sharingReport?.lockedManualKeys} />
         </> : <>
           <p className="notice green weekly-score-note">Tuần mới bắt đầu từ 0, điểm đã ghi được cộng vào báo cáo tháng theo ngày tính điểm, điểm sự kiện chỉ cộng sau khi BĐH duyệt</p>
           {weekScoreTable()}
@@ -2640,7 +2655,7 @@ export default function Workspace() {
       committeeNames: memberCommitteeNames(m),
       studentId: m.studentId,
       avatarId: m.avatarId,
-      ...scoreFor(club, m.id, month),
+      ...scoreFor(club, m.id, month, undefined, sharingIndex),
     }));
     const rule = rulesFor(club, month);
     const waiting = club.schedules
@@ -3006,6 +3021,7 @@ export default function Workspace() {
   }
 
   function personal() {
+    const sharing = view?.sharing;
     const heading = (<>
       <div className="page-heading">
         <div className="personal-identity">
@@ -3036,6 +3052,8 @@ export default function Workspace() {
           </div>
         } />
       </section>
+      {sharing?.mine && me && <SharingPanel key={me.id} me={me} view={sharing} target={sharingTarget} busy={busy}
+        onAction={(action, data, message, onError) => act(action, data, message, false, onError)} />}
     </>);
     if (isAdmin) return heading;
     const mine = view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
@@ -3330,7 +3348,7 @@ export default function Workspace() {
             </button>
             <FeedbackNotifications key={me.id} pending={isAdmin ? pendingTotal : 0}
               onOpenPending={() => go(pending.length ? "meetings" : "requests")}
-              onOpenFeedback={openFeedbackFromNotification} />
+              onOpenFeedback={openFeedbackFromNotification} onOpenSharing={openSharingFromNotification} />
             <span className="topbar-divider" />
             <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} size="small" />
             <span className="topbar-role">
@@ -3410,7 +3428,7 @@ export default function Workspace() {
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (
-            isAdmin ? <SemesterScoreboard club={club} monthChoices={monthChoices} initialMonth={month} busy={busy}
+            isAdmin ? <SemesterScoreboard club={club} monthChoices={monthChoices} initialMonth={month} busy={busy} sharingIndex={sharingIndex}
               onSave={range => act("setSemesterScoreRange", range, "Đã công bố kỳ tổng kết", false)}
               onUnpublish={range => act("unpublishSemesterScoreRange", range, "Đã hủy công bố kỳ tổng kết", false)} />
               : <MemberSemesterScoreboard key={view.revision} />

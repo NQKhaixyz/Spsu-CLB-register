@@ -1,0 +1,166 @@
+.sharing-panel {
+  display: grid;
+  gap: 14px;
+  margin-block: 14px;
+  padding: clamp(12px, 3vw, 22px);
+  scroll-margin-block: 14px;
+}
+.sharing-panel > *, .sharing-card, .sharing-current { min-width: 0; }
+.sharing-panel-title, .sharing-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sharing-panel-title h2, .sharing-card-title h3, .sharing-current h3, .sharing-invite h3, .sharing-history h3 { margin: 0; }
+.sharing-panel-title h2 { font-size: 1.23rem; }
+.sharing-emblem {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 11px;
+  color: #864c59;
+  background: #f4e3e6;
+}
+.sharing-code, .sharing-name-wing, .sharing-leader, .sharing-tag {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  border-radius: 6px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.sharing-code {
+  margin-inline-start: .35em;
+  padding: .15em .4em;
+  background: #ece8d5;
+  color: #684f24;
+  font-size: .82em;
+  white-space: nowrap;
+}
+.sharing-name-wing { margin-inline-start: .24em; color: #a6576d; }
+.cupid-avatar-wing {
+  position: absolute;
+  z-index: 2;
+  inset-inline-start: .05rem;
+  inset-block-end: .2rem;
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid #fff9f8;
+  border-radius: 50%;
+  color: #8a4357;
+  background: #f5cdd7;
+  box-shadow: 0 1px 4px #70273c40;
+  pointer-events: none;
+}
+.cupid-avatar-wing svg { width: .66rem; height: .66rem; stroke-width: 2.2; }
+.cupid-avatar-wing[data-side="right"] svg { transform: scaleX(-1); }
+.avatar-frame.large > .cupid-avatar-wing { inset-inline-start: .36rem; inset-block-end: .42rem; width: 1.27rem; height: 1.27rem; }
+.avatar-frame.large > .cupid-avatar-wing svg { width: .81rem; height: .81rem; }
+.sharing-card {
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 13px;
+  display: grid;
+  gap: 12px;
+  background: var(--surface-warm);
+  overflow-wrap: anywhere;
+}
+.sharing-card[data-kind="cupid"] { border-color: #eed7dc; background: linear-gradient(140deg, #fff3f5, var(--surface-warm) 72%); }
+.sharing-card[data-kind="cupid"][data-milestone="true"] {
+  background: radial-gradient(circle at 90% 10%, #f8e6d8, transparent 42%), linear-gradient(140deg, #fff0f4, var(--surface-warm) 72%);
+}
+.sharing-card[data-kind="guild"] { border-color: #e7dec4; background: linear-gradient(140deg, #fbf4df, var(--surface-warm) 72%); }
+.sharing-card[data-kind="guild"] .sharing-emblem { background: #ede2bc; color: #71541e; }
+.sharing-card-title > div { min-width: 0; }
+.sharing-card-title > div > span { color: var(--muted); font-size: .825rem; }
+.sharing-roster, .sharing-contributions, .sharing-tag-list, .sharing-members-admin ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sharing-roster { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.sharing-roster li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  font-size: .875rem;
+  font-weight: 650;
+}
+.sharing-card[data-kind="cupid"] .sharing-roster li { flex: 1 1 88px; }
+.sharing-leader { color: #634c24; background: #ede3c5; font-size: .68rem; padding: .2em .5em; }
+.sharing-tags, .sharing-milestones, .sharing-actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.sharing-tag, .sharing-milestones span {
+  color: #7e4354;
+  background: #f7e5ea;
+  padding: 4px 7px;
+  font-size: .81rem;
+}
+.sharing-milestones:empty { display: none; }
+.sharing-milestones span { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; }
+.sharing-profile { padding: 10px clamp(12px, 5vw, 24px); }
+.sharing-invite, .sharing-current, .sharing-choices, .sharing-tag-editor, .sharing-score-card, .sharing-history, .sharing-form {
+  display: grid;
+  gap: 9px;
+}
+.sharing-invite {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-warm);
+  scroll-margin-block: 14px;
+}
+.sharing-current, .sharing-history details { scroll-margin-block: 14px; }
+.sharing-panel p, .sharing-dialog p { margin: 0; }
+.sharing-panel .field { margin: 0; min-width: 0; }
+.sharing-panel .form-footer { margin: 0; }
+.sharing-tag-form { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.sharing-tag-list, .sharing-members-admin ul { display: grid; gap: 8px; }
+.sharing-tag-list li, .sharing-members-admin li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  overflow-wrap: anywhere;
+}
+.sharing-members-admin, .sharing-history details {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.sharing-members-admin summary, .sharing-history summary { cursor: pointer; font-weight: 650; }
+.sharing-members-admin[open] ul, .sharing-history details[open] ul { margin-top: 8px; }
+.sharing-contributions li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 6px;
+  font-size: .83rem;
+  border-top: 1px solid var(--line);
+  padding-block: 7px;
+  overflow-wrap: anywhere;
+}
+.sharing-contributions li > div { display: grid; gap: 2px; }
+.sharing-contributions small { color: var(--muted); }
+.sharing-dialog .sharing-actions { justify-content: flex-end; padding-top: 12px; }
+.sharing-guide { display: grid; gap: 13px; }
+.sharing-guide section { padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-warm); }
+.sharing-guide section h3 { margin: 0 0 5px; font-size: .97rem; }
+.sharing-guide section p { margin: 0; line-height: 1.5; }
+.sharing-guide section p + p { margin-top: 6px; }
+.sharing-guide-check { display: flex; align-items: flex-start; gap: 8px; font-weight: 700; overflow-wrap: anywhere; }
+.sharing-guide-check input { flex: none; margin: .3em 0 0; }
+.sharing-guide .form-footer { margin: 0; }
+@media (max-width: 395px) {
+  .sharing-tag-form { grid-template-columns: 1fr; }
+  .sharing-tag-form .btn { justify-self: start; }
+  .sharing-card, .sharing-invite { padding: 10px; }
+}

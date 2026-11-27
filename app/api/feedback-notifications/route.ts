@@ -1,4 +1,4 @@
-import { feedbackNotificationsFor, markFeedbackNotificationRead, type FeedbackNotificationInbox } from "../../../lib/feedback-notifications";
+import { memberNotificationsFor, markMemberNotificationRead, type FeedbackNotificationInbox } from "../../../lib/feedback-notifications";
 import type { Club } from "../../../lib/club";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
@@ -11,7 +11,7 @@ const json = (data: unknown, status = 200) => Response.json(data, {
   status, headers: { "Cache-Control": "private, no-store" },
 });
 function inbox(club: Club, memberId: string, revision: number): FeedbackNotificationInbox {
-  return { revision, notifications: feedbackNotificationsFor(club, memberId) };
+  return { revision, notifications: memberNotificationsFor(club, memberId) };
 }
 
 export async function GET(request: Request) {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       if (!current.members.some(member => member.id === user.member.id && member.userId === user.userId && member.active)) {
         throw new AuthError("Vui lòng đăng nhập để xem thông báo", 401);
       }
-      if (!markFeedbackNotificationRead(current, user.member.id, id)) {
+      if (!markMemberNotificationRead(current, user.member.id, id)) {
         throw new AuthError("Thông báo không còn hiển thị", 404);
       }
     });

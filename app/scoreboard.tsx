@@ -7,6 +7,7 @@ import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
 import { Avatar, Button, Empty, PanelHead } from "./ui";
 import { displayMessage } from "../lib/display-message";
 import { MemberName, useMemberIdentity } from "./member-identity";
+import { sharingKinds, sharingScoreLabels, type SharingAmounts } from "../lib/sharing-types";
 
 const scopes = [
   { id: "mine", label: "Điểm của tôi" },
@@ -61,6 +62,11 @@ function ScoreMetric({ label, count, unit, points }: {
   </div>;
 }
 
+export function SharingScoreMetrics({ amounts }: { amounts?: SharingAmounts }) {
+  return sharingKinds.map(kind => amounts?.[kind]
+    ? <ScoreMetric key={kind} label={sharingScoreLabels[kind]} points={amounts[kind]} /> : null);
+}
+
 function RankTitle({ tier }: { tier: ScoreTier }) {
   return <span className="score-rank-title" data-tier={tier.id}>{tier.label}</span>;
 }
@@ -111,6 +117,7 @@ function MobileScoreList({ rows, memberId, period }: {
             {visibleActivityKinds.map(kind => <ScoreMetric key={kind} label={activityLabels[kind]}
               count={kind === "initiative" || kind === "ddv" || kind === "event" ? row.activityCounts[kind] : undefined}
               unit="lượt" points={row.activityPoints?.[kind]} />)}
+            <SharingScoreMetrics amounts={row.sharingAdjustment} />
           </dl>
         </details>
       </li>
@@ -132,6 +139,7 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
     return { ...row, tier, rank: tier ? undefined : rank };
   });
   const visible = onlyMine ? ranked.filter(row => row.memberId === memberId) : ranked;
+  const sharingColumns = sharingKinds.filter(kind => visible.some(row => row.sharingAdjustment?.[kind]));
   const columns = weekly ? weeklyColumns : monthlyColumns.filter(column => adminReport || column.key !== "lateDeduction");
   return (
     <section className={`panel score-panel${adminReport ? "" : " score-panel-standard"}`}>
@@ -172,6 +180,7 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
                 className={`score-numeric${!weekly && (kind === "initiative" || kind === "committee") ? " score-column-group-start" : ""}`}>
                 {activityLabels[kind]}
               </th>)}
+              {sharingColumns.map(kind => <th scope="col" key={kind} className="score-numeric">{sharingScoreLabels[kind]}</th>)}
             </tr></thead>
             <tbody>{visible.map((row, index) => {
               const name = <span className="score-name">
@@ -194,6 +203,7 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
                   className={`score-numeric${!weekly && (kind === "initiative" || kind === "committee") ? " score-column-group-start" : ""}`}>
                   {row.activityCounts[kind]}
                 </td>)}
+                {sharingColumns.map(kind => <td key={kind} className="score-numeric">{signedScore(row.sharingAdjustment?.[kind] ?? 0)}</td>)}
               </tr>;
             })}</tbody>
           </table>

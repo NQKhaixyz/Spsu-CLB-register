@@ -1,6 +1,8 @@
 import { reportMembers, scoreFor, today, type Club } from "./club";
 import { memberCommitteeNames } from "./committees";
 import { rankScoreRows } from "./score-ranks";
+import { roundSharingScore, sharingScoreBook, type SharingScoreIndex } from "./sharing-scores";
+import type { SharingAmounts } from "./sharing-types";
 
 export type SemesterScoreRange = { from: string; through: string };
 export const semesterMonthLimit = 48;
@@ -18,9 +20,11 @@ type SemesterMember = {
   committeeNames: string;
   points: number;
   byMonth: Record<string, number>;
+  sharingAdjustment?: SharingAmounts;
 };
 
-export function semesterScores(club: Club, from: string, through: string, asOf = today()) {
+export function semesterScores(club: Club, from: string, through: string, asOf = today(),
+  sharingIndex: SharingScoreIndex = sharingScoreBook(club).index) {
   const months: string[] = [];
   if (validSemesterScoreRange(from, through)) {
     const end = Date.parse(through + "-01T00:00:00Z");
@@ -34,13 +38,20 @@ export function semesterScores(club: Club, from: string, through: string, asOf =
       const row = totals.get(member.id) ?? {
         memberId: member.id, name: member.name, committeeNames: memberCommitteeNames(member), points: 0, byMonth: {},
       };
-      const { points } = scoreFor(club, member.id, month);
-      row.byMonth[month] = points;
-      row.points += points;
+      const score = scoreFor(club, member.id, month, undefined, sharingIndex);
+      row.byMonth[month] = score.points;
+      row.points += score.pointsBeforeSharing;
+      if (score.sharingAdjustment.cupid || score.sharingAdjustment.guild) {
+        const adjustment = row.sharingAdjustment ??= { cupid: 0, guild: 0 };
+        adjustment.cupid += score.sharingAdjustment.cupid;
+        adjustment.guild += score.sharingAdjustment.guild;
+      }
       totals.set(member.id, row);
     }
   }
-  const rows = rankScoreRows([...totals.values()].map(row => ({ ...row, points: Number(row.points.toFixed(10)) })));
+  const rows = rankScoreRows([...totals.values()].map(row => ({ ...row,
+    points: roundSharingScore(row.points + (row.sharingAdjustment?.cupid ?? 0) + (row.sharingAdjustment?.guild ?? 0)),
+  })));
   return { months, rows };
 }
 

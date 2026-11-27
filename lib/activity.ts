@@ -1,5 +1,6 @@
 import { addDays, isMemberOnDate, rulesFor, today, uid, weekId, type Club, type Member } from "./club";
 import { committeeLabels, isCommitteeKind, type CommitteeKind } from "./committees";
+import { sharingSourceKey } from "./sharing-types";
 
 export const activityLabels = {
   lecture: "Hoạt động giảng đường",
@@ -63,6 +64,8 @@ export type PointDeduction = {
   memberId: string;
   week: string;
   date: string;
+  time?: string;
+  individual?: true;
   points: number;
   reason: string;
   createdAt: string;
@@ -100,6 +103,8 @@ export type ManualActivity = {
   memberId: string;
   week: string;
   date: string;
+  time?: string;
+  individual?: true;
   kind: ManualActivityKind | "project";
   quantity: number;
   points?: number;
@@ -254,6 +259,10 @@ const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) &&
   !Number.isNaN(Date.parse(date)) && new Date(date + "T12:00:00Z").toISOString().slice(0, 10) === date;
 const optionalTime = (value: unknown): value is string =>
   typeof value === "string" && (value === "" || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value));
+function manualPointTime(value: unknown, previous?: string) {
+  requireValue(value === undefined || optionalTime(value), "Giờ thực tế không hợp lệ.");
+  return value === undefined ? previous : value || undefined;
+}
 function quantity(value: unknown, min: number) {
   requireValue(isEventRoundQuantity(value) && value >= min,
     `Số lượt phải là số nguyên từ ${min} đến 10.000.`);
@@ -604,6 +613,8 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     requireValue(member, "Không tìm thấy thành viên.");
     requireValue(member.role !== "admin", "Điểm chỉ áp dụng cho tài khoản thành viên.");
     const { week, date } = datedWeek(club, member, data);
+    const time = manualPointTime(data.time);
+    const individual = data.individual === true ? true : undefined;
     const id = text(data.id, 80), reason = text(data.reason);
     requireValue(/^[a-zA-Z0-9_-]{8,80}$/.test(id), "Mã khoản trừ không hợp lệ. Tải lại trang và thử lại.");
     requireValue(typeof data.points === "number" && Number.isFinite(data.points) && data.points > 0 && data.points <= 100000 && Math.abs(data.points * 100 - Math.round(data.points * 100)) < 0.000001,
@@ -611,11 +622,13 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     requireValue(reason.length >= 3, "Nhập lý do trừ điểm từ 3 ký tự.");
     const existing = club.pointDeductions?.find(r => r.id === id);
     if (existing) {
-      requireValue(existing.memberId === member.id && existing.week === week && existing.date === date && existing.points === data.points && existing.reason === reason,
+      requireValue(existing.memberId === member.id && existing.week === week && existing.date === date && existing.time === time &&
+        existing.individual === individual && existing.points === data.points && existing.reason === reason,
         "Khoản trừ đã được lưu với nội dung khác. Tải lại trang.");
       return true;
     }
-    (club.pointDeductions ??= []).push({ id, memberId: member.id, week, date, points: data.points, reason, createdAt: new Date().toISOString(), createdBy: me.id });
+    (club.pointDeductions ??= []).push({ id, memberId: member.id, week, date, time, individual, points: data.points, reason,
+      createdAt: new Date().toISOString(), createdBy: me.id });
     log(`Trừ ${data.points} điểm: ${member.name}, ngày ${date}. Lý do: ${reason}`);
     return true;
   }
@@ -655,8 +668,25 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     count = quantity(data.quantity, 0);
   }
   const rows = club.manualActivities ??= [];
-  const old = rows.find((r) => r.memberId === member.id && r.week === week && r.kind === kind);
-  const row: ManualActivity = { id: old?.id ?? uid(), memberId: member.id, week, date, kind, quantity: count, points, committee, note: text(data.note), updatedAt: new Date().toISOString(), updatedBy: me.id };
+  const individual = data.individual === true ? true : undefined;
+  const locked = new Set(club.sharing?.locked.map(entry => entry.sourceKey));
+  const replay = typeof data.entryId === "string" ? rows.find(row => row.id === data.entryId) : undefined;
+  const note = text(data.note);
+  if (replay) {
+    const time = manualPointTime(data.time, replay.time);
+    requireValue(replay.memberId === member.id && replay.week === week && replay.date === date && replay.kind === kind &&
+      replay.quantity === count && replay.points === points && replay.committee === committee && replay.time === time &&
+      replay.individual === individual && replay.note === note, "Khoản điểm đã được lưu với nội dung khác. Tải lại trang.");
+    return true;
+  }
+  const old = individual ? undefined : rows.find(r => r.memberId === member.id && r.week === week && r.kind === kind &&
+    !r.individual && !locked.has(sharingSourceKey("manual", r.id)));
+  requireValue(data.previousEntryId === undefined || data.previousEntryId === (old?.id ?? null),
+    "Khoản điểm vừa thay đổi hoặc đã chốt. Tải lại trước khi nhập điểm.");
+  const time = manualPointTime(data.time, old?.date === date ? old.time : undefined);
+  const entryId = typeof data.entryId === "string" && /^[\w-]{8,80}$/.test(data.entryId) ? data.entryId : uid();
+  const row: ManualActivity = { id: old?.id ?? entryId, memberId: member.id, week, date, time, individual, kind, quantity: count, points,
+    committee, note, updatedAt: new Date().toISOString(), updatedBy: me.id };
   if (old) Object.assign(old, row); else rows.push(row);
   const value = kind === "special" ? `${points} điểm` : kind === "committee" ? (committee ? `${committeeLabels[committee]} · ${points} điểm` : "Bỏ điểm theo ban") : `${count} lượt`;
   log(`Nhập ${activityLabels[kind]}: ${member.name}, ${value}, ngày ${date} (tuần ${week})`);

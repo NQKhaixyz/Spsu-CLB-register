@@ -43,6 +43,7 @@ import {
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
 import { editMemberFeedback, eraseFeedbackMembers, recallMemberFeedback, replyToFeedback, sendMemberFeedback, setFeedbackConsent } from "./feedback";
+import { applySharingAction, endSharingForMember, eraseSharingMembers } from "./sharing";
 import { semesterMonthLimit, validSemesterScoreRange } from "./semester-scores";
 import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
 import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
@@ -133,6 +134,7 @@ export function applyAction(
     return;
   }
   check(me?.active, "Tài khoản chưa có hồ sơ hoặc đã ngừng hoạt động.");
+  if (applySharingAction(club, me, action, data)) return;
   if (action === "sendFeedback") {
     sendMemberFeedback(club, me, data);
     return;
@@ -836,6 +838,7 @@ export function applyAction(
           m.userId !== club.ownerId,
           "Không thể ngừng hoạt động tài khoản chủ quản trị.",
         );
+        if (!data.active) endSharingForMember(club, m.id);
         setMemberActive(m, !!data.active);
       }
       if (data.role) {
@@ -844,6 +847,7 @@ export function applyAction(
           m.userId !== club.ownerId || data.role === "admin",
           "Không thể hạ quyền chủ quản trị.",
         );
+        if (data.role === "admin" && m.role !== "admin") endSharingForMember(club, m.id);
         m.role = data.role;
       }
     }
@@ -1155,6 +1159,7 @@ export function applyAction(
         weeks: club.weeks,
         schedules: sampleSchedules,
       };
+      eraseSharingMembers(club, sampleIds);
       club.members = club.members.filter((m) => !sampleIds.has(m.id));
       eraseFeedbackMembers(club, sampleIds);
       club.weeks = [];
@@ -1210,7 +1215,9 @@ export function applyAction(
     if (club.activeAvailabilityDataset)
       real.activeAvailabilityDataset = club.activeAvailabilityDataset;
     const remaining = new Set(real.members.map(member => member.id));
-    eraseFeedbackMembers(club, new Set(club.members.filter(member => !remaining.has(member.id)).map(member => member.id)));
+    const removed = new Set(club.members.filter(member => !remaining.has(member.id)).map(member => member.id));
+    eraseFeedbackMembers(club, removed);
+    eraseSharingMembers(club, removed);
     Object.assign(club, real);
     syncWeeks(club);
     note("Bắt đầu dữ liệu thật");

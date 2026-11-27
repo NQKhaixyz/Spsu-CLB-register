@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Bell, CheckCheck, MessageSquare, MessageSquarePlus, X } from "lucide-react";
+import { Bell, CheckCheck, Feather, MessageSquare, MessageSquarePlus, Shield, X } from "lucide-react";
 import type { FeedbackNotificationInbox, FeedbackNotificationKind } from "../lib/feedback-notifications";
+import { sharingNoticeTitles } from "../lib/sharing-types";
 import { MemberName } from "./member-identity";
 
 const inboxPath = "/api/feedback-notifications";
@@ -16,10 +17,11 @@ const notificationKinds = {
   consent: { title: "Đã đồng ý công khai feedback", icon: CheckCheck },
 } satisfies Record<FeedbackNotificationKind, { title: string; icon: typeof Bell }>;
 
-export default function FeedbackNotifications({ pending, onOpenPending, onOpenFeedback }: {
+export default function FeedbackNotifications({ pending, onOpenPending, onOpenFeedback, onOpenSharing }: {
   pending: number;
   onOpenPending: () => void;
   onOpenFeedback: (feedbackId: string) => void;
+  onOpenSharing: (sharingId: string) => void;
 }) {
   const panelId = useId();
   const center = useRef<HTMLDivElement>(null);
@@ -91,7 +93,8 @@ export default function FeedbackNotifications({ pending, onOpenPending, onOpenFe
 
   async function openNotification(notification: FeedbackNotificationInbox["notifications"][number]) {
     setOpen(false);
-    onOpenFeedback(notification.feedbackId);
+    if ("sharingId" in notification) onOpenSharing(notification.sharingId);
+    else onOpenFeedback(notification.feedbackId);
     if (notification.read) return;
     try {
       const response = await fetch(inboxPath, {
@@ -138,7 +141,9 @@ export default function FeedbackNotifications({ pending, onOpenPending, onOpenFe
       </div>}
       {notifications.length ? <ul className="notification-items">
         {notifications.map(notification => {
-          const { title, icon: Icon } = notificationKinds[notification.kind];
+          const { title, icon: Icon } = "sharingId" in notification
+            ? { title: sharingNoticeTitles[notification.kind], icon: notification.kind.startsWith("cupid") ? Feather : Shield }
+            : notificationKinds[notification.kind];
           return <li key={notification.id}>
             <button type="button" className="notification-item" data-unread={!notification.read}
               onClick={() => void openNotification(notification)}>
@@ -146,7 +151,7 @@ export default function FeedbackNotifications({ pending, onOpenPending, onOpenFe
               <span className="notification-item-copy">
                 <strong>{title}</strong>
                 <span className="notification-item-meta">
-                  {notification.actorId ? <MemberName memberId={notification.actorId} /> : <span>Ẩn danh</span>}
+                  {notification.actorId ? <MemberName memberId={notification.actorId} /> : <span>{"sharingId" in notification ? "Nhịp Đội" : "Ẩn danh"}</span>}
                   <time dateTime={new Date(notification.createdAt).toISOString()}>{notificationClock.format(notification.createdAt)}</time>
                 </span>
               </span>
@@ -154,7 +159,7 @@ export default function FeedbackNotifications({ pending, onOpenPending, onOpenFe
             </button>
           </li>;
         })}
-      </ul> : !loadError && <p className="notification-status">{inbox ? "Chưa có thông báo feedback" : "Đang tải thông báo…"}</p>}
+      </ul> : !loadError && <p className="notification-status">{inbox ? "Chưa có thông báo" : "Đang tải thông báo…"}</p>}
     </section>}
   </div>;
 }

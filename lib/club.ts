@@ -9,6 +9,8 @@ import type { MemberPosition } from "./member-positions";
 import type { FeedbackResetReceipt, FeedbackView, StoredFeedback } from "./feedback";
 import type { ScoreStanding } from "./score-ranks";
 import type { SemesterScoreRange } from "./semester-scores";
+import { roundSharingScore, sharingAdjustmentFor, sharingScoreBook, type SharingScoreIndex } from "./sharing-scores";
+import type { SharingAdjustment, SharingAmounts, SharingState, SharingView } from "./sharing-types";
 import {
   academicWeekFor,
   activeAvailabilityDatasetFor,
@@ -149,6 +151,7 @@ export type Club = {
   links?: SharedLink[];
   bulletinPosts?: BulletinPost[];
   memberFeedback?: StoredFeedback[];
+  sharing?: SharingState;
   feedbackResetReceipt?: FeedbackResetReceipt;
   bulletinUploads?: BulletinUpload[];
   rules: Rule[];
@@ -187,6 +190,8 @@ export type View = {
   monthlyAvatarRanks?: { month: string; memberIds: string[] };
   currentMonthScores?: { month: string; rows: ScoreStanding[] };
   feedback?: FeedbackView[];
+  sharing?: SharingView;
+  sharingReport?: { adjustments: SharingAdjustment[]; lockedManualKeys: string[] };
   personalMonthlyScores?: Record<string, ReturnType<typeof scoreFor>>;
   directoryAvailability?: Record<string, Pick<AvailabilityDetail, "day" | "period" | "weeks" | "note">[]>;
   currentAcademicWeek?: number;
@@ -470,7 +475,10 @@ export const dutyPointsFor = (a: Assignment, rule: Rule) =>
 
 type AttendancePoints = Record<"completed" | "dutyMissed" | "meetingMissed" | "lateCount" | "passed", number>;
 
-export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?: string) {
+export const meetingAbsence = (closed: boolean, entry?: Entry) => !!(closed && entry?.absent && !entry.excused);
+export const meetingPass = (entry?: Entry) => !!(entry?.passed && !entry.absent);
+
+export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?: string, sharingIndex?: SharingScoreIndex) {
   const rule = rulesFor(club, month);
   const member = club.members.find((m) => m.id === memberId);
   const duties = member?.role === "admin" ? [] : club.schedules
@@ -500,12 +508,12 @@ export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?:
   const lateCount = duties.filter(isChargeableLate).length;
   const lateDeduction = duties.reduce((n, a) => n + latePenaltyFor(a, rule), 0);
   const meetingMissed = entries.filter(
-    ({ closed, e }) => closed && e?.absent && !e.excused,
+    ({ closed, e }) => meetingAbsence(closed, e),
   ).length;
   const attended = entries.filter(
     ({ closed, e }) => closed && e?.status === "attending" && !e.absent,
   ).length;
-  const passed = entries.filter(({ e }) => e?.passed && !e.absent).length;
+  const passed = entries.filter(({ e }) => meetingPass(e)).length;
   const activities = activityScoreFor(club, memberId, month, false, onlyWeek);
   const attendancePoints: AttendancePoints = {
     completed: completed * rule.A,
@@ -514,7 +522,8 @@ export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?:
     lateCount: -lateDeduction || 0,
     passed: passed * rule.E,
   };
-  const points = Object.values(attendancePoints).reduce((sum, value) => sum + value, 0) + activities.activityTotal;
+  const pointsBeforeSharing = Object.values(attendancePoints).reduce((sum, value) => sum + value, 0) + activities.activityTotal;
+  const sharingAdjustment = sharingAdjustmentFor(sharingIndex ?? sharingScoreBook(club).index, memberId, month, onlyWeek);
   return {
     ...activities,
     attendancePoints,
@@ -525,7 +534,9 @@ export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?:
     passed,
     lateCount,
     lateDeduction,
-    points: Number(points.toFixed(10)),
+    pointsBeforeSharing,
+    sharingAdjustment,
+    points: roundSharingScore(pointsBeforeSharing + sharingAdjustment.cupid + sharingAdjustment.guild),
   };
 }
 export function createDutyShiftSlots(club: Club, month: string, peoplePerShift: number): Shift[] {
@@ -798,6 +809,7 @@ export type WeeklyScore = ReturnType<typeof activityScoreFor> & {
   passed: number;
   lateCount: number;
   attendancePoints: AttendancePoints;
+  sharingAdjustment?: SharingAmounts;
   points: number;
 };
 export type ScoreboardRow = Omit<WeeklyScore, "week" | "activityTotal"> & {
@@ -805,15 +817,19 @@ export type ScoreboardRow = Omit<WeeklyScore, "week" | "activityTotal"> & {
   committeeNames?: string;
 };
 
-export function weeklyScoreFor(club: Club, memberId: string, week: string): WeeklyScore {
+export function weeklyScoreFor(club: Club, memberId: string, week: string, sharingIndex = sharingScoreBook(club).index): WeeklyScore {
   const months = [...new Set([week.slice(0, 7), addDays(week, 6).slice(0, 7)])];
-  const parts = months.map(month => scoreFor(club, memberId, month, week));
+  const parts = months.map(month => scoreFor(club, memberId, month, week, sharingIndex));
   const { activityCounts, activityPoints } = activityScoreFor(club, memberId, week, true);
   for (const kind of activityKinds) {
     activityPoints[kind] = Number(parts.reduce((sum, score) => sum + score.activityPoints[kind], 0).toFixed(10));
   }
   const sumPoints = (kind: keyof AttendancePoints) =>
     Number(parts.reduce((sum, score) => sum + score.attendancePoints[kind], 0).toFixed(10));
+  const sharingAdjustment = parts.reduce((sum, score) => ({
+    cupid: sum.cupid + score.sharingAdjustment.cupid,
+    guild: sum.guild + score.sharingAdjustment.guild,
+  }), { cupid: 0, guild: 0 });
   return {
     week,
     memberId,
@@ -833,6 +849,8 @@ export function weeklyScoreFor(club: Club, memberId: string, week: string): Week
       lateCount: sumPoints("lateCount"),
       passed: sumPoints("passed"),
     },
-    points: Number(parts.reduce((sum, score) => sum + score.points, 0).toFixed(10)),
+    sharingAdjustment,
+    points: roundSharingScore(parts.reduce((sum, score) => sum + score.pointsBeforeSharing, 0) +
+      sharingAdjustment.cupid + sharingAdjustment.guild),
   };
 }

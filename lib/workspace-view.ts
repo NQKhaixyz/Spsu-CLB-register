@@ -3,6 +3,8 @@ import { committeeLabels, memberCommitteeNames } from "./committees";
 import { bulletinView } from "./bulletin";
 import { rankScoreRows } from "./score-ranks";
 import { memberFeedbackView } from "./feedback";
+import { sharingViewFor } from "./sharing";
+import { sharingScoreBook, type SharingScoreIndex } from "./sharing-scores";
 import { academicWeekForClub, dutyAcademicWeek, profileAvailability, profileAvailabilityRows } from "./availability";
 
 // Show current organization and role wording in the interface and reports,
@@ -30,16 +32,18 @@ function currentTerminology<T>(value: T): T {
   ])) as T;
 }
 
-export function monthlyScoreboard(club: Club, month: string, asOf = today()): ScoreboardRow[] {
+export function monthlyScoreboard(club: Club, month: string, asOf = today(),
+  sharingIndex: SharingScoreIndex = sharingScoreBook(club).index): ScoreboardRow[] {
   return reportMembers(club, month, asOf).map(member => {
     const {
       points, completed, dutyMissed, meetingMissed, attended, passed, lateCount,
-      activityCounts, activityPoints, attendancePoints,
-    } = scoreFor(club, member.id, month);
+      activityCounts, activityPoints, attendancePoints, sharingAdjustment,
+    } = scoreFor(club, member.id, month, undefined, sharingIndex);
     return {
       memberId: member.id, name: displayText(member.name), committeeNames: memberCommitteeNames(member),
       points, completed, dutyMissed, meetingMissed, attended, passed, lateCount,
       activityCounts, activityPoints, attendancePoints,
+      ...(sharingAdjustment.cupid || sharingAdjustment.guild ? { sharingAdjustment } : {}),
     };
   });
 }
@@ -50,6 +54,8 @@ export function workspaceView(
   revision: number,
 ) {
   const adminIds = adminMemberIds(club);
+  const now = Date.now();
+  const book = sharingScoreBook(club, now);
   const currentDay = today();
   const currentAcademicWeek = academicWeekForClub(club, currentDay);
   const assignedByWeek = new Map<string, Set<string>>();
@@ -65,10 +71,10 @@ export function workspaceView(
   const weeklyScores = club.weeks.flatMap(w => club.members
     .filter(m => m.role !== "admin" && !pausedForScoreWeek(m, w.id) &&
       (assignedByWeek.get(w.id)?.has(m.id) || m.joined <= addDays(w.id, 6)))
-    .map(m => weeklyScoreFor(club, m.id, w.id)));
+    .map(m => weeklyScoreFor(club, m.id, w.id, book.index)));
   const me = club.members.find((m) => m.userId === user.userId) ?? null;
   const currentMonth = currentDay.slice(0, 7);
-  const monthStandings = me?.active ? rankScoreRows(monthlyScoreboard(club, currentMonth, currentDay)) : undefined;
+  const monthStandings = me?.active ? rankScoreRows(monthlyScoreboard(club, currentMonth, currentDay, book.index)) : undefined;
   const monthlyAvatarRanks = monthStandings && {
     month: currentMonth,
     memberIds: monthStandings.slice(0, 10).map(row => row.memberId),
@@ -80,9 +86,16 @@ export function workspaceView(
   const feedback = me?.active ? memberFeedbackView(club, me.id) : undefined;
   const bulletin = me?.active ? bulletinView(club, me) : undefined;
   const isAdmin = me?.role === "admin" && me.active;
+  const sharing = me?.active ? sharingViewFor(club, me, book, now) : undefined;
+  const sharingReport = isAdmin && club.sharing ? {
+    adjustments: book.adjustments,
+    lockedManualKeys: club.sharing.locked.flatMap(row => row.sourceType === "manual" && row.sourceKey ? [row.sourceKey] : []),
+  } : undefined;
   const personalMonthlyScores = !isAdmin && me
-    ? Object.fromEntries([...new Set([currentMonth, ...club.schedules.map(schedule => schedule.month)])]
-        .map(month => [month, scoreFor(club, me.id, month)]))
+    ? Object.fromEntries([...new Set([currentMonth, ...club.schedules.map(schedule => schedule.month),
+        ...club.weeks.map(week => week.meetingDate.slice(0, 7)),
+        ...book.adjustments.filter(row => row.memberId === me.id).map(row => row.month)])]
+        .map(month => [month, scoreFor(club, me.id, month, undefined, book.index)]))
     : undefined;
   const directoryAvailability: View["directoryAvailability"] = !isAdmin && me?.active ? {} : undefined;
   if (!isAdmin) {
@@ -116,10 +129,10 @@ export function workspaceView(
     delete club.dutyWithdrawal;
     delete club.semesterScoreDraft;
   }
-  const { memberFeedback: _privateFeedback, feedbackResetReceipt: _feedbackResetReceipt, ...visibleClub } = club;
+  const { memberFeedback: _privateFeedback, feedbackResetReceipt: _feedbackResetReceipt, sharing: _sharing, ...visibleClub } = club;
   const view = currentTerminology({ club: visibleClub, me, isAdmin: !!isAdmin, setup: !me,
     identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, currentMonthScores,
-    personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin, feedback });
+    personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin, feedback, sharing, sharingReport });
   delete view.club.bulletinPosts;
   delete view.club.bulletinUploads;
   for (const row of view.club.activityRegistrations ?? []) {

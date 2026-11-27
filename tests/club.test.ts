@@ -9,6 +9,7 @@ import "./activities.test";
 import "./duty-evidence-and-links.test";
 import "./duty-week-and-member-deletion.test";
 import "./feedback.test";
+import "./sharing.test";
 import assert from "node:assert/strict";
 import {
   addDays,

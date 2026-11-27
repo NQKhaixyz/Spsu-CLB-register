@@ -6,6 +6,7 @@ import {
   Check,
   ChevronRight,
   Clover,
+  Feather,
   LoaderCircle,
   X,
   type LucideIcon,
@@ -68,6 +69,7 @@ export function Avatar({
   if (!memberId || !identity?.members.has(memberId)) return face;
 
   const tier = monthlyScoreTier(identity.monthlyRanks.get(memberId) ?? 0);
+  const cupid = identity.sharingGroups?.get(memberId);
   const frameClass = `avatar-frame ${size}`;
   const framedPortrait = <>
     {face}
@@ -75,11 +77,14 @@ export function Avatar({
       <span className="avatar-frame-sheen" aria-hidden="true" />
       <span className="avatar-frame-gem" aria-hidden="true" />
     </>}
+    {cupid?.kind === "cupid" && <span className="cupid-avatar-wing" data-side={cupid.memberIds[0] === memberId ? "left" : "right"} aria-hidden="true">
+      <Feather />
+    </span>}
   </>;
   if (!profileLink) return <span className={frameClass} data-tier={tier?.id} aria-hidden="true">{framedPortrait}</span>;
   const label = `Xem hồ sơ ${name}`;
   return <button type="button" className={`${frameClass} avatar-profile-trigger`} data-tier={tier?.id} aria-label={label}
-    title={tier ? `${label} · ${tier.label}` : label} aria-haspopup="dialog"
+    title={[label, tier?.label, cupid?.kind === "cupid" ? "Cupid" : cupid?.code && `#${cupid.code}`].filter(Boolean).join(" · ")} aria-haspopup="dialog"
     onClick={event => { event.stopPropagation(); identity.openProfile(memberId); }}>
     {framedPortrait}
   </button>;
@@ -242,6 +247,7 @@ export function Dialog({
   onClose,
   wide = false,
   busy = false,
+  focusDialog = false,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -249,6 +255,7 @@ export function Dialog({
   onClose: () => void;
   wide?: boolean;
   busy?: boolean;
+  focusDialog?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -258,13 +265,14 @@ export function Dialog({
     const dialog = ref.current;
     if (!dialog?.contains(previous)) {
       const list = dialogControls(dialog);
-      (list.find(element => element.matches("input,textarea,select")) ?? list[0] ?? dialog)?.focus();
+      if (focusDialog) dialog?.focus({ preventScroll: true });
+      else (list.find(element => element.matches("input,textarea,select")) ?? list[0] ?? dialog)?.focus();
     }
     return () => {
       document.body.style.overflow = bodyOverflow;
       previous?.focus();
     };
-  }, []);
+  }, [focusDialog]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.key === "Escape" || e.key === "Tab") && document.querySelector("dialog[open]")) return;

@@ -2,19 +2,22 @@
 
 import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { monthLabel, type Club } from "../lib/club";
+import { monthLabel, today, type Club } from "../lib/club";
 import { semesterMonthLimit, semesterScores, validSemesterScoreRange, type publishedSemesterScores, type SemesterScoreRange } from "../lib/semester-scores";
-import { formatScore, RankNumber } from "./scoreboard";
+import { formatScore, RankNumber, SharingScoreMetrics } from "./scoreboard";
+import type { SharingScoreIndex } from "../lib/sharing-scores";
+import { sharingKinds, sharingScoreLabels } from "../lib/sharing-types";
 import { Button, Empty, Field } from "./ui";
 import { MemberName } from "./member-identity";
 
 const monthChoiceLabel = (month: string) => `${month.slice(5)}/${month.slice(0, 4)}`;
 const rangeLabel = (range: SemesterScoreRange) => `${monthChoiceLabel(range.from)} – ${monthChoiceLabel(range.through)}`;
 
-export default function SemesterScoreboard({ club, monthChoices, initialMonth, busy, onSave, onUnpublish }: {
+export default function SemesterScoreboard({ club, monthChoices, initialMonth, busy, onSave, onUnpublish, sharingIndex }: {
   club: Club; monthChoices: string[]; initialMonth: string; busy: boolean;
   onSave: (range: SemesterScoreRange) => Promise<boolean>;
   onUnpublish: (range: SemesterScoreRange) => Promise<boolean>;
+  sharingIndex: SharingScoreIndex;
 }) {
   const [draft, setDraft] = useState<SemesterScoreRange>();
   const published = club.semesterScoreRange;
@@ -25,7 +28,7 @@ export default function SemesterScoreboard({ club, monthChoices, initialMonth, b
   const publicationStatus = published ? `Đang công bố ${rangeLabel(published)}`
     : club.semesterScoreDraft ? `Đã hủy công bố ${rangeLabel(club.semesterScoreDraft)}`
     : "Thành viên xem được khoảng tháng sau khi BĐH công bố";
-  const result = useMemo(() => semesterScores(club, from, through), [club, from, through]);
+  const result = useMemo(() => semesterScores(club, from, through, today(), sharingIndex), [club, from, through, sharingIndex]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (valid && await onSave({ from, through })) setDraft(undefined);
@@ -106,6 +109,7 @@ export function MemberSemesterScoreboard() {
 }
 
 function SemesterResults({ months, rows }: ReturnType<typeof semesterScores>) {
+  const sharingColumns = sharingKinds.filter(kind => rows.some(row => row.sharingAdjustment?.[kind]));
   const accordion = useId();
   const teamTotal = Number(rows.reduce((sum, row) => sum + row.points, 0).toFixed(10));
   return rows.length > 0 ? <>
@@ -129,6 +133,7 @@ function SemesterResults({ months, rows }: ReturnType<typeof semesterScores>) {
                   <dt>{monthLabel(month)}</dt>
                   <dd>{row.byMonth[month] === undefined ? "—" : `${formatScore(row.byMonth[month])} điểm`}</dd>
                 </div>)}
+                <SharingScoreMetrics amounts={row.sharingAdjustment} />
               </dl>
             </details>
           </li>)}
@@ -140,6 +145,7 @@ function SemesterResults({ months, rows }: ReturnType<typeof semesterScores>) {
               <th scope="col">Thành viên</th>
               <th scope="col" className="score-numeric" aria-sort="descending">Tổng điểm học kỳ</th>
               {months.map(month => <th key={month} scope="col" className="score-numeric">{monthLabel(month)}</th>)}
+              {sharingColumns.map(kind => <th key={kind} scope="col" className="score-numeric">{sharingScoreLabels[kind]}</th>)}
             </tr></thead>
             <tbody>{rows.map(row => <tr key={row.memberId}>
               <td className="score-rank-column"><RankNumber rank={row.rank} /></td>
@@ -148,6 +154,7 @@ function SemesterResults({ months, rows }: ReturnType<typeof semesterScores>) {
               {months.map(month => <td key={month} className="score-numeric">
                 {row.byMonth[month] === undefined ? "—" : formatScore(row.byMonth[month])}
               </td>)}
+              {sharingColumns.map(kind => <td key={kind} className="score-numeric">{formatScore(row.sharingAdjustment?.[kind] ?? 0)}</td>)}
             </tr>)}</tbody>
           </table>
         </div>

@@ -10,6 +10,7 @@ import { monthlyScoreTier } from "../lib/score-ranks";
 import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button } from "./ui";
 import { ProfileFeedback, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
+import { SharingProfileCard } from "./sharing-panel";
 import { formatScore } from "./scoreboard";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
@@ -140,6 +141,7 @@ export function MemberProfileDialog({ member, details, scheduleOnly, feedback, b
         </div>
       </>}
       {(scheduleOnly || section === "info") && <ProfileDetails member={member} details={details} scheduleOnly={scheduleOnly} />}
+      {!scheduleOnly && section === "info" && <SharingProfileCard memberId={member.id} />}
       {!scheduleOnly && <div hidden={section !== "feedback"}>
         <ProfileFeedback recipientId={member.id} entries={feedback} busy={busy}
           onSubmit={onSubmitFeedback} onEdit={onEditFeedback} onRecall={onRecallFeedback} conversationActions={conversationActions} />
