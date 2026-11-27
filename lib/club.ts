@@ -1,9 +1,10 @@
 import { activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
 import type { SharedLink } from "./shared-links";
-import type { BulletinPost } from "./bulletin";
+import type { BulletinPost, BulletinPostView } from "./bulletin";
 import type { CommitteeMembership } from "./committees";
 import type { FontId } from "./interface-fonts";
 import type { SidebarTab } from "./workspace-navigation";
+import type { MemberPosition } from "./member-positions";
 import {
   academicWeekFor,
   activeAvailabilityDatasetFor,
@@ -23,8 +24,9 @@ export type Member = CommitteeMembership & {
   userId?: string;
   email?: string;
   role: "admin" | "member";
+  position?: MemberPosition;
   fontPreference?: FontId;
-  sidebarOrder?: SidebarTab[];
+  sidebarOrder?: (SidebarTab | "overview")[];
   active: boolean;
   joined: string;
   left?: string;
@@ -174,6 +176,7 @@ export type View = {
   personalMonthlyScores?: Record<string, ReturnType<typeof scoreFor>>;
   directoryAvailability?: Record<string, Pick<AvailabilityDetail, "day" | "period" | "weeks" | "note">[]>;
   currentAcademicWeek?: number;
+  bulletin?: { posts: BulletinPostView[]; nextChangeAt?: number };
 };
 export const statusNames: Record<Registration, string> = {
   unregistered: "Chưa đăng ký",
@@ -347,7 +350,7 @@ export function monthlyReportRoster(club: Club, month: string, asOf = today()) {
   const end = monthDays(month).at(-1)!;
   const through = asOf.slice(0, 7) === month ? asOf : end;
   const monday = weekId(through);
-  const hidden = new Set(club.members.filter(m => pausedForScoreWeek(m, monday, through)).map(m => m.id));
+  const hidden = new Set(club.members.filter(m => m.role === "admin" || pausedForScoreWeek(m, monday, through)).map(m => m.id));
   const assigned = new Set(club.schedules.filter(s => s.month === month).flatMap(s =>
     s.shifts.filter(shift => isDutyReportShift(s, shift) && !shift.cancelled)
       .flatMap(shift => shift.assignments.map(a => a.memberId)),
@@ -442,7 +445,7 @@ export const dutyPointsFor = (a: Assignment, rule: Rule) =>
 export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?: string) {
   const rule = rulesFor(club, month);
   const member = club.members.find((m) => m.id === memberId);
-  const duties = club.schedules
+  const duties = member?.role === "admin" ? [] : club.schedules
     .filter((s) => s.month === month)
     .flatMap((s) =>
       s.shifts
@@ -455,6 +458,7 @@ export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?:
       w.meetingDate.slice(0, 7) === month &&
       (!onlyWeek || weekId(w.meetingDate) === onlyWeek) &&
       !!member &&
+      member.role !== "admin" &&
       isMemberOnDate(member, w.meetingDate),
   );
   const entries = weeks

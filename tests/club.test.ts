@@ -230,7 +230,8 @@ test("Cancelled weeks do not deduct meeting points", () => {
 });
 test("Cross-month meetings are counted by meeting date", () => {
   const c = fixture();
-  c.members[0].joined = "2026-10-01";
+  const member = c.members[1];
+  member.joined = "2026-10-01";
   c.weeks = [
     {
       id: "2026-10-26",
@@ -239,13 +240,13 @@ test("Cross-month meetings are counted by meeting date", () => {
       location: "C1",
       closed: false,
       cancelled: false,
-      entries: [newEntry(c.members[0].id)],
+      entries: [newEntry(member.id)],
     },
   ];
   closeWeek(c.weeks[0]);
   c.rules = [{ month: "2000-01", A: 10, B: 15, C: 5, D: 0 }];
-  assert.equal(scoreFor(c, c.members[0].id, "2026-10").points, 0);
-  assert.equal(scoreFor(c, c.members[0].id, "2026-11").points, -5);
+  assert.equal(scoreFor(c, member.id, "2026-10").points, 0);
+  assert.equal(scoreFor(c, member.id, "2026-11").points, -5);
 });
 test("Passed regulations never deduct points, including unchecked", () => {
   const c = fixture();

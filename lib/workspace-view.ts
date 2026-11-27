@@ -1,5 +1,6 @@
 import { addDays, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, pausedForScoreWeek, reportMembers, scoreFor, type Club, type ScoreboardRow, type View } from "./club";
 import { committeeLabels, memberCommitteeNames } from "./committees";
+import { bulletinView } from "./bulletin";
 import { academicWeekFor, activeAvailabilityDatasetFor, profileAvailability, profileAvailabilityRows } from "./availability";
 
 // Show current organization and role wording in the interface and reports,
@@ -59,10 +60,11 @@ export function workspaceView(
     }
   }
   const weeklyScores = club.weeks.flatMap(w => club.members
-    .filter(m => !pausedForScoreWeek(m, w.id) &&
+    .filter(m => m.role !== "admin" && !pausedForScoreWeek(m, w.id) &&
       (assignedByWeek.get(w.id)?.has(m.id) || m.joined <= addDays(w.id, 6)))
     .map(m => weeklyScoreFor(club, m.id, w.id)));
   const me = club.members.find((m) => m.userId === user.userId) ?? null;
+  const bulletin = me?.active ? bulletinView(club, me) : undefined;
   const isAdmin = me?.role === "admin" && me.active;
   const personalMonthlyScores = !isAdmin && me
     ? Object.fromEntries([...new Set([today().slice(0, 7), ...club.schedules.map(schedule => schedule.month)])]
@@ -78,8 +80,8 @@ export function workspaceView(
       if (rows.length) directoryAvailability[m.id] = rows.map(({ day, period, weeks, note }) => ({ day, period, weeks, note }));
       const availability = profileAvailability(club, m, rows);
       if (m.id === me?.id) return { ...m, availability };
-      const { id, name, studentId, email, role, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId } = m;
-      return { id, name, studentId, email, role, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId, availability };
+      const { id, name, studentId, email, role, position, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId } = m;
+      return { id, name, studentId, email, role, position, active, joined, left, extraDuties, committee, committees, loginName, needsStudentId, availability };
     });
     club.weeks = club.weeks.map(({ closingSnapshot, ...w }) => ({ ...w, entries: w.entries.filter((e) => e.memberId === me?.id) }));
     club.schedules = club.schedules.filter((s) => s.shifts.some(shift => isShiftPublished(s, shift))).map(({ pendingDutyWeek, ...s }) => ({
@@ -99,12 +101,14 @@ export function workspaceView(
     delete club.demoArchive;
     delete club.dutyWithdrawal;
   }
-  const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, directoryAvailability, currentAcademicWeek });
+  const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin });
+  delete view.club.bulletinPosts;
   // Return personal settings on the signed-in account only.
   for (const member of [...view.club.members, ...(view.club.demoArchive?.members ?? [])]) {
     delete member.fontPreference;
     delete member.sidebarOrder;
   }
+  if (view.me) delete view.me.sidebarOrder;
   for (const log of view.club.logs) {
     log.text = log.text
       .replace(/^(Nhập Điểm theo ban: .*), Ban (?:HC|hậu cần) · /i, "$1, ")

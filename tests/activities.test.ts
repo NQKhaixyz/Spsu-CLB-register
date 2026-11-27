@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyAction } from "../lib/actions";
 import { createClub, syncWeeks, today, weekId, addDays, scoreFor, weeklyScoreFor, type Member } from "../lib/club";
-import { activityName, activityScoreFor, ratedActivityKinds, visibleActivityKinds, activityUnitPoints, eventEvidenceExpiry, isEventOpen, reviewEventRegistration } from "../lib/activity";
+import { activityName, activityScoreFor, ratedActivityKinds, visibleActivityKinds, activityUnitPoints, activityPointsFor, eventEvidenceExpiry, isEventOpen, reviewEventRegistration } from "../lib/activity";
 import { committeeKinds } from "../lib/committees";
 import { detachExpiredEventPhotos, eventEvidenceTarget, eventEvidenceView } from "../lib/event-evidence";
 import { eventPhotoKey, purgeExpiredEventPhotos } from "../lib/event-photo-storage";
@@ -19,6 +19,76 @@ function fixture(){
 }
 
 const eventData=(id="event-test-1",points=6,startDate=today(),endDate=today())=>({id,name:"Ngày hội C2",points,startDate,endDate});
+
+test("Multi-round events use the per-event multiplier for each approved round and keep reviews, photos and Excel aligned", async () => {
+  const c = fixture();
+  const data = { ...eventData("event-multiple", 1.75), participationMultiplier: 1.5, requiresEvidence: true };
+  applyAction(c, admin, "createEvent", data);
+  const event = c.events![0];
+  for (const registrationId of ["first-round", "second-round", "second-round"]) {
+    applyAction(c, user, "registerEvent", { eventId: event.id, registrationId });
+  }
+  const [first, second] = c.activityRegistrations!;
+  assert.equal(c.activityRegistrations!.length, 2);
+  const viewer = { ...user, userId: "other-activity" };
+  assert.throws(() => applyAction(c, viewer, "registerEvent", { eventId: event.id, registrationId: first.id }), /đã được sử dụng/);
+  first.evidence = { id: crypto.randomUUID(), submittedAt: Date.now() };
+  second.evidence = { id: crypto.randomUUID(), submittedAt: Date.now() };
+  const confirm = (id: string, photoId?: string) =>
+    reviewEventRegistration(c, c.members[0], { id, confirmed: true }, () => {}, photoId);
+  assert.throws(() => confirm(first.id, second.evidence!.id), /minh chứng/);
+  confirm(second.id, second.evidence.id);
+  assert.equal(activityPointsFor(c, second), 1.75);
+  confirm(first.id, first.evidence.id);
+  const direct = { eventId: event.id, registrationId: "third-round", memberId: first.memberId };
+  applyAction(c, admin, "addEventParticipant", direct);
+  applyAction(c, admin, "addEventParticipant", direct);
+  const rounds = c.activityRegistrations!;
+  assert.equal(rounds.length, 3);
+  assert.equal(rounds[2].confirmedDirectly, true);
+  assert.equal(rounds[2].evidence, undefined);
+  assert.deepEqual(rounds.map(round => activityPointsFor(c, round)), [1.75, 2.63, 3.94]);
+  const month = today().slice(0, 7);
+  assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 8.32);
+  assert.equal(monthlyScoreboard(c, month).find(row => row.memberId === first.memberId)?.points, 8.32);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load((await makeReport(c, month)).buffer);
+  assert.deepEqual([4, 5, 6].map(row => book.getWorksheet("Chi tiết hoạt động")!.getCell(row, 8).value), [1.75, 2.63, 3.94]);
+  assert.equal(book.getWorksheet("Tổng hợp tháng")!.getCell("I4").value, 8.32);
+  assert.throws(() => applyAction(c, admin, "editEvent", { ...data, participationMultiplier: null }), /nhiều lượt/);
+  assert.throws(() => applyAction(c, admin, "editEvent", { ...data, points: 100000, participationMultiplier: 100000 }), /giới hạn/);
+  applyAction(c, admin, "editEvent", { ...data, participationMultiplier: 2 });
+  assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 12.25);
+  applyAction(c, admin, "reviewActivity", { id: rounds[2].id, confirmed: false, reason: "Ghi dư một lượt" });
+  assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 5.25);
+  applyAction(c, admin, "cancelEvent", { id: event.id });
+  assert.equal(weeklyScoreFor(c, first.memberId, weekId()).points, 0);
+});
+
+test("BĐH accounts can manage the workspace and are excluded from both scoreboards and all Excel sheets", async () => {
+  const c = fixture();
+  const event = createEvent(c);
+  applyAction(c, admin, "registerEvent", { eventId: event.id });
+  const row = c.activityRegistrations![0];
+  applyAction(c, admin, "reviewActivity", { id: row.id, confirmed: true });
+  const month = today().slice(0, 7), week = weekId();
+  const owner = c.members[0];
+  c.schedules = [{ month, published: true, shifts: [{ id: "shift-admin", date: today(), period: "pm",
+    assignments: [{ memberId: owner.id, result: "completed" }] }] }];
+  const args = { memberId: owner.id, week, date: today(), kind: "special", points: 2 };
+  assert.throws(() => applyAction(c, admin, "saveManualActivity", args), /tài khoản thành viên/);
+  assert.throws(() => applyAction(c, admin, "deductPoints", { ...args, id: "exclude-admin", reason: "Điểm trừ" }), /tài khoản thành viên/);
+  assert.equal(scoreFor(c, owner.id, month).points, 0);
+  assert.ok(monthlyScoreboard(c, month).every(item => item.memberId !== owner.id));
+  assert.ok(workspaceView(c, admin, 1).weeklyScores.every(item => item.memberId !== owner.id));
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load((await makeReport(c, month)).buffer);
+  for (const sheet of book.worksheets) {
+    assert.ok(!JSON.stringify(sheet.getSheetValues()).includes(owner.name));
+    assert.ok(!JSON.stringify(sheet.getSheetValues()).includes(owner.studentId));
+  }
+  assert.equal(workspaceView(c, admin, 1).isAdmin, true);
+});
 
 test("Members see the same monthly totals as the admin report across a split week without receiving private records", () => {
   const club = fixture();
@@ -41,7 +111,7 @@ test("Members see the same monthly totals as the admin report across a split wee
   assert.deepEqual(august.map(r => [r.memberId, r.points, r.committeeNames]), [
     ["a1", 0, "Chưa phân ban"], ["a2", 5.25, "Điều hành"],
   ]);
-  assert.deepEqual(september.map(r => [r.memberId, r.points]), [["a0", 0], ["a1", 3.5], ["a2", 6.75]]);
+  assert.deepEqual(september.map(r => [r.memberId, r.points]), [["a1", 3.5], ["a2", 6.75]]);
   assert.equal(weeklyScoreFor(club, "a2", week).points, 12);
   for (const row of september) {
     const report = scoreFor(club, row.memberId, "2026-09");
@@ -126,7 +196,7 @@ test("BĐH can directly credit a roster member without an account, registration 
   const detail = workbook.getWorksheet("Chi tiết hoạt động")!.getRow(4);
   assert.equal(detail.getCell(8).value, 2.75);
   assert.equal(detail.getCell(9).value, "BĐH xác nhận trực tiếp");
-  assert.equal(detail.getCell(11).value, c.members[0].name);
+  assert.equal(detail.getCell(11).text, "");
   applyAction(c, admin, "cancelEvent", { id: event.id });
   assert.equal(weeklyScoreFor(c, member.id, row.week).activityTotal, 0);
   applyAction(c, admin, "restoreEvent", { id: event.id, cancelledAt: event.cancelledAt });
@@ -479,8 +549,8 @@ test("Excel and weekly scores agree across all active point kinds and keep priva
  const summary=book.getWorksheet("Tổng hợp tháng")!;
  const headers=summary.getRow(3).values as string[];
  assert.deepEqual(headers.slice(-6),["Sáng kiến (lượt)","Đồng đẳng viên (lượt)","Sự kiện (lượt)","Điểm theo ban","Điểm riêng","Điểm trừ"]);
- assert.equal(summary.getCell("H5").value,1);
- assert.equal(summary.getCell("I5").value,44);
+ assert.equal(summary.getCell("H4").value,1);
+ assert.equal(summary.getCell("I4").value,44);
  assert.equal(weeklyScoreFor(c,"a1",weekId()).points,44);
  assert.equal(scoreFor(c,"a1",today().slice(0,7)).points,44);
 });
@@ -525,7 +595,7 @@ test("Monthly Excel exports negative deductions with reasons, cancelled zero, an
  const c=fixture();const data={id:'deduction-excel-1',memberId:'a1',week:weekId(),date:today(),points:4,reason:'Lý do xuất Excel'};
  applyAction(c,admin,'deductPoints',data);applyAction(c,admin,'deductPoints',{...data,id:'deduction-excel-2',points:2});applyAction(c,admin,'cancelPointDeduction',{id:'deduction-excel-2',reason:'Điều chỉnh nhập nhầm'});
  const {buffer}=await makeReport(c,today().slice(0,7));const book=new ExcelJS.Workbook();await book.xlsx.load(buffer as any);const detail=book.getWorksheet('Chi tiết hoạt động')!;
- assert.equal(detail.getCell('H4').value,-4);assert.equal(detail.getCell('J4').value,data.reason);assert.equal(detail.getCell('H5').value,0);assert.equal(detail.getCell('L5').value,'Điều chỉnh nhập nhầm');assert.equal(book.getWorksheet('Tổng hợp tháng')!.getCell('I5').value,-4);
+ assert.equal(detail.getCell('H4').value,-4);assert.equal(detail.getCell('J4').value,data.reason);assert.equal(detail.getCell('H5').value,0);assert.equal(detail.getCell('L5').value,'Điều chỉnh nhập nhầm');assert.equal(book.getWorksheet('Tổng hợp tháng')!.getCell('I4').value,-4);
 });
 
 test("Direct special points ignore quantities and historical rate, replace on retry, clear at zero, and reject invalid inputs",()=>{
@@ -623,7 +693,7 @@ test("Excel reports direct special and committee points, with the selected ban a
  const {buffer}=await makeReport(c,today().slice(0,7)),book=new ExcelJS.Workbook();await book.xlsx.load(buffer as any);
  const summary=book.getWorksheet("Tổng hợp tháng")!,detail=book.getWorksheet("Chi tiết hoạt động")!,rules=book.getWorksheet("Quy tắc điểm")!;
  const headers=summary.getRow(3).values as string[];
- assert.equal(summary.getCell(5,headers.indexOf("Điểm riêng")).value,7.5);assert.equal(summary.getCell(5,headers.indexOf("Điểm theo ban")).value,13.25);assert.equal(summary.getCell("I5").value,20.75);
+ assert.equal(summary.getCell(4,headers.indexOf("Điểm riêng")).value,7.5);assert.equal(summary.getCell(4,headers.indexOf("Điểm theo ban")).value,13.25);assert.equal(summary.getCell("I4").value,20.75);
  assert.ok(!headers.some(h=>h?.includes("Hoạt động C2")||h?.includes("Hoạt động dự án")));
  const rows:number[]=[];detail.eachRow((r,i)=>{if(i>3)rows.push(Number(r.getCell(8).value));});assert.deepEqual(rows,[7.5,13.25]);assert.equal(detail.getCell("E5").value,"Chuyên môn");
  assert.equal(detail.getCell("F5").text,"");assert.equal(detail.getCell("G5").text,"");

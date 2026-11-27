@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
 import { activityLabels, activityName, activityPointsFor, canAttendEvent, registrationStatusLabel, eventDescriptionLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
@@ -18,6 +18,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const [eventFilter, setEventFilter] = useState("");
   const [review, setReview] = useState<{row:ActivityRegistration; confirmed:boolean} | null>(null);
   const [proof, setProof] = useState<{ row: ActivityRegistration; event: ClubEvent } | null>(null);
+  const requestsByEvent = useRef(new Map<string, string>());
   const close = useCallback(() => { setReview(null); setEventDialog(null); setProof(null); }, []);
   const currentDay = today();
   const events = [...(club.events ?? [])].sort((a,b) => a.startDate.localeCompare(b.startDate) || a.name.localeCompare(b.name));
@@ -38,8 +39,20 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
   const editingEvent = eventDialog?.mode === "edit" ? eventDialog.event : undefined;
   const participantEvent = eventDialog?.mode === "participant" ? events.find(event => event.id === eventDialog.eventId && !event.cancelledAt) : undefined;
   const eventChange = eventDialog && (eventDialog.mode === "cancel" || eventDialog.mode === "restore" || eventDialog.mode === "delete") ? eventDialog : null;
+  const roundNumber = (row: ActivityRegistration) => registrations
+    .filter(item => item.eventId === row.eventId && item.memberId === row.memberId)
+    .findIndex(item => item.id === row.id) + 1;
+
+  async function register(event: ClubEvent) {
+    const requests = requestsByEvent.current;
+    const registrationId = event.participationMultiplier !== undefined ? requests.get(event.id) ?? uid() : undefined;
+    if (registrationId) requests.set(event.id, registrationId);
+    const message = event.requiresEvidence ? "Đã đăng ký, gửi ảnh minh chứng để BĐH duyệt" : "Đã đăng ký sự kiện, chờ BĐH duyệt";
+    if (await onAction("registerEvent", { eventId: event.id, registrationId }, message, false)) requests.delete(event.id);
+  }
+
   return <div className="activity-sections">
-    <div className="notice green">Điểm tham gia được ghi một lần vào tuần kết thúc sự kiện, nếu tự đăng ký sự kiện yêu cầu ảnh, hãy gửi minh chứng để BĐH duyệt, BĐH cũng có thể xác nhận trực tiếp người đã tham gia</div>
+    <div className="notice green">Điểm các lượt đã duyệt được ghi vào tuần kết thúc sự kiện · Với sự kiện yêu cầu ảnh, gửi minh chứng cho từng lượt đăng ký</div>
     <section className="panel">
       <PanelHead title="Sự kiện của Đội" description="Đăng ký được mở từ khi tạo đến hết ngày kết thúc, theo giờ Việt Nam" />
       <div className="event-toolbar">
@@ -50,7 +63,8 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         {isAdmin ? <Button disabled={busy} onClick={() => setEventDialog({ mode: "create" })}>Tạo sự kiện</Button> : null}
       </div>
       {visibleEvents.length ? <div className="activity-list">{visibleEvents.map(event => {
-        const own = registrations.find(r=>r.eventId===event.id && r.memberId===me.id);
+        const own = registrations.find(r => r.eventId === event.id && r.memberId === me.id && r.status !== "withdrawn");
+        const multiple = event.participationMultiplier !== undefined;
         const ended = event.endDate < currentDay;
         const cancelled = !!event.cancelledAt;
         const eventRows = registrations.filter(r=>r.eventId===event.id);
@@ -60,16 +74,21 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         return <article className="activity-item event-card" key={event.id}>
           <div><h3>{event.name}</h3><p>{dateLabel(event.startDate,true)} – {dateLabel(event.endDate,true)}</p>
             {event.description ? <p className="event-description">{event.description}</p> : null}
-            {!cancelled ? <p className="event-points">{event.points} điểm / thành viên được duyệt</p> : null}
-            {event.requiresEvidence && !cancelled && (isAdmin || !own?.confirmedDirectly) ? <p className="hint">Đăng ký cá nhân cần ảnh minh chứng · Ảnh được xóa sau 2 ngày kể từ khi kết thúc</p> : null}
+            {!cancelled && <p className="event-points">{multiple
+              ? `${event.points} điểm lượt đầu · Hệ số ×${event.participationMultiplier}`
+              : `${event.points} điểm / thành viên được duyệt`}</p>}
+            {event.requiresEvidence && !cancelled && (multiple || isAdmin || !own?.confirmedDirectly) ? <p className="hint">Đăng ký cá nhân cần ảnh minh chứng · Ảnh được xóa sau 2 ngày kể từ khi kết thúc</p> : null}
             <Badge status={cancelled ? "absent" : "neutral"}>{cancelled ? "Đã hủy" : ended ? "Đã kết thúc" : event.startDate > currentDay ? "Sắp diễn ra" : "Đang diễn ra"}</Badge>
-            {own && !cancelled ? <span className="event-own-status"><Badge status={own.status==="confirmed"?"attending":own.status==="pending"?"pending":"neutral"}>{eventRegistrationLabel(own, evidence)}</Badge></span> : null}
+            {own && !multiple && !cancelled ? <span className="event-own-status"><Badge status={own.status==="confirmed"?"attending":own.status==="pending"?"pending":"neutral"}>{eventRegistrationLabel(own, evidence)}</Badge></span> : null}
+            {multiple && own && !cancelled && <p className="hint">{eventRows.filter(row => row.memberId === me.id && row.status !== "withdrawn").length} lượt của bạn · Xem từng lượt bên dưới</p>}
             {isAdmin && !cancelled ? <p className="hint">{waitingReview} chờ duyệt · {eventRows.filter(r=>r.status==="confirmed").length} đã duyệt</p> : null}
           </div>
           <div className="activity-actions">
-            {!cancelled && !ended && (!own || own.status==="withdrawn") ? <Button disabled={busy} onClick={()=>onAction("registerEvent",{eventId:event.id},event.requiresEvidence?"Đã đăng ký, gửi ảnh minh chứng để BĐH duyệt":"Đã đăng ký sự kiện, chờ BĐH duyệt",false)}>Đăng ký tham gia</Button> : null}
-            {!cancelled && own && (evidence?.canUpload || evidence?.evidence) ? <Button variant="secondary" disabled={busy} onClick={() => setProof({ row: own, event })}>{eventEvidenceButton(own, evidence)}</Button> : null}
-            {!cancelled && own?.status==="pending" ? <Button variant="secondary" disabled={busy} onClick={()=>onAction("withdrawActivity",{id:own.id},"Đã rút đăng ký",false)}>Rút đăng ký</Button> : null}
+            {!cancelled && !ended && (!own || multiple) && <Button disabled={busy} onClick={() => void register(event)}>
+              {own && multiple ? "Đăng ký thêm lượt" : "Đăng ký tham gia"}
+            </Button>}
+            {!multiple && !cancelled && own && (evidence?.canUpload || evidence?.evidence) ? <Button variant="secondary" disabled={busy} onClick={() => setProof({ row: own, event })}>{eventEvidenceButton(own, evidence)}</Button> : null}
+            {!multiple && !cancelled && own?.status==="pending" ? <Button variant="secondary" disabled={busy} onClick={()=>onAction("withdrawActivity",{id:own.id},"Đã rút đăng ký",false)}>Rút đăng ký</Button> : null}
             {isAdmin ? <Button variant="secondary" onClick={()=>setEventFilter(event.id)}>Xem đăng ký</Button> : null}
             {isAdmin && (cancelled ? (
               <Button variant="secondary" disabled={busy} onClick={() => setEventDialog({ mode: "restore", event })}>Khôi phục sự kiện</Button>
@@ -89,10 +108,11 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
       <div className="activity-search"><Field label="Lọc theo sự kiện"><select value={selectedEvent} onChange={e=>setEventFilter(e.target.value)}><option value="">Tất cả sự kiện</option>{visibleEvents.map(event=><option key={event.id} value={event.id}>{event.name}{event.cancelledAt ? " (đã hủy)" : ""}</option>)}</select></Field></div>
       {rows.length ? <div className="activity-list">{rows.map(({ row: r, event, evidence }) => {
         const cancelled = !!event?.cancelledAt;
+        const participant = club.members.find(m => m.id === r.memberId);
         return <article className="activity-item" key={r.id}>
-        <div><strong>{activityName(club,r)}</strong><p>{club.members.find(m=>m.id===r.memberId)?.name} · {cancelled ? "Ngày kết thúc dự kiến" : "Ngày tính điểm"}: {dateLabel(r.date,true)}</p>{r.note?<p>{r.note}</p>:null}
+        <div><strong>{activityName(club,r)}{event?.participationMultiplier !== undefined && ` · Lượt ${roundNumber(r)}`}</strong><p>{participant?.name} · {cancelled ? "Ngày kết thúc dự kiến" : "Ngày tính điểm"}: {dateLabel(r.date,true)}</p>{r.note?<p>{r.note}</p>:null}
         <Badge status={cancelled ? "absent" : r.status==="confirmed"?"attending":r.status==="pending"?"pending":"neutral"}>{cancelled ? "Sự kiện đã hủy" : eventRegistrationLabel(r, evidence)}</Badge>
-        <p className="hint">{!cancelled && r.status==="confirmed" ? activityPointsFor(club,r) : 0} điểm đã ghi nhận{r.decision?` · ${r.decision}`:""}</p></div>
+        {participant?.role !== "admin" && <p className="hint">{!cancelled && r.status==="confirmed" ? activityPointsFor(club,r) : 0} điểm đã ghi nhận{r.decision?` · ${r.decision}`:""}</p>}</div>
         <div className="activity-actions">
         {event && !cancelled && r.status !== "withdrawn" && (evidence?.canUpload || evidence?.evidence) ? <Button variant="secondary" disabled={busy} onClick={() => setProof({ row: r, event })}>{eventEvidenceButton(r, evidence)}</Button> : null}
         {isAdmin && !cancelled && r.status!=="withdrawn" ? <>
@@ -115,12 +135,14 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     )}
     {review?<Dialog title={review.confirmed?"Duyệt tham gia sự kiện":"Không duyệt tham gia"} description={`${activityName(club,review.row)} · ${club.members.find(m=>m.id===review.row.memberId)?.name}`} onClose={close} busy={busy}>
       <form onSubmit={async e=>{const f=formData(e);if(await onAction("reviewActivity",{id:review.row.id,confirmed:review.confirmed,reason:f.reason},"Đã cập nhật kết quả duyệt",false))close();}}>
-        <p className="dialog-copy">{review.confirmed?`Cộng ${activityPointsFor(club,review.row)} điểm vào tuần ${dateLabel(review.row.week)} – ${dateLabel(addDays(review.row.week,6))}, ngày ghi nhận ${dateLabel(review.row.date,true)}`:"Đăng ký này không được cộng điểm và không bị trừ điểm"}</p>
+        <p className="dialog-copy">{review.confirmed
+          ? `${eventForActivity(club, review.row)?.participationMultiplier !== undefined ? "Cộng điểm theo thứ tự lượt đã duyệt" : `Cộng ${activityPointsFor(club, review.row)} điểm`} vào tuần ${dateLabel(review.row.week)} – ${dateLabel(addDays(review.row.week, 6))}`
+          : "Đăng ký này không được cộng điểm và không bị trừ điểm"}</p>
         <Field label={review.row.status==="pending"?"Ghi chú (không bắt buộc)":"Lý do điều chỉnh"}><textarea name="reason" required={review.row.status!=="pending"} minLength={review.row.status!=="pending"?3:undefined} maxLength={500}/></Field>
         <FormFooter label={review.confirmed?"Duyệt và tính điểm":"Lưu kết quả"} onCancel={close} busy={busy}/>
       </form>
     </Dialog>:null}
-    {proof ? <Dialog title="Minh chứng sự kiện" description={`${proof.event.name} · ${club.members.find(member => member.id === proof.row.memberId)?.name ?? "Thành viên"}`} onClose={close}>
+    {proof ? <Dialog title="Minh chứng sự kiện" description={`${proof.event.name} · ${club.members.find(member => member.id === proof.row.memberId)?.name ?? "Thành viên"}${proof.event.participationMultiplier !== undefined ? ` · Lượt ${roundNumber(proof.row)}` : ""}`} onClose={close}>
       <EvidencePanel key={proof.row.id} endpoint={"/api/event-evidence?" + new URLSearchParams({ registrationId: proof.row.id })} event onSaved={onEvidenceSaved} />
     </Dialog> : null}
   </div>;
@@ -132,37 +154,53 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
 }) {
   const [query, setQuery] = useState("");
   const [memberId, setMemberId] = useState("");
-  const byMember = new Map(registrations.filter(row => row.eventId === event.id).map(row => [row.memberId, row]));
-  const candidates = members.filter(member => canAttendEvent(member, event) && byMember.get(member.id)?.status !== "confirmed");
+  const [roundId, setRoundId] = useState<string>();
+  const [requestId] = useState(uid);
+  const multiple = event.participationMultiplier !== undefined;
+  const eventRows = registrations.filter(row => row.eventId === event.id);
+  const singleRound = (id: string) => eventRows.find(row => row.memberId === id && row.status !== "withdrawn")
+    ?? eventRows.find(row => row.memberId === id);
+  const candidates = members.filter(member => member.role !== "admin" && canAttendEvent(member, event) &&
+    (multiple || singleRound(member.id)?.status !== "confirmed"));
   const search = query.trim().toLocaleLowerCase("vi");
   const matches = candidates.filter(member => (member.name + " " + member.studentId).toLocaleLowerCase("vi").includes(search))
     .sort((a, b) => a.name.localeCompare(b.name, "vi") || a.studentId.localeCompare(b.studentId));
   const selected = matches.find(member => member.id === memberId);
-  const previous = selected && byMember.get(selected.id);
+  const memberRows = eventRows.filter(row => row.memberId === memberId);
+  const eligibleRounds = memberRows.filter(row => row.status !== "confirmed");
+  const chosenRound = roundId ?? eligibleRounds.find(row => row.status === "pending")?.id ?? "";
+  const previous = multiple ? eligibleRounds.find(row => row.id === chosenRound) : selected && singleRound(selected.id);
   return <Dialog title="Thêm người đã tham gia" description={event.name} onClose={onClose} busy={busy}>
     {candidates.length ? <form onSubmit={async e => {
       const fields = formData(e);
       if (!selected) return;
       const ok = await onAction("addEventParticipant", {
         eventId: event.id, memberId: selected.id, reason: fields.reason,
+        registrationId: multiple ? previous?.id ?? requestId : undefined,
         previousStatus: previous?.status, previousDecisionAt: previous?.reviewedAt ?? previous?.submittedAt,
       }, `Đã ghi nhận ${selected.name} tham gia sự kiện`, false);
       if (ok) onClose();
     }}>
       <Field label="Tìm theo tên hoặc MSSV">
-        <input type="search" value={query} onChange={e => { setQuery(e.target.value); setMemberId(""); }} />
+        <input type="search" value={query} onChange={e => { setQuery(e.target.value); setMemberId(""); setRoundId(undefined); }} />
       </Field>
       <Field label="Thành viên">
-        <select required name="memberId" value={selected?.id ?? ""} onChange={e => setMemberId(e.target.value)}>
+        <select required name="memberId" value={selected?.id ?? ""} onChange={e => { setMemberId(e.target.value); setRoundId(undefined); }}>
           <option value="" disabled>{matches.length ? "Chọn thành viên" : "Không tìm thấy thành viên phù hợp"}</option>
           {matches.map(member => {
-            const row = byMember.get(member.id);
+            const row = multiple ? undefined : singleRound(member.id);
             return <option value={member.id} key={member.id}>{member.name}{member.studentId && ` · ${member.studentId}`}{row && ` · ${registrationStatusLabel(row)}`}</option>;
           })}
         </select>
       </Field>
+      {multiple && selected && <Field label="Lượt xác nhận">
+        <select value={chosenRound} onChange={e => setRoundId(e.target.value)}>
+          <option value="">Thêm lượt mới</option>
+          {eligibleRounds.map(row => <option key={row.id} value={row.id}>Lượt {memberRows.indexOf(row) + 1} · {registrationStatusLabel(row)}</option>)}
+        </select>
+      </Field>}
       {previous?.status === "declined" && <Field label="Lý do thay đổi kết quả"><textarea key={memberId} name="reason" required minLength={3} maxLength={500} /></Field>}
-      <p className="hint">Xác nhận sẽ ghi {event.points} điểm vào tuần {dateLabel(weekId(event.endDate))} – {dateLabel(addDays(weekId(event.endDate), 6), true)}{event.requiresEvidence ? " Thành viên được BĐH xác nhận trực tiếp được miễn gửi ảnh" : ""}</p>
+      <p className="hint">Xác nhận sẽ ghi {multiple ? "điểm theo thứ tự lượt đã duyệt" : `${event.points} điểm`} vào tuần {dateLabel(weekId(event.endDate))} – {dateLabel(addDays(weekId(event.endDate), 6), true)}{event.requiresEvidence ? " · Lượt được BĐH xác nhận trực tiếp được miễn gửi ảnh" : ""}</p>
       <div className="form-footer">
         <Button variant="secondary" onClick={onClose} disabled={busy}>Quay lại</Button>
         <Button type="submit" disabled={busy || !selected}>Xác nhận tham gia</Button>
@@ -264,6 +302,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
 }
 function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy: boolean; onAction: Act; onClose: () => void }) {
   const [id] = useState(uid);
+  const [multiple, setMultiple] = useState(event?.participationMultiplier !== undefined);
   const currentDay = today();
   const [startDate, setStartDate] = useState(event?.startDate ?? currentDay);
   const minEndDate = event || startDate > currentDay ? startDate : currentDay;
@@ -271,18 +310,23 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
     const fields = formData(e);
     const action = event ? "editEvent" : "createEvent";
     const message = event ? "Đã cập nhật sự kiện" : "Đã tạo sự kiện và mở đăng ký";
-    if (await onAction(action, { ...fields, id: event?.id ?? id, points: Number(fields.points), requiresEvidence: fields.requiresEvidence === "on" }, message, false)) onClose();
+    if (await onAction(action, { ...fields, id: event?.id ?? id, points: Number(fields.points), requiresEvidence: fields.requiresEvidence === "on",
+      participationMultiplier: multiple ? Number(fields.participationMultiplier) : null }, message, false)) onClose();
   }}>
     <Field label="Tên sự kiện"><input name="name" defaultValue={event?.name} required minLength={2} maxLength={160} placeholder="Ví dụ: Hỗ trợ ngày hội sinh viên" autoFocus /></Field>
     <Field label="Mô tả sự kiện (không bắt buộc)"><textarea name="description" defaultValue={event?.description ?? ""} maxLength={eventDescriptionLimit} rows={3} /></Field>
-    <Field label="Điểm mỗi thành viên được duyệt"><input name="points" type="number" min={0} max={100000} step="0.01" defaultValue={event?.points} required placeholder="Nhập điểm" /></Field>
+    <Field label={multiple ? "Điểm lượt đầu" : "Điểm mỗi thành viên được duyệt"}><input name="points" type="number" min={0} max={100000} step="0.01" defaultValue={event?.points} required placeholder="Nhập điểm" /></Field>
+    <label className="event-history"><input type="checkbox" checked={multiple} onChange={e => setMultiple(e.target.checked)} /> Cho phép tham gia nhiều lần</label>
+    {multiple && <Field label="Hệ số nhân" hint="Ví dụ điểm lượt đầu là 2 và hệ số là 1,5 thì ba lượt được duyệt nhận 2, 3 và 4,5 điểm">
+      <input name="participationMultiplier" type="number" min={1} max={100000} step=".01" defaultValue={event?.participationMultiplier ?? 2} required />
+    </Field>}
     <div className="form-grid">
       <Field label="Từ ngày"><input name="startDate" type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
       <Field label="Đến hết ngày"><input name="endDate" type="date" required min={minEndDate} defaultValue={event?.endDate ?? currentDay} /></Field>
     </div>
     <label className="event-history"><input type="checkbox" name="requiresEvidence" defaultChecked={event?.requiresEvidence} /> Yêu cầu ảnh minh chứng</label>
     <p className="hint">Khi bật, thành viên đăng ký rồi gửi ảnh để BĐH duyệt và tính điểm, hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam</p>
-    <p className="hint">{event ? "Điểm của các đăng ký đã duyệt sẽ được cập nhật theo mức điểm và ngày kết thúc mới" : "Mỗi thành viên được duyệt nhận số điểm đã đặt vào tuần kết thúc sự kiện"}</p>
+    <p className="hint">{event ? "Điểm của các lượt đã duyệt cập nhật theo mức điểm, hệ số và ngày kết thúc được lưu" : "Các lượt đã duyệt được tính vào tuần kết thúc sự kiện"}</p>
     <FormFooter label={event ? "Lưu thay đổi" : "Tạo và mở đăng ký"} onCancel={onClose} busy={busy} />
   </form>;
 }

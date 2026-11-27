@@ -6,6 +6,7 @@ import { addDays, today, weekId } from "../lib/club";
 import { purgeExpiredDutyPhotos } from "../lib/duty-photo-storage";
 import { maintainEventPhotos } from "../lib/event-photo-storage";
 import { deleteQueuedPhotos } from "../lib/photo-deletion";
+import { synchronize } from "../lib/store";
 
 let nextPhotoCleanup = 0;
 let eventPhotosCompleteUntil = 0;
@@ -37,6 +38,8 @@ const worker = {
     const path = url.pathname;
     if (request.method === "GET" && path === siteVersionPath) {
       if (url.searchParams.get("check") === "event-photo-retention") {
+        // The daily retention run also clears automatically expired bulletins.
+        await synchronize();
         // This health check wakes the same clock-based retention as a signed-in visit.
         const ok = await checkEventPhotoRetention(env, Date.now()) && !!env.BUCKET && !!env.DB &&
           await deleteQueuedPhotos(env.BUCKET, env.DB).catch(error => {

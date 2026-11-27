@@ -95,6 +95,10 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   );
   const eventPhotos = new Set<string>();
   removeFromHistory(club, member.id, eventPhotos);
+  for (const post of club.bulletinPosts ?? []) {
+    if (post.likedBy) post.likedBy = post.likedBy.filter(id => id !== member.id);
+    if (post.comments) post.comments = post.comments.filter(comment => comment.memberId !== member.id);
+  }
   if (club.demoArchive) removeFromHistory(club.demoArchive, member.id, eventPhotos);
   for (const dataset of new Set([club.availabilityDataset, club.activeAvailabilityDataset])) {
     if (dataset) removeAvailability(dataset, member, !sameName);

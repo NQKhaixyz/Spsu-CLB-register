@@ -39,10 +39,10 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
-import { bulletinContentLimit, bulletinTitleLimit } from "./bulletin";
+import { bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, isBulletinPublished, parseBulletinDate } from "./bulletin";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
 import { isFontId } from "./interface-fonts";
-import { defaultSidebarOrder } from "./workspace-navigation";
+import { isMemberPosition } from "./member-positions";
 import { planDutyWeek } from "./duty-week-plan";
 import type { AvailabilitySettings } from "./club";
 
@@ -128,17 +128,6 @@ export function applyAction(
     me.fontPreference = data.font;
     return;
   }
-  if (action === "setMySidebarOrder") {
-    check(data.memberId === undefined || data.memberId === me.id, "Bạn chỉ có thể đổi thứ tự tab cho tài khoản của mình.");
-    const available = defaultSidebarOrder(me.role === "admin");
-    const order = data.order;
-    check(
-      Array.isArray(order) && order.length === available.length && available.every(tab => order.includes(tab)),
-      "Danh sách tab không hợp lệ. Tải lại trang rồi thử lại.",
-    );
-    me.sidebarOrder = [...order];
-    return;
-  }
   if (action === "register") {
     check(!me.needsStudentId, "Vui lòng bổ sung MSSV trong hồ sơ trước khi đăng ký họp.");
     const w = club.weeks.find((w) => w.id === weekId());
@@ -196,6 +185,30 @@ export function applyAction(
     note("Cập nhật nguyện vọng trực thêm");
     return;
   }
+  if (action === "setBulletinLike" || action === "commentOnBulletin") {
+    const post = club.bulletinPosts?.find(item => item.id === data.postId);
+    const now = Date.now();
+    check(post && isBulletinPublished(post, now), "Bản tin chưa đăng hoặc đã hết hạn.");
+    if (action === "setBulletinLike") {
+      check(typeof data.liked === "boolean", "Trạng thái lượt thích không hợp lệ.");
+      const likedBy = new Set(post.likedBy);
+      if (data.liked) likedBy.add(me.id);
+      else likedBy.delete(me.id);
+      post.likedBy = [...likedBy];
+    } else {
+      const { id } = data;
+      const content = typeof data.content === "string" ? data.content.trim() : "";
+      check(typeof id === "string" && /^[a-zA-Z0-9_-]{8,80}$/.test(id), "Mã bình luận không hợp lệ.");
+      check(content.length > 0 && content.length <= bulletinCommentLimit, `Nhập bình luận từ 1 đến ${bulletinCommentLimit} ký tự.`);
+      const existing = post.comments?.find(comment => comment.id === id);
+      if (existing) {
+        check(existing.memberId === me.id && existing.content === content, "Bình luận đã được lưu với nội dung khác.");
+        return;
+      }
+      (post.comments ??= []).push({ id, memberId: me.id, content, createdAt: now });
+    }
+    return;
+  }
   if (applyActivityAction(club, me, action, data, note)) return;
   check(admin, "Chỉ BĐH được thực hiện thao tác này.");
   const getWeek = () => {
@@ -222,15 +235,26 @@ export function applyAction(
     check(title.length > 0 && title.length <= bulletinTitleLimit, `Nhập tiêu đề từ 1 đến ${bulletinTitleLimit} ký tự.`);
     check(content.length > 0 && content.length <= bulletinContentLimit, `Nhập nội dung từ 1 đến ${bulletinContentLimit} ký tự.`);
     const post = club.bulletinPosts?.find(item => item.id === id);
+    const publishAt = data.publishAt === undefined ? post?.publishAt : parseBulletinDate(data.publishAt);
+    const deleteAt = data.deleteAt === undefined ? post?.deleteAt : parseBulletinDate(data.deleteAt);
+    const now = Date.now();
+    check(!Number.isNaN(publishAt) && !Number.isNaN(deleteAt), "Giờ hẹn không hợp lệ. Dùng giờ Việt Nam.");
+    check(deleteAt === undefined || deleteAt > Math.max(now, publishAt ?? now), "Giờ xóa phải sau thời điểm đăng và sau hiện tại.");
     if (post) {
-      if (post.title === title && post.content === content) return;
+      if (post.title === title && post.content === content && post.publishAt === publishAt && post.deleteAt === deleteAt) return;
       check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để xem nội dung mới.");
-      Object.assign(post, { title, content, revision: post.revision + 1 });
+      Object.assign(post, { title, content, publishAt, deleteAt, revision: post.revision + 1 });
     } else {
       check(revision === undefined, "Không tìm thấy bản tin cần sửa.");
-      (club.bulletinPosts ??= []).unshift({ id, title, content, revision: 1 });
+      (club.bulletinPosts ??= []).unshift({ id, title, content, publishAt, deleteAt, createdAt: now, revision: 1 });
     }
     note(`${post ? "Cập nhật" : "Đăng"} bản tin ${title}`);
+  } else if (action === "deleteBulletinPost") {
+    const post = club.bulletinPosts?.find(item => item.id === data.id);
+    if (!post) return;
+    check(data.revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để kiểm tra trước khi xóa.");
+    club.bulletinPosts = club.bulletinPosts?.filter(item => item.id !== post.id);
+    note(`Xóa bản tin ${post.title}`);
   } else if (action === "moveSharedLink") {
     const links = club.links ?? [];
     const index = links.findIndex(link => link.id === data.id);
@@ -610,6 +634,9 @@ export function applyAction(
     }
   } else if (action === "member") {
     let m = data.memberId ? getMember() : null;
+    const { position } = data;
+    check(position === undefined || position === "" || isMemberPosition(position), "Chức vụ không hợp lệ.");
+    check(!isMemberPosition(position) || (data.role ?? m?.role) !== "admin", "Chức vụ này chỉ dành cho tài khoản thành viên.");
     let selection: unknown = data.committees;
     if (selection === undefined && data.committee !== undefined) {
       // A single-select client cannot safely edit a profile with multiple committees.
@@ -684,6 +711,8 @@ export function applyAction(
         m.role = data.role;
       }
     }
+    if (m.role === "admin" || position === "") delete m.position;
+    else if (isMemberPosition(position)) m.position = position;
     if (selection !== undefined) {
       const selected = committeeKinds.filter(kind => selection.includes(kind));
       delete m.committee;

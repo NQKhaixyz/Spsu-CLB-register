@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { createClub, syncWeeks, type Club } from "./club";
+import { pruneExpiredBulletinPosts } from "./bulletin";
 
 type Row = { payload: string; revision: number };
 export class ClubNotReadyError extends Error {
@@ -50,6 +51,7 @@ export async function mutate<T>(
   for (let i = 0; i < 5; i++) {
     const { club, revision } = await readState(ownerId, canInitialize);
     syncWeeks(club);
+    pruneExpiredBulletinPosts(club);
     const result = operation(club);
     if (await writeState(club, revision))
       return { club, revision: revision + 1, result };
@@ -62,6 +64,7 @@ export async function synchronize() {
   ).first<Row>();
   if (!row) return false;
   const club = JSON.parse(row.payload) as Club;
-  if (syncWeeks(club)) return writeState(club, row.revision);
+  const expired = pruneExpiredBulletinPosts(club);
+  if (syncWeeks(club) || expired) return writeState(club, row.revision);
   return false;
 }

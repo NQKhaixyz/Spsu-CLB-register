@@ -4,7 +4,9 @@ import { applyAction } from "../lib/actions";
 import { createClub, type AvailabilityDataset } from "../lib/club";
 import { workspaceView } from "../lib/workspace-view";
 import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
-import { defaultSidebarOrder, resolveSidebarOrder } from "../lib/workspace-navigation";
+import { sidebarTabLabels, sidebarTabs } from "../lib/workspace-navigation";
+import { memberPositions, memberRoleLabel } from "../lib/member-positions";
+import { bulletinDateInput, bulletinView, parseBulletinDate, pruneExpiredBulletinPosts } from "../lib/bulletin";
 import { displayMessage } from "../lib/display-message";
 
 const owner = {userId:"workspace-regression-owner",displayName:"BĐH",email:""};
@@ -53,42 +55,31 @@ function fixture() {
   c.activeAvailabilityDataset=structuredClone(dataset);
   return {c,pending};
 }
-test("Sidebar order persists privately with per-role defaults and rejects unavailable or duplicate tabs", () => {
+test("The sidebar uses one fixed order and member positions do not grant BĐH permissions", () => {
   const { c, pending } = fixture();
   pending.userId = "sidebar-order-reader";
   const member = { userId: pending.userId, displayName: pending.name, email: "" };
-  const adminDefaults = defaultSidebarOrder(true);
-  const memberDefaults = defaultSidebarOrder(false);
   const admin = c.members.find(m => m.userId === owner.userId)!;
-  const originalLogs = c.logs.length;
-  assert.deepEqual(resolveSidebarOrder(true, admin.sidebarOrder), adminDefaults);
-  assert.deepEqual(resolveSidebarOrder(false, pending.sidebarOrder), memberDefaults);
-  assert.ok(adminDefaults.includes("overview"));
-  assert.ok(!memberDefaults.includes("overview"));
-
-  const memberOrder = [...memberDefaults].reverse();
-  const adminOrder = [...adminDefaults].reverse();
-  applyAction(c, member, "setMySidebarOrder", { order: memberOrder });
-  applyAction(c, owner, "setMySidebarOrder", { order: adminOrder });
-  for (const order of [null, "members", ["members"], memberOrder.map(tab => tab === "links" ? "overview" : tab),
-    memberOrder.map(tab => tab === "links" ? "members" : tab)]) {
-    assert.throws(() => applyAction(c, member, "setMySidebarOrder", { order }), /Danh sách tab/);
+  pending.sidebarOrder = ["members", "personal"];
+  admin.sidebarOrder = ["overview", "scoreboard"];
+  assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Link", "Góc của tôi", "Thành viên"]);
+  for (const identity of [owner, member]) {
+    const view = workspaceView(c, identity, 1);
+    assert.equal(view.me?.sidebarOrder, undefined);
+    assert.ok(view.club.members.every(profile => profile.sidebarOrder === undefined));
   }
-  assert.throws(() => applyAction(c, owner, "setMySidebarOrder", { memberId: pending.id, order: adminOrder }), /tài khoản của mình/);
-
-  const restored = JSON.parse(JSON.stringify(c)) as typeof c;
-  for (const [identity, expected] of [[owner, adminOrder], [member, memberOrder]] as const) {
-    const view = workspaceView(restored, identity, 1);
-    assert.deepEqual(view.me?.sidebarOrder, expected);
-    assert.ok(view.club.members.every(m => m.sidebarOrder === undefined));
+  assert.equal(memberPositions.length, 8);
+  for (const position of memberPositions) {
+    applyAction(c, owner, "member", { memberId: pending.id, role: "member", position });
+    const view = workspaceView(c, member, 1);
+    assert.equal(view.isAdmin, false);
+    assert.equal(view.me?.position, position);
+    assert.equal(view.club.members.find(profile => profile.id === pending.id)?.position, position);
+    assert.throws(() => applyAction(c, member, "member", { memberId: pending.id, role: "admin" }), /Chỉ BĐH/);
   }
-  assert.deepEqual(resolveSidebarOrder(true, memberOrder), [...memberOrder, "overview"]);
-  assert.deepEqual(resolveSidebarOrder(false, adminOrder), adminOrder.filter(tab => tab !== "overview"));
-  assert.deepEqual(resolveSidebarOrder(false, ["members", "overview", "members", "saved-old-tab"]),
-    ["members", ...memberDefaults.filter(tab => tab !== "members")]);
-  const savedBeforeBulletin = adminOrder.filter(tab => tab !== "bulletin");
-  assert.deepEqual(resolveSidebarOrder(true, savedBeforeBulletin), [...savedBeforeBulletin, "bulletin"]);
-  assert.equal(c.logs.length, originalLogs);
+  assert.throws(() => applyAction(c, owner, "member", { memberId: pending.id, role: "admin", position: "captain" }), /tài khoản thành viên/);
+  applyAction(c, owner, "member", { memberId: pending.id, position: "" });
+  assert.equal(memberRoleLabel(pending), "Thành viên");
 });
 test("Bulletin posts are readable by members, with BĐH-only writes, safe retries and stale edit checks", () => {
   const { c, pending } = fixture();
@@ -104,7 +95,8 @@ test("Bulletin posts are readable by members, with BĐH-only writes, safe retrie
   save(post);
   save(post);
   const published = { id: post.id, title: post.title.trim(), content: post.content.trim(), revision: 1 };
-  assert.deepEqual(workspaceView(c, reader, 1).club.bulletinPosts, [published]);
+  assert.equal(workspaceView(c, reader, 1).club.bulletinPosts, undefined);
+  assert.equal(workspaceView(c, reader, 1).bulletin?.posts[0].content, published.content);
   const second = { id: "bulletin-test-two", title: "Nhắc lịch trực", content: "Kiểm tra lịch tuần này" };
   save(second);
   assert.deepEqual(c.bulletinPosts!.map(item => item.id), [second.id, post.id]);
@@ -114,7 +106,48 @@ test("Bulletin posts are readable by members, with BĐH-only writes, safe retrie
   save(edit);
   save(edit);
   assert.throws(() => save({ ...published, content: "Không ghi đè được" }), /vừa được cập nhật/);
-  assert.deepEqual(workspaceView(c, reader, 2).club.bulletinPosts?.[1], { ...edit, revision: 2 });
+  assert.equal(workspaceView(c, reader, 2).bulletin?.posts[1].content, edit.content);
+  assert.equal(workspaceView(c, reader, 2).bulletin?.posts[1].revision, 2);
+});
+test("Publication and expiry use Vietnam time, with private drafts and idempotent social actions", () => {
+  const { c, pending } = fixture();
+  pending.userId = "bulletin-interaction";
+  const reader = { userId: pending.userId, displayName: pending.name, email: "" };
+  const input = bulletinDateInput(Date.now() + 86400000);
+  const publishAt = parseBulletinDate(input)!;
+  const deleteAt = publishAt + 3600000;
+  const future = { id: "future-post", title: "Tin hẹn đăng", content: "Tin dành cho cả Đội", publishAt: input, deleteAt: bulletinDateInput(deleteAt) };
+  assert.equal(parseBulletinDate("2026-11-28T07:30"), Date.parse("2026-11-28T00:30:00Z"));
+  assert.ok(Number.isNaN(parseBulletinDate("2026-02-30T10:00")));
+  assert.throws(() => applyAction(c, owner, "saveBulletinPost", { ...future, deleteAt: input }), /Giờ xóa/);
+  applyAction(c, owner, "saveBulletinPost", future);
+  assert.equal(bulletinView(c, pending, publishAt - 1).posts.length, 0);
+  assert.equal(bulletinView(c, c.members[0], publishAt - 1).posts[0].published, false);
+  assert.equal(bulletinView(c, pending, publishAt).posts[0].published, true);
+  assert.equal(bulletinView(c, pending, deleteAt).posts.length, 0);
+  assert.ok(!JSON.stringify(workspaceView(c, reader, 2)).includes(future.title));
+  const like = { postId: future.id, liked: true };
+  assert.throws(() => applyAction(c, reader, "setBulletinLike", like), /chưa đăng/);
+  applyAction(c, owner, "saveBulletinPost", { ...future, revision: 1, publishAt: "" });
+  applyAction(c, reader, "setBulletinLike", like);
+  applyAction(c, reader, "setBulletinLike", like);
+  const comment = { id: "comment-same-attempt", postId: future.id, content: "Đã rõ giờ họp" };
+  applyAction(c, reader, "commentOnBulletin", comment);
+  applyAction(c, reader, "commentOnBulletin", comment);
+  const publicPost = workspaceView(c, reader, 3).bulletin?.posts[0];
+  assert.equal(publicPost?.likeCount, 1);
+  assert.equal(publicPost?.liked, true);
+  assert.equal(publicPost?.comments.length, 1);
+  assert.equal(publicPost?.comments[0].authorName, pending.name);
+  applyAction(c, reader, "setBulletinLike", { ...like, liked: false });
+  assert.equal(bulletinView(c, pending).posts[0].likeCount, 0);
+  assert.throws(() => applyAction(c, reader, "deleteBulletinPost", { id: future.id, revision: 2 }), /Chỉ BĐH/);
+  assert.throws(() => applyAction(c, owner, "deleteBulletinPost", { id: future.id, revision: 1 }), /vừa được cập nhật/);
+  const copy = structuredClone(c);
+  applyAction(copy, owner, "deleteBulletinPost", { id: future.id, revision: 2 });
+  assert.deepEqual(copy.bulletinPosts, []);
+  assert.equal(pruneExpiredBulletinPosts(c, deleteAt), true);
+  assert.deepEqual(c.bulletinPosts, []);
 });
 test("Member response removes both staged and active source datasets without modifying admin state",()=>{
   const {c,pending}=fixture(); pending.userId="workspace-member";

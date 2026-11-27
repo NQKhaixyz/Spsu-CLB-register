@@ -258,7 +258,7 @@ export async function makeReport(club: Club, month: string, asOf = today()) {
       ["D", rule.D ?? 0, "Trừ mỗi lượt BĐH tích Đến muộn trên lịch đã công bố"],
       ["E", rule.E, "Cộng cho mỗi phiếu được BĐH tích đạt, theo ngày họp"],
       ...ratedActivityKinds.map(k => [activityLabels[k], rule.activities?.[k] ?? 0, "Nhân số lượt do BĐH nhập với mức điểm mỗi lượt"]),
-      ["Sự kiện", "Điểm riêng theo từng sự kiện", "BĐH duyệt: cộng một lần/người vào ngày kết thúc, sự kiện đã hủy không tính điểm"],
+      ["Sự kiện", "Điểm theo từng lượt được duyệt", "Ghi vào ngày kết thúc. Với sự kiện nhiều lượt, điểm lượt đầu nhân với hệ số qua từng lượt được duyệt và làm tròn đến hai chữ số thập phân"],
       ["Điểm theo ban", "Nhập trực tiếp", "BĐH chọn một ban và nhập số điểm cho mỗi thành viên trong tuần"],
       ["Điểm riêng", "Nhập trực tiếp", "BĐH nhập số điểm cho từng thành viên trong tuần, không nhân số lượt; dữ liệu cũ giữ cách tính đã lưu"],
       ["Điểm trừ", "Nhập trực tiếp", "BĐH nhập số điểm trừ và lý do; trừ đúng số điểm vào tuần/tháng của ngày ghi nhận, khoản đã hủy không tính điểm"],

@@ -1,5 +1,6 @@
 import { dateLabel, type Member, type AvailabilityDetail } from "../lib/club";
 import { memberCommitteeNames } from "../lib/committees";
+import { memberRoleLabel } from "../lib/member-positions";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 
@@ -16,7 +17,7 @@ export function MemberProfile({ member, details, scheduleOnly }: {
     ["MSSV", member.studentId || "Chờ bổ sung MSSV"],
     ["Email liên hệ", member.email || "Chưa có"],
     ["Ban trực thuộc", memberCommitteeNames(member)],
-    ["Vai trò", member.role === "admin" ? "Ban điều hành" : "Thành viên"],
+    ["Vai trò", memberRoleLabel(member)],
     ["Trạng thái", member.active ? "Đang hoạt động" : "Tạm nghỉ"],
     ["Ngày tham gia", dateLabel(member.joined, true)],
     ...(member.left ? [["Ngày tạm nghỉ", dateLabel(member.left, true)]] : []),

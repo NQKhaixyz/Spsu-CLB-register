@@ -7,9 +7,9 @@ import { committeeKinds, committeeLabels, memberCommittees, memberCommitteeNames
 import { availableDays, MemberProfile } from "./member-profile";
 import { displayMessage } from "../lib/display-message";
 import { resolveFont } from "../lib/interface-fonts";
-import { defaultSidebarOrder, resolveSidebarOrder, sidebarTabLabels, type SidebarTab } from "../lib/workspace-navigation";
+import { sidebarTabs, sidebarTabLabels, type SidebarTab } from "../lib/workspace-navigation";
+import { isMemberPosition, memberPositions, memberPositionLabels, memberRoleLabel } from "../lib/member-positions";
 import { FontSettings } from "./font-settings";
-import { SidebarOrderSettings } from "./sidebar-order-settings";
 import { MemberMonthlyScoreboard, Scoreboard, type ScoreScope } from "./scoreboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
@@ -135,7 +135,6 @@ type Modal = {
 };
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports"] },
-  overview: { icon: LayoutDashboard, sections: ["overview"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin"] },
   links: { icon: Link2, sections: ["links"] },
@@ -462,10 +461,9 @@ export default function Workspace() {
       </div>
     );
   const activeTab = !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
-  const sidebarOrder = resolveSidebarOrder(isAdmin, me.sidebarOrder);
-  const activeSidebarTab = sidebarOrder.find(id => sidebarGroups[id].sections.includes(activeTab));
+  const activeSidebarTab = sidebarTabs.find(id => sidebarGroups[id].sections.includes(activeTab));
   const headerTitle = activeSidebarTab ? sidebarTabLabels[activeSidebarTab]
-    : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
+    : activeTab === "overview" ? "Tổng quan" : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
   const week =
     club.weeks.find((w) => w.id === selectedWeek) ?? club.weeks.at(-1)!;
   const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
@@ -794,6 +792,8 @@ export default function Workspace() {
                 ...f,
                 memberId: member?.id,
                 committees: form.getAll("committees"),
+                role: f.role === "admin" ? "admin" : "member",
+                position: isMemberPosition(f.role) ? f.role : "",
                 ...(member ? { active: f.active === "true" } : {}),
                 extraDuties: f.extraDuties === "on",
                 ...(member ? { availability: form.getAll("availability") } : {}),
@@ -841,14 +841,13 @@ export default function Workspace() {
               ))}
             </div>
           </fieldset>
-          {member ? (
-            <Field label="Vai trò">
-              <select name="role" defaultValue={member.role}>
-                <option value="member">Thành viên</option>
-                <option value="admin">Ban điều hành</option>
-              </select>
-            </Field>
-          ) : null}
+          <Field label="Vai trò">
+            <select name="role" defaultValue={member?.role === "admin" ? "admin" : member?.position ?? "member"}>
+              <option value="member">Thành viên</option>
+              {memberPositions.map(position => <option key={position} value={position}>{memberPositionLabels[position]}</option>)}
+              {member && <option value="admin">Ban điều hành</option>}
+            </select>
+          </Field>
           {member ? (
             <Field label="Trạng thái hoạt động">
               <select name="active" defaultValue={String(member.active)}>
@@ -1445,7 +1444,7 @@ export default function Workspace() {
                             <small title={e.reason}>{e.reason}</small>
                           ) : (
                             <small>
-                              {m.role === "admin" ? "Ban điều hành" : "Thành viên"}
+                              {memberRoleLabel(m)}
                             </small>
                           )}
                         </span>
@@ -2470,7 +2469,7 @@ export default function Workspace() {
                           <ShieldCheck size={13} /> BĐH
                         </span>
                       ) : (
-                        "Thành viên"
+                        memberRoleLabel(m)
                       )}
                     </td>
                     <td>
@@ -3001,7 +3000,7 @@ export default function Workspace() {
   }
 
   function personal() {
-    const mine = view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
+    const mine = isAdmin ? undefined : view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
     const shifts = club.schedules
       .filter((s) => s.published)
       .flatMap((s) => s.shifts.filter((t) => isShiftPublished(s, t)))
@@ -3016,7 +3015,7 @@ export default function Workspace() {
           <div>
             <span className="eyebrow">{me!.name}</span>
             <h1>
-              Hoạt động của tôi
+              Góc của tôi
             </h1>
             <p>Đăng ký họp và xem những đóng góp của bạn tại đây</p>
           </div>
@@ -3092,7 +3091,7 @@ export default function Workspace() {
               <HeartHandshake size={20} />
             </label>
           </section>
-          <section className="panel personal-score">
+          {mine && <section className="panel personal-score">
             <PanelHead title="Đóng góp tháng này" action={monthSelect} />
             <div className="my-score">
               <span>TỔNG ĐIỂM THÁNG</span>
@@ -3116,7 +3115,7 @@ export default function Workspace() {
               Trực đủ/vắng trực tính khi xác minh; họp tính khi chốt, đi muộn
               tính theo ô BĐH tích trên lịch đã công bố
             </p>
-          </section>
+          </section>}
         </div>
         {!isAdmin ? <div className="member-own-points">
           <div className="heading-actions">{weekSelect}</div>
@@ -3198,7 +3197,7 @@ export default function Workspace() {
         </div>
         <span className="nav-label">KHÔNG GIAN LÀM VIỆC</span>
         <nav aria-label="Điều hướng chính">
-          {sidebarOrder.map(id => {
+          {sidebarTabs.map(id => {
             const { icon: Icon, sections } = sidebarGroups[id];
             const active = id === activeSidebarTab;
             return (
@@ -3244,6 +3243,10 @@ export default function Workspace() {
             <Settings2 size={18} />
             <span>Cài đặt cá nhân</span>
           </button>
+          {isAdmin && <button className={activeTab === "overview" ? "active" : ""} onClick={() => go("overview")}>
+            <LayoutDashboard size={18} />
+            <span>Tổng quan</span>
+          </button>}
           <button onClick={() => passwordDialog()}>
             <ShieldCheck size={18} />
             <span>Đổi mật khẩu</span>
@@ -3465,8 +3468,8 @@ export default function Workspace() {
           ) : activeTab === "duties" ? (
             duties()
           ) : activeTab === "bulletin" ? (
-            <BulletinBoard posts={club.bulletinPosts ?? []} isAdmin={isAdmin} busy={busy} onOpen={load}
-              onSave={draft => act("saveBulletinPost", draft, draft.revision === undefined ? "Đã đăng bản tin" : "Đã cập nhật bản tin", false)} />
+            <BulletinBoard posts={view.bulletin?.posts ?? []} nextChangeAt={view.bulletin?.nextChangeAt}
+              isAdmin={isAdmin} busy={busy} onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
           ) : activeTab === "links" ? (
             <SharedLinks
               links={club.links ?? []}
@@ -3485,13 +3488,8 @@ export default function Workspace() {
           ) : activeTab === "preferences" ? (
             <>
               <div className="page-heading"><h1>Cài đặt cá nhân</h1></div>
-              <div className="personal-settings-list">
-                <SidebarOrderSettings key={`${me.id}:${sidebarOrder.join(",")}`} current={sidebarOrder}
-                  defaults={defaultSidebarOrder(isAdmin)} busy={busy}
-                  onSave={order => { void act("setMySidebarOrder", { order }, "Đã lưu thứ tự tab", false); }} />
-                <FontSettings key={me.id + savedFont} current={savedFont} busy={busy}
-                  onSave={font => { void act("setMyFont", { font }, "Đã lưu phông chữ của bạn", false); }} />
-              </div>
+              <FontSettings key={me.id + savedFont} current={savedFont} busy={busy}
+                onSave={font => { void act("setMyFont", { font }, "Đã lưu phông chữ của bạn", false); }} />
             </>
           ) : activeTab === "settings" ? (
             settings()

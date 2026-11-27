@@ -103,14 +103,18 @@ test("Monthly workbook follows the same cutoff in every personal worksheet, warn
     assert.equal(before.rows(sheet).find(r => r["Họ tên"] === reader.name)?.["Ban trực thuộc"], "Chưa phân ban");
   }
   const duty = before.rows("Chi tiết trực")[0];
-  assert.equal(duty["Người được phân ban đầu"], admin.name);
+  assert.equal(duty["Người được phân ban đầu"], "");
   assert.equal(duty["Người thực tế phụ trách"], peer.name);
-  assert.equal(duty["Ban của người được phân ban đầu"], "Điều hành");
+  assert.equal(duty["Ban của người được phân ban đầu"], "");
   assert.equal(duty["Ban của người thực tế phụ trách"], "Truyền thông, Chuyên môn");
+  const replacement = before.rows("Chi tiết trực").find(row => row["Người thực tế phụ trách"] === reader.name);
+  assert.equal(replacement?.["Người được phân ban đầu"], peer.name);
+  assert.equal(replacement?.["Ban của người được phân ban đầu"], "Truyền thông, Chuyên môn");
   assert.ok(before.warnings.includes("1 lượt trực chưa xác minh"));
   const after = await snapshot("2026-11-09");
   for (const sheet of ["Tổng hợp tháng", "Chi tiết họp", "Chi tiết hoạt động", "Chi tiết trực"]) {
     assert.ok(after.rows(sheet).every(r => !Object.values(r).includes(peer.name) && !Object.values(r).includes(peer.studentId)));
+    assert.ok(before.rows(sheet).every(r => !Object.values(r).includes(admin.name) && !Object.values(r).includes(admin.studentId)));
   }
   assert.equal(after.rows("Chi tiết trực").length, 1);
   assert.equal(after.rows("Chi tiết trực")[0]["Người thực tế phụ trách"], reader.name);

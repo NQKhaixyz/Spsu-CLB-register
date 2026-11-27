@@ -86,9 +86,9 @@ Kiểm thử `tests/native-flow.mjs` chỉ chấp nhận máy chủ loopback. N�
 
 ## Đăng ký hoạt động và điểm tuần
 
-- Trong Tạo sự kiện, chỉ BĐH tạo sự kiện với tên, điểm/người và khoảng ngày bắt đầu–kết thúc. Thành viên xem trong Sự kiện, đăng ký một lần/sự kiện từ khi tạo đến hết ngày kết thúc theo giờ Việt Nam. BĐH duyệt mới cộng điểm một lần vào tuần/tháng của ngày kết thúc, không nhân số ngày và không cộng lặp khi duyệt lại. Không đăng ký, chưa duyệt, không duyệt hoặc rút đăng ký không trừ điểm và không tính vắng. Sửa kết quả đã duyệt phải ghi lý do. Có thể rút đăng ký đang chờ rồi đăng ký lại trước khi sự kiện kết thúc; dùng cùng bản ghi để tránh trùng.
+- Trong **Tạo sự kiện**, BĐH đặt điểm lượt đầu và có thể bật **Cho phép tham gia nhiều lần**, rồi nhập hệ số nhân. Mỗi lượt đăng ký có trạng thái và minh chứng riêng. Với hệ số 1,5 và điểm lượt đầu là 2, ba lượt được duyệt lần lượt nhận 2, 3 và 4,5 điểm. Điểm từng lượt làm tròn đến hai chữ số thập phân và ghi vào tuần/tháng của ngày kết thúc. Thứ tự tính dựa trên thứ tự đăng ký của các lượt được duyệt. Sự kiện mặc định có một lượt mỗi thành viên.
 - BĐH có thể sửa tên, ngày và điểm hoặc hủy sự kiện sau khi tạo. Điểm đã duyệt cập nhật theo điểm và ngày kết thúc mới. Khi hủy, trang ngừng nhận đăng ký, giữ lịch sử và gỡ điểm của sự kiện khỏi bảng điểm. Danh sách sự kiện công khai cho thành viên, thông tin đăng ký chỉ cho BĐH và chính người đăng ký.
-- Trong **Tạo sự kiện → Thêm người đã tham gia**, BĐH chọn thành viên và bấm **Xác nhận tham gia** để ghi điểm ngay vào tuần và tháng kết thúc sự kiện. Xác nhận trực tiếp miễn bước đăng ký và gửi ảnh. Với sự kiện đã kết thúc, bật **Hiện cả sự kiện đã kết thúc hoặc đã hủy** để tìm lại. Mỗi người chỉ có một lượt cho mỗi sự kiện.
+- Trong **Tạo sự kiện → Thêm người đã tham gia**, BĐH có thể chọn một lượt đã đăng ký hoặc thêm lượt mới nếu sự kiện cho phép nhiều lượt. Xác nhận trực tiếp ghi điểm ngay và miễn gửi ảnh. Với sự kiện đã kết thúc, bật **Hiện cả sự kiện đã kết thúc hoặc đã hủy** để tìm lại.
 - BĐH nhập số lượt nguyên cho Sáng kiến và Đồng đẳng viên. Điểm riêng và Điểm theo ban được nhập trực tiếp. Mỗi mục lưu một giá trị cho từng thành viên trong tuần. Lưu lại thay số cũ, nhập 0 để bỏ điểm mục đó.
 - Sáng kiến và Đồng đẳng viên lấy số lượt nhân với mức điểm trong Cài đặt Đội theo tháng của ngày ghi nhận. Tổng điểm gồm họp, trực, phiếu điểm danh, sáng kiến, đồng đẳng viên, sự kiện, điểm theo ban và điểm riêng, sau khi trừ các khoản trừ.
 - Mỗi tuần thứ Hai–Chủ nhật theo giờ Việt Nam có số lượt riêng và giữ lịch sử các tuần đã qua. Thành viên đã đăng nhập xem số lượt và điểm tổng hợp tại **Bảng điểm → Điểm tuần**.
@@ -100,11 +100,12 @@ Kiểm thử `tests/native-flow.mjs` chỉ chấp nhận máy chủ loopback. N�
 
 - Giảng đường, C2 và dự án được ghi điểm qua Tạo sự kiện. Bản ghi theo các mục cũ được lưu trong cơ sở dữ liệu và được loại khỏi bảng điểm, tổng điểm và báo cáo hiện tại.
 
-- BĐH vào **Bảng điểm → Điểm tuần → Nhập điểm / trừ điểm** để ghi điểm, lọc theo ban và xem lịch sử khoản trừ theo tuần. Thành viên xem lý do trừ của mình tại **Góc thành viên**.
-- Trong **Bảng điểm**, chọn **Điểm tuần** hoặc **Điểm tháng**. Tài khoản thành viên có thể chuyển giữa **Điểm của tôi** và **Toàn Đội**. Nút **Xem điểm toàn Đội** ở Góc thành viên mở bảng điểm tuần.
+- BĐH vào **Bảng điểm → Điểm tuần → Nhập điểm / trừ điểm** để ghi điểm, lọc theo ban và xem lịch sử khoản trừ theo tuần. Thành viên xem lý do trừ của mình tại **Góc của tôi**.
+- **Điểm tuần**, **Điểm tháng** và **Excel** tính điểm cho tài khoản thành viên. Thành viên có thể chuyển giữa **Điểm của tôi** và **Toàn Đội**. Nút **Xem điểm toàn Đội** trong **Góc của tôi** mở bảng điểm tuần.
 - **Hoạt động** gồm **Đăng ký họp**, **Lịch trực C1** và **Sự kiện**. Trong tài khoản BĐH, mục sự kiện có tên **Tạo sự kiện** và dùng để quản lý, duyệt đăng ký.
-- Vào **Cài đặt cá nhân → Thứ tự tab**, dùng mũi tên để sắp xếp thanh bên rồi bấm **Lưu thứ tự**. Thứ tự đi theo tài khoản đang đăng nhập.
-- Trong **Bảng tin**, BĐH đăng hoặc sửa các cập nhật cho toàn Đội. Thành viên bấm vào tin để đọc toàn bộ nội dung.
+- Thanh bên xếp **Bảng tin → Hoạt động → Bảng điểm → Link → Góc của tôi → Thành viên** cho mọi tài khoản. BĐH mở **Tổng quan** từ nhóm công cụ bên dưới.
+- Trong **Bảng tin**, BĐH có thể đăng ngay hoặc hẹn giờ đăng, sửa và xóa tin, hoặc đặt giờ tự xóa. Mốc hẹn dùng giờ Việt Nam. Thành viên có thể thích và bình luận sau khi tin đăng.
+- Trong **Thành viên → Hồ sơ**, BĐH có thể chọn các chức vụ Đội trưởng, Đội phó, Trưởng ban và Phó Trưởng ban TT, CM, SK. Các chức vụ này dùng quyền tài khoản thành viên.
 - Trong **Thành viên**, người đã đăng nhập có thể tìm theo tên hoặc MSSV, lọc theo ban và xem hồ sơ, lịch rảnh sáng/chiều cùng khung giờ và tuần học đã áp dụng của từng người. BĐH quản lý hồ sơ và tài khoản.
 - Trong **Thành viên → Hồ sơ**, BĐH chọn **Thêm thành viên** hoặc **Chỉnh sửa** rồi tích các ban thành viên tham gia. Một người có thể thuộc nhiều ban trong số Truyền thông, Sự kiện, Chuyên môn và Điều hành. **Lọc theo ban** có ở Hồ sơ và phần nhập điểm tuần. Bỏ hết dấu tích để đưa hồ sơ về **Chưa phân ban**. Quyền BĐH được quản lý qua trường Vai trò.
 - Trong **Cài đặt cá nhân → Phông chữ**, mỗi người có thể xem thử Inter, Nunito, Lexend hoặc Spectral. Lựa chọn được lưu riêng vào tài khoản và dùng lại khi đăng nhập trên thiết bị khác. Phông mặc định là Inter.
