@@ -4,16 +4,16 @@ import { Feather, Shield, Sparkles, Users } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Member } from "../lib/club";
-import { sharingConsentVersion, sharingRule, type PublicSharingGroup, type SharingGroupSummary, type SharingView } from "../lib/sharing-types";
-import { MemberName, useMemberIdentity } from "./member-identity";
+import { sharingConsentVersion, sharingRule, sharingTagText, type CupidTag, type PublicSharingGroup, type SharingGroupSummary, type SharingView } from "../lib/sharing-types";
+import { MemberName, MemberOption, useMemberIdentity } from "./member-identity";
 import { formatScore } from "./scoreboard";
 import { Avatar, Button, Dialog, Field, FormFooter } from "./ui";
 
 type SharingAction = (action: string, data: Record<string, unknown>, message: string, onError?: (message: string) => void) => Promise<boolean>;
-type SharingMine = NonNullable<SharingView["mine"]>;
 type SharingConsent = {
   mode: "sendCupid" | "createGuild" | "joinCupid" | "joinGuild";
   label: string;
+  hashtag?: string;
   count: number;
   data: Record<string, unknown>;
 };
@@ -46,7 +46,7 @@ function GroupCard({ group, profileMemberId }: { group: PublicSharingGroup; prof
     <header className="sharing-card-title">
       <span className="sharing-emblem"><Icon size={21} aria-hidden="true" /></span>
       <div>
-        <h3>{groupLabel(group)} {group.code && <span className="sharing-code">#{group.code}</span>}</h3>
+        <h3>{groupLabel(group)}</h3>
         <span>{dateTime.format(group.startedAt)} · {cupid ? "Ngày ghép" : `${group.memberIds.length} thành viên`}</span>
       </div>
     </header>
@@ -56,50 +56,54 @@ function GroupCard({ group, profileMemberId }: { group: PublicSharingGroup; prof
         if (!member) return null;
         return <li key={id}>
           <Avatar memberId={id} name={member.name} photoId={member.avatarId} profileLink={id !== profileMemberId} size={cupid ? "" : "small"} />
-          <MemberName memberId={id} showSharing={false} />
+          <MemberName memberId={id} />
           {id === group.leaderId && <span className="sharing-leader">Thủ lĩnh</span>}
         </li>;
       })}
     </ul>
-    {cupid && <>
+    {cupid && (
       <div className="sharing-milestones">
         {group.sevenDays && <span><Sparkles size={14} aria-hidden="true" /> 7 ngày đồng hành</span>}
         {group.jointEvent && <span><Users size={14} aria-hidden="true" /> Cùng dự sự kiện</span>}
       </div>
-      {group.hashtags.some(tag => !profileMemberId || tag.memberId === profileMemberId) && <div className="sharing-tags">
-        {group.hashtags.filter(tag => !profileMemberId || tag.memberId === profileMemberId)
-          .map(tag => <span className="sharing-tag" key={tag.memberId + ":" + tag.text}>#{tag.text}</span>)}
-      </div>}
-    </>}
+    )}
   </section>;
 }
 
 function Contributions({ summary }: { summary: SharingGroupSummary }) {
   return <ul className="sharing-contributions">
     {summary.contributions.map(row => <li key={row.memberId}>
-      <MemberName memberId={row.memberId} showSharing={false} />
+      <MemberName memberId={row.memberId} />
       <div><small>Đóng góp</small><strong>{formatScore(row.earned)}</strong></div>
       <div><small>Phần được chia</small><strong>{formatScore(row.received)}</strong></div>
     </li>)}
   </ul>;
 }
 
-function PeopleForm({ people, label, verb, busy, onCancel, onSelect }: {
-  people: Member[]; label: string; verb: string; busy: boolean; onCancel: () => void;
-  onSelect: (id: string) => Promise<boolean>;
+function CupidTagField({ busy }: { busy: boolean }) {
+  return <Field label="Hashtag chung của cặp">
+    <input name="text" required maxLength={31} placeholder="#TrựcC1CóNhau" disabled={busy} />
+  </Field>;
+}
+
+function PeopleForm({ people, label, verb, busy, withCupidTag, onCancel, onSelect }: {
+  people: Member[]; label: string; verb: string; busy: boolean; withCupidTag?: boolean; onCancel: () => void;
+  onSelect: (id: string, cupidTag: string) => Promise<boolean>;
 }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const id = String(new FormData(event.currentTarget).get("memberId") ?? "");
-    if (id && await onSelect(id)) onCancel();
+    const fields = new FormData(event.currentTarget);
+    const id = String(fields.get("memberId") ?? "");
+    if (id && await onSelect(id, String(fields.get("text") ?? ""))) onCancel();
   }
   return <form className="sharing-form" onSubmit={submit}>
     <Field label={label}>
       <select name="memberId" required defaultValue="" disabled={busy}>
         <option value="" disabled>Chọn thành viên</option>
-        {people.map(person => <option value={person.id} key={person.id}>{person.name}</option>)}
+        {people.map(person => <MemberOption memberId={person.id} key={person.id} />)}
       </select>
     </Field>
+    {withCupidTag && <CupidTagField busy={busy} />}
     <FormFooter label={verb} disabled={!people.length} busy={busy} onCancel={onCancel} />
   </form>;
 }
@@ -119,8 +123,8 @@ function GuildForm({ group, busy, onAction, onCancel, onCreate }: {
   }
   return <form className="sharing-form" onSubmit={save}>
     <Field label="Tên bang"><input name="name" defaultValue={group?.name} minLength={2} maxLength={60} required disabled={busy} /></Field>
-    <Field label="Ký hiệu viết tắt"><input name="code" defaultValue={group?.code} placeholder="C1" maxLength={13} required disabled={busy} /></Field>
-    <FormFooter label={group ? "Lưu Bang hội" : "Đọc hướng dẫn lập bang"} busy={busy} onCancel={onCancel} />
+    {!group && <Field label="Ký hiệu viết tắt"><input name="code" placeholder="C1" maxLength={13} required disabled={busy} /></Field>}
+    <FormFooter label={group ? "Lưu tên bang" : "Đọc hướng dẫn lập bang"} busy={busy} onCancel={onCancel} />
   </form>;
 }
 
@@ -138,7 +142,8 @@ function SharingConsentDialog({ consent, busy, onAction, onClose }: {
       ...consent.data, consentVersion: sharingConsentVersion, acceptedGuide: true,
     }, command.message, setError)) onClose();
   }
-  return createPortal(<Dialog title={guild ? "Hướng dẫn tham gia Bang hội" : "Hướng dẫn tham gia Cupid"} description={consent.label}
+  return createPortal(<Dialog title={guild ? "Hướng dẫn tham gia Bang hội" : "Hướng dẫn tham gia Cupid"}
+    description={<>{consent.label}{consent.hashtag && <> · #{consent.hashtag}</>}</>}
     wide focusDialog busy={busy} onClose={onClose}>
     <form className="sharing-guide" onSubmit={submit}>
       <section>
@@ -156,8 +161,8 @@ function SharingConsentDialog({ consent, busy, onAction, onClose }: {
       <section>
         <h3>Quyền và hiển thị</h3>
         <p>Mỗi người có một Cupid hoặc một Bang hội tại một thời điểm. Bạn xem lịch sử các giai đoạn của mình trong Góc của tôi.</p>
-        {guild ? <p>Ký hiệu bang hiện cạnh tên mọi thành viên. Thủ lĩnh có thể mời, mời thành viên rời bang hoặc chuyển quyền. Bạn có thể tự rời và thủ lĩnh chuyển quyền trước khi rời nếu bang còn người.</p>
-          : <p>Cupid bắt đầu khi cả hai đã đồng ý. Một trong hai có thể kết thúc ngay. Thẻ hồ sơ hiện cặp đang ghép và những hashtag đã được người nhận duyệt.</p>}
+        {guild ? <p>Bang có một ký hiệu cố định hiện cạnh tên mọi thành viên. Thủ lĩnh có thể mời người vào bang, mời thành viên rời bang hoặc chuyển quyền. Bạn có thể tự rời và thủ lĩnh chuyển quyền trước khi rời nếu bang còn người.</p>
+          : <p>Cupid bắt đầu khi cả hai đã đồng ý. Cả hai dùng chung một hashtag cố định hiện cạnh tên. Một trong hai có thể kết thúc Cupid bất cứ lúc nào.</p>}
       </section>
       <label className="sharing-guide-check"><input type="checkbox" checked={acknowledged} disabled={busy} onChange={event => setAcknowledged(event.target.checked)} />
         Tôi đã đọc hướng dẫn và đồng ý chia cả điểm cộng lẫn điểm trừ
@@ -168,33 +173,32 @@ function SharingConsentDialog({ consent, busy, onAction, onClose }: {
   </Dialog>, document.body);
 }
 
-function CupidTags({ group, me, tags, busy, onAction }: {
-  group: PublicSharingGroup; me: Member; tags: SharingMine["tags"]; busy: boolean; onAction: SharingAction;
+function CupidTagSetup({ group, memberId, pending, busy, onAction }: {
+  group: PublicSharingGroup; memberId: string; pending?: CupidTag; busy: boolean; onAction: SharingAction;
 }) {
-  const own = tags.filter(tag => tag.authorId === me.id);
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    if (await onAction("proposeCupidTag", { groupId: group.id, text: new FormData(form).get("text") }, "Đã gửi hashtag để duyệt")) form.reset();
+    const text = new FormData(event.currentTarget).get("text");
+    await onAction("proposeCupidTag", { groupId: group.id, text }, "Đã gửi đề xuất hashtag");
   }
+  const receiving = pending?.memberId === memberId;
   return <div className="sharing-tag-editor">
     <h3>Hashtag của cặp</h3>
-    <form className="sharing-form sharing-tag-form" onSubmit={add}>
-      <Field label="Hashtag cho người kia">
-        <input name="text" required maxLength={31} placeholder="#TrựcC1CóNhau" disabled={busy || own.length >= 3} />
-      </Field>
-      <Button type="submit" disabled={busy || own.length >= 3}>Gửi hashtag</Button>
-    </form>
-    <p className="hint">{own.length}/3 hashtag đã đặt</p>
-    {tags.length > 0 && <ul className="sharing-tag-list">{tags.map(tag => <li key={tag.id}>
-      <span><strong>#{tag.text}</strong> · {tag.approved ? "Đã duyệt" : "Chờ duyệt"}</span>
+    <p className="hint">Hashtag hiện cạnh tên cả hai và được chốt sau khi người kia duyệt</p>
+    {pending ? <>
+      <p><strong>#{pending.text}</strong> · Chờ duyệt</p>
       <div className="sharing-actions">
-        {!tag.approved && tag.memberId === me.id && <Button disabled={busy}
-          onClick={() => void onAction("approveCupidTag", { groupId: group.id, tagId: tag.id }, "Đã duyệt hashtag")}>Duyệt hashtag</Button>}
+        {receiving && <Button disabled={busy}
+          onClick={() => void onAction("approveCupidTag", { groupId: group.id, tagId: pending.id }, "Đã chốt hashtag")}>Duyệt hashtag</Button>}
         <Button variant="secondary" disabled={busy}
-          onClick={() => void onAction("removeCupidTag", { groupId: group.id, tagId: tag.id }, "Đã gỡ hashtag")}>Gỡ hashtag</Button>
+          onClick={() => void onAction("removeCupidTag", { groupId: group.id, tagId: pending.id }, "Đã bỏ đề xuất hashtag")}>
+          {receiving ? "Từ chối hashtag" : "Rút đề xuất"}
+        </Button>
       </div>
-    </li>)}</ul>}
+    </> : <form className="sharing-form sharing-tag-form" onSubmit={add}>
+      <CupidTagField busy={busy} />
+      <Button type="submit" disabled={busy}>Gửi hashtag</Button>
+    </form>}
   </div>;
 }
 
@@ -215,7 +219,7 @@ function GroupActions({ group, me, candidates, busy, onAction }: {
     <div className="sharing-actions">
       {leader && <>
         <Button variant="secondary" disabled={busy} onClick={() => setEditor("invite")}>Mời người vào bang</Button>
-        <Button variant="secondary" disabled={busy} onClick={() => setEditor("edit")}>Sửa tên và ký hiệu</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => setEditor("edit")}>Sửa tên bang</Button>
         {others.length > 0 && <Button variant="secondary" disabled={busy} onClick={() => setEditor("transfer")}>Chuyển quyền thủ lĩnh</Button>}
       </>}
       <Button variant="danger" disabled={busy || (leader && others.length > 0)} onClick={() => setConfirm({})}>{leaveLabel}</Button>
@@ -230,12 +234,12 @@ function GroupActions({ group, me, candidates, busy, onAction }: {
     {leader && others.length > 0 && <details className="sharing-members-admin">
       <summary>Quản lý thành viên bang</summary>
       <ul>{others.map(member => <li key={member.id}>
-        <MemberName memberId={member.id} showSharing={false} />
+        <MemberName memberId={member.id} />
         <Button variant="danger" disabled={busy} onClick={() => setConfirm({ memberId: member.id })}>Mời rời bang</Button>
       </li>)}</ul>
     </details>}
     {confirm && createPortal(<Dialog title={confirm.memberId ? "Mời thành viên rời bang" : leaveLabel}
-      description={confirm.memberId ? <MemberName memberId={confirm.memberId} showSharing={false} /> : groupLabel(group)}
+      description={confirm.memberId ? <MemberName memberId={confirm.memberId} /> : groupLabel(group)}
       busy={busy} onClose={() => setConfirm(undefined)}>
       <div className="sharing-dialog">
         <p>Điểm đã chia sẽ được chốt theo danh sách hiện tại.</p>
@@ -287,13 +291,15 @@ export default function SharingPanel({ me, view, target, busy, onAction }: {
       const incoming = invite.toId === me.id;
       return <article className="sharing-invite" key={invite.id} tabIndex={-1} data-sharing-target={invite.id}>
         <h3>{invite.kind === "cupid" ? "Lời mời ghép Cupid" : "Lời mời vào Bang hội"}</h3>
-        <p>{incoming ? "Từ " : "Gửi đến "}<MemberName memberId={incoming ? invite.fromId : invite.toId} />{invite.groupName && ` · ${invite.groupName} #${invite.groupCode}`}</p>
+        <p>{incoming ? "Từ " : "Gửi đến "}<MemberName memberId={incoming ? invite.fromId : invite.toId} />{invite.groupName && ` · ${invite.groupName}`}</p>
+        {invite.cupidTag && <p>Hashtag chung <strong>#{invite.cupidTag}</strong></p>}
         {incoming && <p className="hint">{sharingRule}{invite.groupSize && `. Bang sẽ có ${invite.groupSize + 1} người khi bạn tham gia`}</p>}
         <div className="sharing-actions">
           {incoming ? <>
             <Button disabled={busy} onClick={() => setConsent({
               mode: invite.kind === "cupid" ? "joinCupid" : "joinGuild",
               label: invite.groupName ?? identity?.members.get(invite.fromId)?.name ?? "Cupid",
+              hashtag: invite.cupidTag ?? invite.groupCode,
               count: invite.groupSize ? invite.groupSize + 1 : 2,
               data: { id: invite.id, accept: true, groupPeriodId: invite.groupPeriodId },
             })}>Đọc hướng dẫn và xác nhận</Button>
@@ -307,7 +313,7 @@ export default function SharingPanel({ me, view, target, busy, onAction }: {
     {group ? <div className="sharing-current" tabIndex={-1} data-sharing-target={group.id}>
       <GroupCard group={group} profileMemberId={me.id} />
       <GroupActions key={group.id} group={group} me={me} candidates={candidates} busy={busy} onAction={onAction} />
-      {group.kind === "cupid" && <CupidTags group={group} me={me} tags={mine.tags} busy={busy} onAction={onAction} />}
+      {group.kind === "cupid" && !group.hashtag && <CupidTagSetup group={group} memberId={me.id} pending={mine.tags[0]} busy={busy} onAction={onAction} />}
       {mine.current && <div className="sharing-score-card">
         <h3>Điểm đóng góp giai đoạn này</h3>
         <p className="hint">Từ {dateTime.format(mine.current.startedAt)}</p>
@@ -321,12 +327,16 @@ export default function SharingPanel({ me, view, target, busy, onAction }: {
         <Button variant="secondary" disabled={busy} onClick={() => setEditor("guild")}><Shield size={16} aria-hidden="true" /> Lập Bang hội</Button>
       </div>
       {editor === "cupid" && <PeopleForm people={candidates} label="Người được mời ghép Cupid" verb="Gửi lời mời Cupid"
-        busy={busy} onCancel={() => setEditor(undefined)} onSelect={async memberId => {
-          setConsent({ mode: "sendCupid", label: identity?.members.get(memberId)?.name ?? "Cupid", count: 2, data: { memberId } });
+        withCupidTag busy={busy} onCancel={() => setEditor(undefined)} onSelect={async (memberId, cupidTag) => {
+          setConsent({ mode: "sendCupid", label: identity?.members.get(memberId)?.name ?? "Cupid", hashtag: sharingTagText(cupidTag),
+            count: 2, data: { memberId, cupidTag } });
           return true;
         }} />}
       {editor === "guild" && <GuildForm busy={busy} onAction={onAction} onCancel={() => setEditor(undefined)}
-        onCreate={data => { setConsent({ mode: "createGuild", label: String(data.name), count: 1, data }); setEditor(undefined); }} />}
+        onCreate={data => {
+          setConsent({ mode: "createGuild", label: String(data.name), hashtag: sharingTagText(data.code).toUpperCase(), count: 1, data });
+          setEditor(undefined);
+        }} />}
     </div>}
     {mine.history.length > 0 && <div className="sharing-history">
       <h3>Lịch sử chia điểm</h3>

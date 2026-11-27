@@ -256,9 +256,6 @@ export default function Workspace() {
       if (!signal?.aborted) setLoading(false);
     }
   }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
   const activeSession = Boolean(view?.me?.active);
   useEffect(() => {
     if (!activeSession) return;
@@ -277,13 +274,13 @@ export default function Workspace() {
     }
   }, []);
   useEffect(() => {
-    if (tab !== "members" && tab !== "feedback" && !sidebarGroups.scoreboard.sections.includes(tab) && !profileId) return;
+    if (tab === "bulletin" && activeSession && !profileId) return;
     const controller = new AbortController();
     void load(controller.signal).then(() => {
       if (feedbackTarget && !controller.signal.aborted) setLoadedFeedbackTarget(feedbackTarget);
     });
     return () => controller.abort();
-  }, [load, tab, profileId, feedbackTarget]);
+  }, [load, tab, profileId, feedbackTarget, activeSession]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), toast.error ? 7500 : 4000);
@@ -483,7 +480,7 @@ export default function Workspace() {
     closeProfile();
     go("personal");
     setSharingTarget({ id });
-    void load();
+    if (tab === "personal") void load();
   }
   if (loading) return <Loading />;
   if (auth) return <Login onSuccess={load} />;
@@ -1208,7 +1205,7 @@ export default function Workspace() {
                     .filter((a) => a.memberId === m.id).length ?? 0;
                 return (
                   <MemberOption key={m.id} memberId={m.id}>
-                    {m.name} · {turns} ca
+                    {" · "}{turns} ca
                     {m.extraDuties ? " · Muốn trực thêm" : ""}
                   </MemberOption>
                 );
@@ -1240,7 +1237,7 @@ export default function Workspace() {
           <Field label="Thành viên">
             <select name="memberId" required defaultValue="">
               <option value="" disabled>Chọn thành viên</option>
-              {candidates.map(member => <MemberOption key={member.id} memberId={member.id}>{member.name}{member.studentId ? ` · ${member.studentId}` : ""}</MemberOption>)}
+              {candidates.map(member => <MemberOption key={member.id} memberId={member.id}>{member.studentId ? ` · ${member.studentId}` : ""}</MemberOption>)}
             </select>
           </Field>
           <p className="hint">Điểm được ghi theo kết quả xác minh của ca trực</p>

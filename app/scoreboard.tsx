@@ -51,20 +51,6 @@ const monthlyColumns = [
   { key: "passed", label: "Đạt phiếu điểm danh" },
 ] as const;
 
-export function ScoreMemberName({ memberId, name }: { memberId: string; name?: string }) {
-  const group = useMemberIdentity()?.sharingGroups?.get(memberId);
-  const labels = group?.kind === "cupid"
-    ? group.hashtags.filter(tag => tag.memberId === memberId).map(tag => tag.text)
-    : group?.code ? [group.code] : [];
-  return <>
-    <MemberName as="strong" memberId={memberId} name={name} showGuildCode={false} />
-    {labels.length > 0 && <span className="score-sharing-tags" data-kind={group?.kind}>
-      {labels.map(label => <span key={label} className={group?.kind === "guild" ? "sharing-code" : "sharing-tag"}
-        title={group?.kind === "guild" ? group.name : undefined}>#{label}</span>)}
-    </span>}
-  </>;
-}
-
 function ScoreMetric({ label, count, unit, points }: {
   label: string; count?: number; unit?: string; points?: number;
 }) {
@@ -115,7 +101,7 @@ function MobileScoreList({ rows, memberId, period }: {
           <summary>
             <ScoreAvatar row={row} index={index} showNumber />
             <span className="mobile-score-name">
-              <ScoreMemberName memberId={row.memberId} name={row.name} />
+              <MemberName as="strong" memberId={row.memberId} name={row.name} />
               {memberId === row.memberId && <small className="score-self">Bạn</small>}
               {row.tier && <RankTitle tier={row.tier} />}
               {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
@@ -198,7 +184,7 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
             </tr></thead>
             <tbody>{visible.map((row, index) => {
               const name = <span className="score-name">
-                <ScoreMemberName memberId={row.memberId} name={row.name} />
+                <MemberName as="strong" memberId={row.memberId} name={row.name} />
                 {memberId === row.memberId && !onlyMine && <small className="score-self">Bạn</small>}
                 {row.committeeNames && <small className="score-committee">{row.committeeNames}</small>}
               </span>;

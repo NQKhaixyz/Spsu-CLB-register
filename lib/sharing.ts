@@ -1,6 +1,6 @@
 import type { Club, Member } from "./club";
 import { roundSharingScore, settleSharingPeriod, type sharingScoreBook } from "./sharing-scores";
-import { activeSharingPeriod, canJoinSharing, sharingConsentVersion, type SharingGroup, type SharingGroupSummary, type SharingInvite,
+import { activeSharingPeriod, canJoinSharing, sharingConsentVersion, sharingTagText, type SharingGroup, type SharingGroupSummary, type SharingInvite,
   type SharingKind, type SharingNoticeKind, type SharingPeriod, type SharingState, type SharingView } from "./sharing-types";
 
 const actions = new Set(["inviteCupid", "createGuild", "inviteGuild", "answerSharingInvite", "recallSharingInvite",
@@ -42,20 +42,36 @@ function replaceRoster(club: Club, group: SharingGroup, period: SharingPeriod, m
   if (memberIds.length) group.periods.push({ id: newId(), memberIds, startedAt: now });
 }
 
-function guildFields(state: SharingState, data: Record<string, unknown>, group?: SharingGroup) {
-  const name = typeof data.name === "string" ? data.name.trim() : "";
-  const code = typeof data.code === "string" ? data.code.normalize("NFC").trim().replace(/^#/, "").toUpperCase() : "";
+function guildName(value: unknown) {
+  const name = typeof value === "string" ? value.trim() : "";
   need(name.length >= 2 && name.length <= 60, "Tên bang cần từ 2 đến 60 ký tự");
+  return name;
+}
+
+function guildFields(state: SharingState, data: Record<string, unknown>) {
+  const name = guildName(data.name);
+  const code = sharingTagText(data.code).toUpperCase();
   need(/^[\p{L}\p{N}_-]{1,12}$/u.test(code), "Ký hiệu bang cần từ 1 đến 12 chữ, số, gạch ngang hoặc gạch dưới");
-  need(!state.groups.some(item => item !== group && item.code === code && activeSharingPeriod(item)), "Ký hiệu này đang được một bang khác dùng");
+  need(!state.groups.some(item => item.kind === "guild" && item.code === code && activeSharingPeriod(item)), "Ký hiệu này đang được một bang khác dùng");
   return { name, code };
+}
+
+function cupidHashtag(group: SharingGroup) {
+  return group.hashtag ?? group.tags?.find(tag => tag.approved)?.text;
+}
+
+function validateCupidTag(value: unknown) {
+  const text = sharingTagText(value);
+  need(/^[\p{L}\p{N}_-]{1,30}$/u.test(text), "Hashtag Cupid cần từ 1 đến 30 chữ, số, gạch ngang hoặc gạch dưới");
+  return text;
 }
 
 function leaveGroup(club: Club, state: SharingState, group: SharingGroup, period: SharingPeriod, memberId: string,
   actorId: string | undefined, now: number, forced: boolean) {
   if (group.kind === "cupid") {
     replaceRoster(club, group, period, [], now);
-    group.tags = [];
+    delete group.tags;
+    delete group.hashtag;
     notify(state, period.memberIds, actorId, "cupidEnded", group.id, now);
   } else {
     const remaining = period.memberIds.filter(id => id !== memberId);
@@ -70,7 +86,8 @@ function leaveGroup(club: Club, state: SharingState, group: SharingGroup, period
   }
 }
 
-function sendInvite(club: Club, state: SharingState, me: Member, toId: unknown, now: number, group?: SharingGroup) {
+function sendInvite(club: Club, state: SharingState, me: Member, toId: unknown, now: number,
+  { group, cupidTag }: { group?: SharingGroup; cupidTag?: string }) {
   const to = club.members.find(member => member.id === toId);
   need(to && to.id !== me.id && canJoinSharing(to), "Chọn một tài khoản thành viên đang hoạt động");
   need(!currentGroup(state, to.id), "Thành viên này đang có Cupid hoặc Bang hội");
@@ -80,7 +97,7 @@ function sendInvite(club: Club, state: SharingState, me: Member, toId: unknown, 
       (invite.toId === me.id && invite.fromId === to.id)));
   need(!duplicate, "Đã có lời mời đang chờ giữa các bên");
   const invite: SharingInvite = { id: newId(), kind: group ? "guild" : "cupid", groupId: group?.id, fromId: me.id, toId: to.id,
-    consentVersion: group ? undefined : sharingConsentVersion };
+    consentVersion: group ? undefined : sharingConsentVersion, cupidTag };
   state.invites.push(invite);
   notify(state, [to.id], me.id, group ? "guildInvite" : "cupidInvite", invite.id, now);
 }
@@ -97,7 +114,8 @@ function answerInvite(club: Club, state: SharingState, me: Member, data: Record<
       const inviter = club.members.find(member => member.id === invite.fromId);
       need(inviter && canJoinSharing(inviter) && !currentGroup(state, inviter.id), "Người mời đã có vai trò hoặc đã ngừng hoạt động");
       const memberIds = [inviter.id, me.id];
-      const group: SharingGroup = { id: invite.id, kind: "cupid", name: "Cupid", periods: [{ id: newId(), memberIds, startedAt: now }] };
+      const group: SharingGroup = { id: invite.id, kind: "cupid", name: "Cupid", hashtag: invite.cupidTag,
+        periods: [{ id: newId(), memberIds, startedAt: now }] };
       state.groups.push(group);
       notify(state, memberIds, me.id, "cupidAccepted", group.id, now);
     } else {
@@ -113,31 +131,26 @@ function answerInvite(club: Club, state: SharingState, me: Member, data: Record<
   state.invites = state.invites.filter(item => item.id !== invite.id);
 }
 
-function changeTag(state: SharingState, group: SharingGroup, period: SharingPeriod, me: Member, action: string,
+function changeCupidTag(state: SharingState, group: SharingGroup, period: SharingPeriod, me: Member, action: string,
   data: Record<string, unknown>, now: number) {
   need(group.kind === "cupid", "Hashtag này thuộc cặp Cupid");
-  const tags = group.tags ??= [];
+  need(!cupidHashtag(group), "Hashtag Cupid đã được chốt cho cặp này");
+  const pending = group.tags?.[0];
   if (action === "proposeCupidTag") {
+    need(!pending, "Cặp này đã có một đề xuất hashtag đang chờ duyệt");
     const memberId = period.memberIds.find(id => id !== me.id);
     need(memberId, "Chưa có người nhận hashtag");
-    const text = typeof data.text === "string" ? data.text.normalize("NFC").trim().replace(/^#/, "") : "";
-    need(/^[\p{L}\p{N}_-]{1,30}$/u.test(text), "Hashtag cần từ 1 đến 30 chữ, số, gạch ngang hoặc gạch dưới");
-    const own = tags.filter(tag => tag.authorId === me.id);
-    need(own.length < 3, "Mỗi người được đặt tối đa ba hashtag");
-    need(!own.some(tag => tag.text.toLocaleLowerCase("vi") === text.toLocaleLowerCase("vi")), "Hashtag này đã có");
-    tags.push({ id: newId(), authorId: me.id, memberId, text, approved: false });
+    const text = validateCupidTag(data.text);
+    group.tags = [{ id: newId(), authorId: me.id, memberId, text, approved: false }];
     notify(state, [memberId], me.id, "cupidTag", group.id, now);
     return;
   }
-  const tag = tags.find(item => item.id === data.tagId);
-  need(tag, "Hashtag đã được gỡ");
+  need(pending && pending.id === data.tagId, "Đề xuất hashtag đã hết hiệu lực");
   if (action === "approveCupidTag") {
-    need(tag.memberId === me.id, "Chỉ người được gắn hashtag mới được duyệt");
-    tag.approved = true;
-  } else {
-    need(tag.memberId === me.id || tag.authorId === me.id, "Bạn chưa có quyền gỡ hashtag này");
-    group.tags = tags.filter(item => item.id !== tag.id);
+    need(pending.memberId === me.id, "Chỉ người nhận đề xuất mới được duyệt");
+    group.hashtag = pending.text;
   }
+  delete group.tags;
 }
 
 export function applySharingAction(club: Club, me: Member, action: string, data: Record<string, unknown>, now = Date.now()) {
@@ -156,7 +169,7 @@ export function applySharingAction(club: Club, me: Member, action: string, data:
   } else if (action === "inviteCupid" || action === "createGuild") {
     need(!group, "Mỗi thành viên chỉ có thể có một Cupid hoặc Bang hội");
     requireSharingConsent(data);
-    if (action === "inviteCupid") sendInvite(club, state, me, data.memberId, now);
+    if (action === "inviteCupid") sendInvite(club, state, me, data.memberId, now, { cupidTag: validateCupidTag(data.cupidTag) });
     else {
       const fields = guildFields(state, data);
       state.groups.push({ id: newId(), kind: "guild", ...fields, leaderId: me.id,
@@ -169,11 +182,14 @@ export function applySharingAction(club: Club, me: Member, action: string, data:
       need(data.confirm === group.id, "Xác nhận trước khi kết thúc hoặc rời nhóm");
       leaveGroup(club, state, group, period, me.id, me.id, now, false);
     } else if (action === "proposeCupidTag" || action === "approveCupidTag" || action === "removeCupidTag") {
-      changeTag(state, group, period, me, action, data, now);
+      changeCupidTag(state, group, period, me, action, data, now);
     } else {
       need(group.kind === "guild" && group.leaderId === me.id, "Chỉ thủ lĩnh được quản lý Bang hội");
-      if (action === "inviteGuild") sendInvite(club, state, me, data.memberId, now, group);
-      if (action === "editGuild") Object.assign(group, guildFields(state, data, group));
+      if (action === "inviteGuild") sendInvite(club, state, me, data.memberId, now, { group });
+      if (action === "editGuild") {
+        need(data.code === undefined || sharingTagText(data.code).toUpperCase() === group.code, "Ký hiệu của Bang hội đã được chốt");
+        group.name = guildName(data.name);
+      }
       if (action === "transferGuildLeader" || action === "removeGuildMember") {
         const memberId = period.memberIds.find(id => id === data.memberId && id !== me.id);
         need(memberId, "Chọn một thành viên khác trong bang");
@@ -238,6 +254,7 @@ export function sharingViewFor(club: Club, me: Member, book: Book, now = Date.no
   const groups = state?.groups ?? [];
   const active = state && currentGroup(state, me.id);
   const current = active && activeSharingPeriod(active);
+  const pendingTag = active?.kind === "cupid" && !cupidHashtag(active) ? active.tags?.[0] : undefined;
   const eligible = canJoinSharing(me);
   const occupied = new Set(groups.flatMap(group => activeSharingPeriod(group)?.memberIds ?? []));
   const history = groups.flatMap(group => group.periods.filter(period => period.endedAt !== undefined && period.memberIds.includes(me.id))
@@ -247,10 +264,13 @@ export function sharingViewFor(club: Club, me: Member, book: Book, now = Date.no
       const period = activeSharingPeriod(group);
       if (!period) return [];
       const startedAt = group.periods[0].startedAt;
+      const hashtag = group.kind === "cupid" ? cupidHashtag(group) : group.code;
       return [{ id: group.id, kind: group.kind, name: group.name, code: group.code, leaderId: group.leaderId,
         memberIds: period.memberIds, startedAt, sevenDays: group.kind === "cupid" && now - startedAt >= sevenDaysMs,
         jointEvent: !!group.jointEvent || book.jointEvents.has(group.id),
-        hashtags: (group.tags ?? []).filter(tag => tag.approved).map(({ memberId, text }) => ({ memberId, text })),
+        hashtag,
+        // Cached versions use this list to render the shared Cupid hashtag.
+        hashtags: group.kind === "cupid" && hashtag ? period.memberIds.map(memberId => ({ memberId, text: hashtag })) : [],
       }];
     }),
     mine: eligible || history.length ? {
@@ -264,7 +284,7 @@ export function sharingViewFor(club: Club, me: Member, book: Book, now = Date.no
         return [{ ...invite, groupName: guild?.name, groupCode: guild?.code,
           groupSize: roster?.memberIds.length, groupPeriodId: roster?.id }];
       }),
-      tags: active?.tags ?? [],
+      tags: pendingTag ? [pendingTag] : [],
       current: active && current ? periodSummary(active, current, book) : undefined,
       history,
     } : undefined,

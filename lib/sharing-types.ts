@@ -16,6 +16,7 @@ export type SharingGroup = {
   code?: string;
   leaderId?: string;
   periods: SharingPeriod[];
+  hashtag?: string;
   tags?: CupidTag[];
   jointEvent?: boolean;
 };
@@ -27,6 +28,7 @@ export type SharingInvite = {
   fromId: string;
   toId: string;
   consentVersion?: number;
+  cupidTag?: string;
 };
 
 export type LockedShare = {
@@ -86,6 +88,7 @@ export type PublicSharingGroup = {
   startedAt: number;
   sevenDays: boolean;
   jointEvent: boolean;
+  hashtag?: string;
   hashtags: { memberId: string; text: string }[];
 };
 export type SharingGroupSummary = {
@@ -111,6 +114,10 @@ export type SharingView = {
 
 export const sharingRule = "Điểm cộng và điểm trừ được chia đều theo số người tại thời điểm hoạt động. Khi đổi thành viên, phần đã chia được chốt theo danh sách cũ";
 export const sharingConsentVersion = 1;
+
+export function sharingTagText(value: unknown) {
+  return typeof value === "string" ? value.normalize("NFC").trim().replace(/^#/, "") : "";
+}
 
 export function activeSharingPeriod(group: SharingGroup) {
   const period = group.periods.at(-1);

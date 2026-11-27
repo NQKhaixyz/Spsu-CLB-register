@@ -62,7 +62,7 @@ test("Guide confirmation, current roster and a single role are verified before m
   const pendingB = invite(guild, b);
   const pendingC = invite(guild, c);
   const solo = activeSharingPeriod(guild)!;
-  doAs(c, "inviteCupid", { memberId: b.id, ...consent });
+  doAs(c, "inviteCupid", { memberId: b.id, cupidTag: "CùngNhịp", ...consent });
   const relationship = club.sharing!.invites.find(invite => invite.kind === "cupid")!;
   assert.deepEqual(solo.memberIds, [a.id]);
   assert.throws(() => doAs(b, "answerSharingInvite", { id: pendingB.id, accept: true, groupPeriodId: solo.id }), /Đọc hướng dẫn/);
@@ -75,8 +75,11 @@ test("Guide confirmation, current roster and a single role are verified before m
   assert.equal(guild.code, "C1");
   assert.throws(() => doAs(b, "editGuild", { groupId: guild.id, name: "Khác", code: "X" }), /thủ lĩnh/);
   assert.throws(() => doAs(a, "inviteCupid", { memberId: b.id, ...consent }), /một Cupid hoặc Bang hội/);
-  doAs(a, "editGuild", { groupId: guild.id, name: "Đội SPSU", code: "#spsu" });
-  assert.deepEqual(sharingViewFor(club, b, sharingScoreBook(club)).groups.map(group => group.code), ["SPSU"]);
+  assert.throws(() => doAs(a, "editGuild", { groupId: guild.id, name: "Đội SPSU", code: "#spsu" }), /đã được chốt/);
+  doAs(a, "editGuild", { groupId: guild.id, name: "Đội SPSU" });
+  const [publicGuild] = sharingViewFor(club, b, sharingScoreBook(club)).groups;
+  assert.equal(publicGuild.name, "Đội SPSU");
+  assert.equal(publicGuild.hashtag, "C1");
 });
 
 test("Three-member signed shares reconcile across months, ranks and Excel and stay locked through later changes", async () => {
@@ -129,10 +132,16 @@ test("Three-member signed shares reconcile across months, ranks and Excel and st
   assert.equal("sharing" in workspaceView(club, identity(observer), 1).club, false);
 });
 
-test("Cupid protects tags and history, uses recorded event and shift hours and keeps the two halves after a breakup", () => {
+test("Cupid shares one fixed hashtag after consent, uses recorded hours, and keeps the two halves after a breakup", () => {
   const { club, a, b, c, observer, doAs } = fixture();
-  doAs(a, "inviteCupid", { memberId: b.id, ...consent });
+  assert.throws(() => doAs(a, "inviteCupid", { memberId: b.id, cupidTag: "#Trực C1", ...consent }), /Hashtag Cupid/);
+  doAs(a, "inviteCupid", { memberId: b.id, cupidTag: " #TrựcC1CóNhau ", ...consent });
   const invitation = club.sharing!.invites[0];
+  const before = sharingScoreBook(club);
+  const outsider = sharingViewFor(club, observer, before);
+  assert.deepEqual(outsider.groups, []);
+  assert.deepEqual(outsider.mine?.invited, []);
+  assert.equal(sharingViewFor(club, b, before).mine?.invited[0].cupidTag, "TrựcC1CóNhau");
   assert.equal(memberNotificationsFor(club, observer.id).length, 0);
   const incoming = memberNotificationsFor(club, b.id)[0];
   assert.equal(incoming.kind, "cupidInvite");
@@ -140,13 +149,10 @@ test("Cupid protects tags and history, uses recorded event and shift hours and k
   assert.equal(markMemberNotificationRead(club, b.id, incoming.id), true);
   doAs(b, "answerSharingInvite", { id: invitation.id, accept: true, ...consent }, time("2026-10-29", "14:05"));
   const group = club.sharing!.groups[0];
-  for (const text of ["#TrựcC1CóNhau", "#Nhịp", "#Đội"]) doAs(a, "proposeCupidTag", { groupId: group.id, text });
-  assert.throws(() => doAs(a, "proposeCupidTag", { groupId: group.id, text: "#tag4" }), /tối đa ba/);
-  const tag = group.tags![0];
-  assert.deepEqual(sharingViewFor(club, observer, sharingScoreBook(club)).groups[0].hashtags, []);
-  assert.throws(() => doAs(a, "approveCupidTag", { groupId: group.id, tagId: tag.id }), /người được gắn/);
-  doAs(b, "approveCupidTag", { groupId: group.id, tagId: tag.id });
-  assert.equal(sharingViewFor(club, observer, sharingScoreBook(club)).groups[0].hashtags[0].text, "TrựcC1CóNhau");
+  const [publicCup] = sharingViewFor(club, observer, sharingScoreBook(club)).groups;
+  assert.equal(publicCup.hashtag, "TrựcC1CóNhau");
+  assert.deepEqual(publicCup.memberIds, [a.id, b.id]);
+  assert.throws(() => doAs(a, "proposeCupidTag", { groupId: group.id, text: "#tag2" }), /đã được chốt/);
 
   club.schedules.push({ month: "2026-10", published: true, shifts: [{
     id: "shift-before", date: "2026-10-29", period: "am", startTime: "08:00",
@@ -177,6 +183,47 @@ test("Cupid protects tags and history, uses recorded event and shift hours and k
   assert.equal(sharingViewFor(club, observer, sharingScoreBook(club)).groups.length, 0);
   assert.equal(sharingViewFor(club, observer, sharingScoreBook(club)).mine?.history.length, 0);
   assert.equal(sharingViewFor(club, b, sharingScoreBook(club)).mine?.history.length, 1);
+});
+
+test("Existing Cupid pairs with multiple hashtags keep the first approved one for both people", () => {
+  const { club, a, b, observer, doAs } = fixture();
+  club.sharing = { invites: [], locked: [], notices: [], groups: [{
+    id: "legacy-cupid", kind: "cupid", name: "Cupid",
+    periods: [{ id: "legacy-period", memberIds: [a.id, b.id], startedAt: time("2026-10-29") }],
+    tags: [
+      { id: "pending", authorId: a.id, memberId: b.id, text: "ChưaDuyệt", approved: false },
+      { id: "first", authorId: b.id, memberId: a.id, text: "CùngNhịp", approved: true },
+      { id: "second", authorId: a.id, memberId: b.id, text: "TrựcC1", approved: true },
+    ],
+  }] };
+  const book = sharingScoreBook(club);
+  const [group] = sharingViewFor(club, observer, book).groups;
+  assert.equal(group.hashtag, "CùngNhịp");
+  assert.deepEqual(group.hashtags, [a.id, b.id].map(memberId => ({ memberId, text: "CùngNhịp" })));
+  assert.deepEqual(sharingViewFor(club, b, book).mine?.tags, []);
+  assert.throws(() => doAs(b, "removeCupidTag", { groupId: group.id, tagId: "first" }), /đã được chốt/);
+});
+
+test("An older Cupid invitation can establish a single hashtag with the recipient's approval", () => {
+  const { club, a, b, observer, doAs } = fixture();
+  doAs(a, "inviteCupid", { memberId: b.id, cupidTag: "CùngNhịp", ...consent });
+  const invite = club.sharing!.invites[0];
+  delete invite.cupidTag;
+  doAs(b, "answerSharingInvite", { id: invite.id, accept: true, ...consent });
+  const group = club.sharing!.groups[0];
+  doAs(a, "proposeCupidTag", { groupId: group.id, text: "CùngNhịp" });
+  const pending = group.tags![0];
+  const book = sharingScoreBook(club);
+  assert.equal(sharingViewFor(club, observer, book).groups[0].hashtag, undefined);
+  assert.deepEqual(sharingViewFor(club, observer, book).mine?.tags, []);
+  assert.deepEqual(sharingViewFor(club, b, book).mine?.tags, [pending]);
+  assert.throws(() => doAs(b, "proposeCupidTag", { groupId: group.id, text: "TagKhác" }), /đang chờ duyệt/);
+  assert.throws(() => doAs(a, "approveCupidTag", { groupId: group.id, tagId: pending.id }), /người nhận đề xuất/);
+  doAs(b, "removeCupidTag", { groupId: group.id, tagId: pending.id });
+  doAs(b, "proposeCupidTag", { groupId: group.id, text: "TrựcC1" });
+  doAs(a, "approveCupidTag", { groupId: group.id, tagId: group.tags![0].id });
+  assert.equal(sharingViewFor(club, observer, book).groups[0].hashtag, "TrựcC1");
+  assert.equal(group.tags, undefined);
 });
 
 test("Leader permissions, automatic succession and member deletion keep historical payouts private and usable", () => {
