@@ -2,9 +2,11 @@
 
 import { Bookmark, CalendarClock, ChevronLeft, Ellipsis, Heart, MessageCircle, Newspaper, Pencil, Plus, Share2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { bulletinCommentLimit, bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, parseBulletinDate, type BulletinAuthor, type BulletinPostView } from "../lib/bulletin";
+import { bulletinCommentLimit, parseBulletinDate, type BulletinAuthor, type BulletinPostView } from "../lib/bulletin";
 import { uid } from "../lib/club";
-import { Avatar, Button, Dialog, Empty, Field, FormFooter } from "./ui";
+import { BulletinAttachments } from "./bulletin-attachments";
+import { BulletinComposer } from "./bulletin-composer";
+import { Avatar, Button, Dialog, Empty, Field } from "./ui";
 
 type Overlay =
   | { mode: "edit"; id: string; original?: BulletinPostView }
@@ -209,22 +211,22 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
     return () => { clearTimeout(timer); controller.abort(); };
   }, [nextChangeAt, onOpen]);
 
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (overlay?.mode !== "edit") return;
-    const fields = new FormData(event.currentTarget);
+  async function save(fields: FormData, mediaIds: string[]) {
+    if (overlay?.mode !== "edit") return false;
     const publishAt = fields.get("publishAt");
-    if (await onAction("saveBulletinPost", {
+    const saved = await onAction("saveBulletinPost", {
       id: overlay.id,
       title: fields.get("title"),
       content: fields.get("content"),
-      publishAt,
-      deleteAt: fields.get("deleteAt"),
+      mediaIds,
+      ...(isAdmin ? { publishAt, deleteAt: fields.get("deleteAt") } : {}),
       revision: original?.revision,
-    }, original ? "Đã cập nhật bản tin" : "Đã đăng bản tin")) {
+    }, original ? "Đã cập nhật bản tin" : "Đã đăng bản tin");
+    if (saved) {
       if (!readingId) setFeed((parseBulletinDate(publishAt) ?? 0) > Date.now() ? "scheduled" : "all");
       closeOverlay();
     }
+    return saved;
   }
 
   function showPost(id: string) {
@@ -240,8 +242,8 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
 
   function postHeader(post: BulletinPostView) {
     return <PostHeader post={post}
-      onEdit={isAdmin ? () => setOverlay({ mode: "edit", id: post.id, original: post }) : undefined}
-      onDelete={isAdmin ? () => setOverlay({ mode: "delete", original: post }) : undefined}
+      onEdit={post.canManage ? () => setOverlay({ mode: "edit", id: post.id, original: post }) : undefined}
+      onDelete={post.canManage ? () => setOverlay({ mode: "delete", original: post }) : undefined}
     />;
   }
 
@@ -260,7 +262,8 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
         <article className="panel bulletin-post bulletin-detail">
           {postHeader(selected)}
           <h2 className="bulletin-post-title" ref={threadTitle} tabIndex={-1}>{selected.title}</h2>
-          <div className="bulletin-fulltext">{selected.content}</div>
+          {selected.content && <div className="bulletin-fulltext">{selected.content}</div>}
+          <BulletinAttachments postId={selected.id} title={selected.title} files={selected.media} />
           {isAdmin && selected.deleteAt !== undefined && <p className="bulletin-note">
             <CalendarClock size={15} aria-hidden="true" /> Tự xóa {bulletinClock.format(selected.deleteAt)} · Giờ Việt Nam
           </p>}
@@ -270,12 +273,12 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
       </>
     ) : <section className="panel"><Empty title="Bản tin không còn khả dụng" icon={Newspaper} /></section> : (
       <>
-        {isAdmin && <div className="panel bulletin-compose">
+        <div className="panel bulletin-compose">
           <Byline author={me} />
           <Button disabled={busy} onClick={() => setOverlay({ mode: "edit", id: uid() })}>
             <Plus size={17} aria-hidden="true" /> Đăng tin
           </Button>
-        </div>}
+        </div>
         <div className="bulletin-feeds" aria-label="Lọc bảng tin" role="group">
           {feedTabs.filter(tab => tab.id !== "scheduled" || isAdmin).map(tab =>
             <button key={tab.id} type="button" aria-pressed={feed === tab.id} onClick={() => setFeed(tab.id)}>
@@ -289,9 +292,10 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
               {postHeader(post)}
               <button className="bulletin-post-open" type="button" aria-label={`Xem bản tin ${post.title}`} onClick={() => showPost(post.id)}>
                 <strong className="bulletin-post-title">{post.title}</strong>
-                <span className="bulletin-preview" aria-hidden="true">{post.content}</span>
-                <span className="bulletin-read" aria-hidden="true">Xem nội dung</span>
+                {post.content && <span className="bulletin-preview" aria-hidden="true">{post.content}</span>}
+                <span className="bulletin-read" aria-hidden="true">{post.content ? "Xem nội dung" : "Xem bản tin"}</span>
               </button>
+              <BulletinAttachments postId={post.id} title={post.title} files={post.media} onOpen={() => showPost(post.id)} />
               {post.published && postActions(post, () => showPost(post.id))}
             </li>)}
           </ul>
@@ -302,26 +306,11 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
       </>
     )}
     {overlay?.mode === "share" && <SharePost post={overlay.original} onClose={closeOverlay} />}
-    {isAdmin && overlay?.mode === "edit" && (
-      <Dialog key={overlay.id} title={original ? "Sửa tin" : "Đăng tin"} onClose={closeOverlay} wide busy={busy}>
-        <form onSubmit={save}>
-          <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit} defaultValue={original?.title} /></Field>
-          <Field label="Nội dung"><textarea name="content" rows={7} required maxLength={bulletinContentLimit} defaultValue={original?.content} /></Field>
-          <div className="form-grid">
-            <Field label="Hẹn đăng" hint="Giờ Việt Nam · Để trống để đăng ngay">
-              <input name="publishAt" type="datetime-local" defaultValue={bulletinDateInput(original?.publishAt)} />
-            </Field>
-            <Field label="Hẹn tự xóa" hint="Giờ Việt Nam · Để trống để giữ tin">
-              <input name="deleteAt" type="datetime-local" defaultValue={bulletinDateInput(original?.deleteAt)} />
-            </Field>
-          </div>
-          <FormFooter label={original ? "Lưu thay đổi" : "Đăng tin"} busy={busy} onCancel={closeOverlay} />
-        </form>
-      </Dialog>
-    )}
-    {isAdmin && overlay?.mode === "delete" && (
+    {overlay?.mode === "edit" && <BulletinComposer key={overlay.id} postId={overlay.id} original={original}
+      isAdmin={isAdmin} busy={busy} onSave={save} onClose={closeOverlay} />}
+    {overlay?.mode === "delete" && (
       <Dialog title="Xóa bản tin" onClose={closeOverlay} busy={busy}>
-        <p>Xóa “{overlay.original.title}” cùng lượt thích và bình luận?</p>
+        <p>Xóa “{overlay.original.title}” cùng ảnh, video, lượt thích và bình luận?</p>
         <div className="form-footer">
           <Button variant="secondary" disabled={busy} onClick={closeOverlay}>Hủy</Button>
           <Button variant="danger" disabled={busy} onClick={async () => {

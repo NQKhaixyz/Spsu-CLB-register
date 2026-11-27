@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { getNativeUser, updateOwnProfile } from "../../../lib/native-auth";
 import { applyAction } from "../../../lib/actions";
 import { mutate, ClubNotReadyError } from "../../../lib/store";
@@ -7,6 +8,7 @@ import { deleteEvent } from "../../../lib/delete-event";
 import { deleteMember } from "../../../lib/delete-member";
 import { AuthError } from "../../../lib/password";
 import { removeDutyMember } from "../../../lib/remove-duty-member";
+import { deleteQueuedPhotos } from "../../../lib/photo-deletion";
 
 export const dynamic = "force-dynamic";
 const json = (data: unknown, status = 200) =>
@@ -49,7 +51,7 @@ export async function POST(request: Request) {
     if (action === "deleteMember") {
       const { club, revision, photosDeleted } = await deleteMember(user, data);
       return json({ ...view(club, user, revision), ...(photosDeleted ? {} : {
-        notice: "Đã xóa hồ sơ. Hệ thống sẽ thử lại việc dọn các tệp ảnh.",
+        notice: "Đã xóa hồ sơ. Hệ thống sẽ thử lại việc dọn các tệp đính kèm.",
       }) });
     }
     if (action === "deleteEvent") {
@@ -64,11 +66,13 @@ export async function POST(request: Request) {
         notice: "Đã gỡ người khỏi ca. Hệ thống sẽ thử lại việc dọn ảnh minh chứng.",
       }) });
     }
-    const { club, revision } = await mutate(
+    const { club, revision, removedObjects } = await mutate(
       user.userId,
       (c) => applyAction(c, user, action, data),
       allowed,
     );
+    if (removedObjects.length && env.BUCKET && env.DB)
+      await deleteQueuedPhotos(env.BUCKET, env.DB).catch(error => console.error("workspace:bulletin-media", error));
     return json(view(club, user, revision));
   } catch (e) {
     return json(

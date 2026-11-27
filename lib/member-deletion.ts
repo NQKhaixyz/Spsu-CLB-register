@@ -96,8 +96,9 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   );
   const eventPhotos = new Set<string>();
   removeFromHistory(club, member.id, eventPhotos);
+  if (club.bulletinPosts) club.bulletinPosts = club.bulletinPosts.filter(post => bulletinAuthorId(club, post) !== member.id);
+  if (club.bulletinUploads) club.bulletinUploads = club.bulletinUploads.filter(upload => upload.uploaderId !== member.id);
   for (const post of club.bulletinPosts ?? []) {
-    if (bulletinAuthorId(club, post) === member.id) post.createdBy = null;
     if (post.likedBy) post.likedBy = post.likedBy.filter(id => id !== member.id);
     if (post.savedBy) post.savedBy = post.savedBy.filter(id => id !== member.id);
     if (post.comments) {

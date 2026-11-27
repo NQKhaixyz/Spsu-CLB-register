@@ -1,4 +1,5 @@
 import type { Club, Member } from "./club";
+import type { BulletinMedia } from "./bulletin-media";
 
 export const bulletinTitleLimit = 120;
 export const bulletinContentLimit = 8000;
@@ -25,6 +26,7 @@ export type BulletinPost = {
   likedBy?: string[];
   savedBy?: string[];
   comments?: BulletinComment[];
+  media?: BulletinMedia[];
 };
 
 export type BulletinAuthor = { name: string; avatarId?: string };
@@ -35,6 +37,7 @@ export type BulletinCommentView = Omit<BulletinComment, "memberId" | "likedBy"> 
 };
 export type BulletinPostView = Omit<BulletinPost, "createdBy" | "likedBy" | "savedBy" | "comments"> & {
   author: BulletinAuthor;
+  canManage: boolean;
   published: boolean;
   liked: boolean;
   likeCount: number;
@@ -76,6 +79,10 @@ export function parseBulletinDate(input: unknown) {
 const hasExpired = (post: BulletinPost, now: number) => post.deleteAt !== undefined && post.deleteAt <= now;
 export const isBulletinPublished = (post: BulletinPost, now: number) =>
   (post.publishAt ?? 0) <= now && !hasExpired(post, now);
+export const canReadBulletin = (post: BulletinPost, viewer: Member, now: number) =>
+  !hasExpired(post, now) && (viewer.role === "admin" || isBulletinPublished(post, now));
+export const canManageBulletin = (club: Club, post: BulletinPost, viewer: Member) =>
+  viewer.active && (viewer.role === "admin" || bulletinAuthorId(club, post) === viewer.id);
 
 export function pruneExpiredBulletinPosts(club: Club, now = Date.now()) {
   const posts = club.bulletinPosts;
@@ -84,17 +91,26 @@ export function pruneExpiredBulletinPosts(club: Club, now = Date.now()) {
   return true;
 }
 
+export function pruneBulletinState(club: Club, now = Date.now()) {
+  const postsChanged = pruneExpiredBulletinPosts(club, now);
+  const uploads = club.bulletinUploads;
+  if (!uploads?.some(upload => upload.expiresAt <= now)) return postsChanged;
+  club.bulletinUploads = uploads.filter(upload => upload.expiresAt > now);
+  return true;
+}
+
 export function bulletinView(club: Club, viewer: Member, now = Date.now()) {
   const posts = (club.bulletinPosts ?? []).filter(post => !hasExpired(post, now));
   const people = new Map(club.members.map(({ id, name, avatarId }) => [id, { name, avatarId }]));
   const visible: BulletinPostView[] = posts
-    .filter(post => viewer.role === "admin" || isBulletinPublished(post, now))
+    .filter(post => canReadBulletin(post, viewer, now))
     .sort((a, b) => (b.publishAt ?? b.createdAt ?? 0) - (a.publishAt ?? a.createdAt ?? 0))
     .map(post => {
       const { createdBy: _createdBy, likedBy, savedBy, comments, ...publicPost } = post;
       return {
         ...publicPost,
         author: people.get(bulletinAuthorId(club, post) ?? "") ?? { name: "Ban điều hành" },
+        canManage: canManageBulletin(club, post, viewer),
         published: isBulletinPublished(post, now),
         liked: likedBy?.includes(viewer.id) ?? false,
         likeCount: likedBy?.length ?? 0,

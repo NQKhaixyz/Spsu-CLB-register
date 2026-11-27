@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { Identity } from "./actions";
 import { avatarKey } from "./avatar";
+import { bulletinMediaIds, removedBulletinKeys } from "./bulletin-media";
 import { syncWeeks } from "./club";
 import { queueDutyPhotoDeletions } from "./duty-photo-storage";
 import { eventPhotoKey } from "./event-photo-storage";
@@ -23,6 +24,7 @@ export async function deleteMember(identity: Identity, data: Record<string, unkn
     if (!member) return { club, revision, photosDeleted: true };
     if (!canDeleteMember(club, admin, member)) throw new AuthError("Bạn không có quyền xóa hồ sơ này.", 403);
 
+    const mediaBefore = bulletinMediaIds(club);
     const eventPhotos = eraseMemberData(club, admin, member);
     syncWeeks(club);
     const payload = JSON.stringify(club);
@@ -41,7 +43,7 @@ export async function deleteMember(identity: Identity, data: Record<string, unkn
           .bind(clean, archived.id, updated, payload));
       }
     }
-    const photos = [...eventPhotos].map(eventPhotoKey);
+    const photos = [...eventPhotos].map(eventPhotoKey).concat(removedBulletinKeys(mediaBefore, club));
     if (member.avatarId) photos.push(avatarKey(member.avatarId));
     if (photos.length) {
       statements.push(queuePhotoDeletions(db, photos, updated, payload));

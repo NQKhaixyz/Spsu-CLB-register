@@ -1,6 +1,7 @@
 import { activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
 import type { SharedLink } from "./shared-links";
 import type { BulletinPost, BulletinPostView } from "./bulletin";
+import type { BulletinUpload } from "./bulletin-media";
 import type { CommitteeMembership } from "./committees";
 import type { FontId } from "./interface-fonts";
 import type { SidebarTab } from "./workspace-navigation";
@@ -141,6 +142,7 @@ export type Club = {
   schedules: Schedule[];
   links?: SharedLink[];
   bulletinPosts?: BulletinPost[];
+  bulletinUploads?: BulletinUpload[];
   rules: Rule[];
   activityRegistrations?: ActivityRegistration[];
   events?: ClubEvent[];

@@ -104,6 +104,7 @@ export function workspaceView(
   }
   const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin });
   delete view.club.bulletinPosts;
+  delete view.club.bulletinUploads;
   // Keep stored attendance history, while removal from the visible roster also
   // frees seats and excludes previous BĐH assignments from the displayed totals.
   const visibleAssignments = (rows: Assignment[]) =>

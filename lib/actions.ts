@@ -42,7 +42,8 @@ import {
 } from "./availability";
 import { syncAvailabilityProfiles } from "./availability-profile-import";
 import { sharedLinkUrl } from "./shared-links";
-import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
+import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
+import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
 import { isFontId } from "./interface-fonts";
 import { isMemberPosition } from "./member-positions";
@@ -224,6 +225,58 @@ export function applyAction(
     }
     return;
   }
+  if (action === "saveBulletinPost" || action === "deleteBulletinPost") {
+    const { id, revision } = data;
+    check(isBulletinId(id), "Mã bản tin không hợp lệ. Mở lại hộp thoại rồi thử lại.");
+    const post = club.bulletinPosts?.find(item => item.id === id);
+    check(!post || canManageBulletin(club, post, me), "Bạn chỉ có thể quản lý bản tin của mình.");
+    if (action === "deleteBulletinPost") {
+      if (!post) return;
+      check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để kiểm tra trước khi xóa.");
+      club.bulletinPosts = club.bulletinPosts?.filter(item => item.id !== post.id);
+      note(`Xóa bản tin ${post.title}`);
+      return;
+    }
+
+    check(admin || (data.publishAt === undefined && data.deleteAt === undefined), "Chỉ BĐH được hẹn giờ bản tin.");
+    const title = typeof data.title === "string" ? data.title.trim() : "";
+    const content = typeof data.content === "string" ? data.content.trim() : "";
+    check(title.length > 0 && title.length <= bulletinTitleLimit, `Nhập tiêu đề từ 1 đến ${bulletinTitleLimit} ký tự.`);
+    const now = Date.now();
+    const previousMedia = post?.media ?? [];
+    const mediaIds: unknown = data.mediaIds === undefined ? previousMedia.map(file => file.id) : data.mediaIds;
+    check(Array.isArray(mediaIds) && mediaIds.length <= bulletinMediaLimit &&
+      mediaIds.every(isBulletinMediaId) && new Set(mediaIds).size === mediaIds.length, "Danh sách tệp đính kèm không hợp lệ.");
+    const media: BulletinMedia[] = mediaIds.map(fileId => {
+      const file = previousMedia.find(item => item.id === fileId) ?? club.bulletinUploads?.find(upload =>
+        upload.id === fileId && upload.postId === id && upload.uploaderId === me.id && upload.expiresAt > now,
+      );
+      check(file, "Tệp đính kèm không còn dùng được. Chọn lại tệp rồi thử lưu.");
+      return { id: file.id, type: file.type, bytes: file.bytes };
+    });
+    check(content.length <= bulletinContentLimit, `Nội dung tối đa ${bulletinContentLimit} ký tự.`);
+    check(content || media.length, "Nhập nội dung hoặc thêm ảnh hay video.");
+
+    const publishAt = data.publishAt === undefined ? post?.publishAt : parseBulletinDate(data.publishAt);
+    const deleteAt = data.deleteAt === undefined ? post?.deleteAt : parseBulletinDate(data.deleteAt);
+    check(!Number.isNaN(publishAt) && !Number.isNaN(deleteAt), "Giờ hẹn không hợp lệ. Dùng giờ Việt Nam.");
+    check(deleteAt === undefined || deleteAt > Math.max(now, publishAt ?? now), "Giờ xóa phải sau thời điểm đăng và sau hiện tại.");
+    const fields = { title, content, publishAt, deleteAt, media: media.length ? media : undefined };
+    if (post) {
+      const sameMedia = previousMedia.length === media.length && previousMedia.every((file, index) => file.id === media[index].id);
+      if (sameMedia && post.title === title && post.content === content && post.publishAt === publishAt && post.deleteAt === deleteAt) return;
+      check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để xem nội dung mới.");
+      if (post.createdBy === undefined) post.createdBy = bulletinAuthorId(club, post) ?? null;
+      Object.assign(post, fields, { revision: post.revision + 1 });
+    } else {
+      check(revision === undefined, "Không tìm thấy bản tin cần sửa.");
+      (club.bulletinPosts ??= []).unshift({ id, ...fields, createdAt: now, createdBy: me.id, revision: 1 });
+    }
+    if (club.bulletinUploads && media.length)
+      club.bulletinUploads = club.bulletinUploads.filter(upload => !mediaIds.includes(upload.id));
+    note(`${post ? "Cập nhật" : "Đăng"} bản tin ${title}`);
+    return;
+  }
   if (applyActivityAction(club, me, action, data, note)) return;
   check(admin, "Chỉ BĐH được thực hiện thao tác này.");
   const getWeek = () => {
@@ -242,36 +295,7 @@ export function applyAction(
       "Số người mỗi buổi trực phải là số nguyên từ 1–50.");
     return value;
   };
-  if (action === "saveBulletinPost") {
-    const { id, revision } = data;
-    check(isBulletinId(id), "Mã bản tin không hợp lệ. Mở lại hộp thoại rồi thử lại.");
-    const title = typeof data.title === "string" ? data.title.trim() : "";
-    const content = typeof data.content === "string" ? data.content.trim() : "";
-    check(title.length > 0 && title.length <= bulletinTitleLimit, `Nhập tiêu đề từ 1 đến ${bulletinTitleLimit} ký tự.`);
-    check(content.length > 0 && content.length <= bulletinContentLimit, `Nhập nội dung từ 1 đến ${bulletinContentLimit} ký tự.`);
-    const post = club.bulletinPosts?.find(item => item.id === id);
-    const publishAt = data.publishAt === undefined ? post?.publishAt : parseBulletinDate(data.publishAt);
-    const deleteAt = data.deleteAt === undefined ? post?.deleteAt : parseBulletinDate(data.deleteAt);
-    const now = Date.now();
-    check(!Number.isNaN(publishAt) && !Number.isNaN(deleteAt), "Giờ hẹn không hợp lệ. Dùng giờ Việt Nam.");
-    check(deleteAt === undefined || deleteAt > Math.max(now, publishAt ?? now), "Giờ xóa phải sau thời điểm đăng và sau hiện tại.");
-    if (post) {
-      if (post.title === title && post.content === content && post.publishAt === publishAt && post.deleteAt === deleteAt) return;
-      check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để xem nội dung mới.");
-      if (post.createdBy === undefined) post.createdBy = bulletinAuthorId(club, post) ?? null;
-      Object.assign(post, { title, content, publishAt, deleteAt, revision: post.revision + 1 });
-    } else {
-      check(revision === undefined, "Không tìm thấy bản tin cần sửa.");
-      (club.bulletinPosts ??= []).unshift({ id, title, content, publishAt, deleteAt, createdAt: now, createdBy: me.id, revision: 1 });
-    }
-    note(`${post ? "Cập nhật" : "Đăng"} bản tin ${title}`);
-  } else if (action === "deleteBulletinPost") {
-    const post = club.bulletinPosts?.find(item => item.id === data.id);
-    if (!post) return;
-    check(data.revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để kiểm tra trước khi xóa.");
-    club.bulletinPosts = club.bulletinPosts?.filter(item => item.id !== post.id);
-    note(`Xóa bản tin ${post.title}`);
-  } else if (action === "moveSharedLink") {
+  if (action === "moveSharedLink") {
     const links = club.links ?? [];
     const index = links.findIndex(link => link.id === data.id);
     const offset = data.offset;

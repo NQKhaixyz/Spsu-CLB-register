@@ -6,7 +6,8 @@ import { workspaceView } from "../lib/workspace-view";
 import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
 import { sidebarTabLabels, sidebarTabs } from "../lib/workspace-navigation";
 import { memberPositions, memberRoleLabel } from "../lib/member-positions";
-import { bulletinDateInput, bulletinView, parseBulletinDate, pruneExpiredBulletinPosts } from "../lib/bulletin";
+import { bulletinDateInput, bulletinView, parseBulletinDate, pruneBulletinState, pruneExpiredBulletinPosts } from "../lib/bulletin";
+import { bulletinByteRange, bulletinMediaIds, bulletinMediaKey, removedBulletinKeys } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 
 const owner = {userId:"workspace-regression-owner",displayName:"BĐH",email:""};
@@ -81,13 +82,13 @@ test("The sidebar uses one fixed order and member positions do not grant BĐH pe
   applyAction(c, owner, "member", { memberId: pending.id, position: "" });
   assert.equal(memberRoleLabel(pending), "Thành viên");
 });
-test("Bulletin posts are readable by members, with BĐH-only writes, safe retries and stale edit checks", () => {
+test("Bulletin posts are readable by members, with author editing, safe retries and stale edit checks", () => {
   const { c, pending } = fixture();
   pending.userId = "bulletin-reader";
   const reader = { userId: pending.userId, displayName: pending.name, email: "" };
   const post = { id: "bulletin-test-one", title: "  Lịch sinh hoạt  ", content: "  Họp vào thứ Hai\nMang theo tài liệu  " };
   const save = (data: Record<string, unknown>) => applyAction(c, owner, "saveBulletinPost", data);
-  assert.throws(() => applyAction(c, reader, "saveBulletinPost", post), /Chỉ BĐH/);
+  assert.throws(() => applyAction(c, reader, "saveBulletinPost", { ...post, deleteAt: "" }), /Chỉ BĐH được hẹn giờ/);
   assert.throws(() => save({ ...post, title: "  " }), /tiêu đề/);
   assert.throws(() => save({ ...post, content: "  " }), /nội dung/);
   assert.equal(c.bulletinPosts, undefined);
@@ -103,7 +104,7 @@ test("Bulletin posts are readable by members, with BĐH-only writes, safe retrie
   assert.deepEqual(c.bulletinPosts!.map(item => item.id), [second.id, post.id]);
 
   const edit = { ...published, content: "Chuyển lịch sang thứ Tư\nXem giờ trong Lịch trực C1" };
-  assert.throws(() => applyAction(c, reader, "saveBulletinPost", edit), /Chỉ BĐH/);
+  assert.throws(() => applyAction(c, reader, "saveBulletinPost", edit), /bản tin của mình/);
   save(edit);
   save(edit);
   assert.throws(() => save({ ...published, content: "Không ghi đè được" }), /vừa được cập nhật/);
@@ -156,7 +157,7 @@ test("Publication and expiry use Vietnam time, with private drafts and idempoten
   assert.ok(!("likedBy" in replies[1]));
   applyAction(c, reader, "setBulletinLike", { ...like, liked: false });
   assert.equal(bulletinView(c, pending).posts[0].likeCount, 0);
-  assert.throws(() => applyAction(c, reader, "deleteBulletinPost", { id: future.id, revision: 2 }), /Chỉ BĐH/);
+  assert.throws(() => applyAction(c, reader, "deleteBulletinPost", { id: future.id, revision: 2 }), /bản tin của mình/);
   assert.throws(() => applyAction(c, owner, "deleteBulletinPost", { id: future.id, revision: 1 }), /vừa được cập nhật/);
   const copy = structuredClone(c);
   applyAction(copy, owner, "deleteBulletinPost", { id: future.id, revision: 2 });
@@ -180,6 +181,49 @@ test("Legacy bulletin authors come from matching creation logs and survive later
   applyAction(c, owner, "saveBulletinPost", { id: "legacy-post", title: "Tiêu đề mới", content: "Nội dung", revision: 1 });
   assert.equal(bulletinView(c, pending).posts[0].author.name, author.name);
   assert.ok(!("createdBy" in bulletinView(c, pending).posts[0]));
+});
+test("Members can post and manage their own attachments, with one-time draft ownership and cleanup", () => {
+  const { c, pending } = fixture();
+  pending.userId = "media-member";
+  const user = { userId: pending.userId, displayName: pending.name, email: "" };
+  const post = { id: "member-post-media", title: "Ảnh buổi họp", content: "" };
+  const now = Date.now();
+  const own = { id: crypto.randomUUID(), type: "image/jpeg" as const, bytes: 156, postId: post.id, uploaderId: pending.id, expiresAt: now + 30_000 };
+  const foreign = { ...own, id: crypto.randomUUID(), uploaderId: c.members[0].id };
+  const wrongPost = { ...own, id: crypto.randomUUID(), postId: "different-post" };
+  c.bulletinUploads = [own, foreign, wrongPost];
+  assert.throws(() => applyAction(c, user, "saveBulletinPost", { ...post, mediaIds: [foreign.id] }), /không còn dùng được/);
+  assert.throws(() => applyAction(c, user, "saveBulletinPost", { ...post, mediaIds: [wrongPost.id] }), /không còn dùng được/);
+  assert.throws(() => applyAction(c, user, "saveBulletinPost", { ...post, mediaIds: [own.id, own.id] }), /Danh sách tệp/);
+  const initial = bulletinMediaIds(c);
+  applyAction(c, user, "saveBulletinPost", { ...post, mediaIds: [own.id] });
+  applyAction(c, user, "saveBulletinPost", { ...post, mediaIds: [own.id] });
+  const view = workspaceView(c, user, 1);
+  const published = view.bulletin!.posts[0];
+  assert.equal(published.author.name, pending.name);
+  assert.equal(published.canManage, true);
+  assert.equal(published.revision, 1);
+  assert.deepEqual(published.media, [{ id: own.id, type: own.type, bytes: own.bytes }]);
+  assert.equal(view.club.bulletinUploads, undefined);
+  assert.deepEqual(c.bulletinUploads.map(upload => upload.id), [foreign.id, wrongPost.id]);
+  assert.deepEqual(removedBulletinKeys(initial, c), []);
+  applyAction(c, user, "saveBulletinPost", { ...post, content: "Thêm chú thích", revision: 1 });
+  assert.equal(c.bulletinPosts?.[0].media?.[0].id, own.id);
+  applyAction(c, user, "saveBulletinPost", { ...post, content: "Chỉ giữ chữ", revision: 2, mediaIds: [] });
+  assert.deepEqual(removedBulletinKeys(initial, c), [bulletinMediaKey(own.id)]);
+  assert.throws(() => applyAction(c, user, "saveBulletinPost", { ...post, revision: 3, mediaIds: [own.id] }), /không còn dùng được/);
+  applyAction(c, user, "deleteBulletinPost", { id: post.id, revision: 3 });
+  assert.deepEqual(c.bulletinPosts, []);
+  assert.equal(pruneBulletinState(c, own.expiresAt), true);
+  assert.deepEqual(removedBulletinKeys(initial, c).sort(), [...initial].map(bulletinMediaKey).sort());
+});
+test("Bulletin video ranges support playback seeking, suffixes and invalid offsets", () => {
+  assert.deepEqual(bulletinByteRange("bytes=0-1", 400), { offset: 0, length: 2 });
+  assert.deepEqual(bulletinByteRange("bytes=300-", 400), { offset: 300, length: 100 });
+  assert.deepEqual(bulletinByteRange("bytes=-25", 400), { offset: 375, length: 25 });
+  assert.deepEqual(bulletinByteRange("bytes=300-1000", 400), { offset: 300, length: 100 });
+  for (const invalid of ["bytes=400-", "bytes=20-10", "bytes=-0", "bytes=-", "bytes=0-1,10-11", "bytes=999999999999999999-"])
+    assert.equal(bulletinByteRange(invalid, 400), null);
 });
 test("Member response removes both staged and active source datasets without modifying admin state",()=>{
   const {c,pending}=fixture(); pending.userId="workspace-member";
