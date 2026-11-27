@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./font-faces.css";
 import "./club.css";
 import "./theme.css";
+import "./bulletin-board.css";
 import "./screen-cat.css";
 import "./music.css";
 import "./duty-evidence-and-links.css";

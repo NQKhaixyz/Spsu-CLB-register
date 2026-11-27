@@ -2289,16 +2289,6 @@ tbody tr:hover {
   font-size: 13px;
   padding: 9px 13px;
 }
-.help-content p {
-  font-size: 15px;
-  line-height: 1.9;
-  color: #95a682;
-  margin: 17px 0;
-}
-.help-content strong {
-  font-weight: 600;
-  color: #748d5d;
-}
 .welcome {
   min-height: 100dvh;
   display: flex;

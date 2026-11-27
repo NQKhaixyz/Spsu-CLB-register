@@ -1,6 +1,7 @@
 import { personKey } from "./availability";
 import type { Assignment, AvailabilityDataset, Club, Member, Shift } from "./club";
 import { eventPhotoId } from "./event-evidence";
+import { bulletinAuthorId } from "./bulletin";
 
 export function canDeleteMember(club: Club, admin: Member, target: Member) {
   return admin.active && admin.role === "admin" && target.id !== admin.id &&
@@ -96,8 +97,17 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   const eventPhotos = new Set<string>();
   removeFromHistory(club, member.id, eventPhotos);
   for (const post of club.bulletinPosts ?? []) {
+    if (bulletinAuthorId(club, post) === member.id) post.createdBy = null;
     if (post.likedBy) post.likedBy = post.likedBy.filter(id => id !== member.id);
-    if (post.comments) post.comments = post.comments.filter(comment => comment.memberId !== member.id);
+    if (post.savedBy) post.savedBy = post.savedBy.filter(id => id !== member.id);
+    if (post.comments) {
+      const removed = new Set(post.comments.filter(comment => comment.memberId === member.id).map(comment => comment.id));
+      post.comments = post.comments.filter(comment => !removed.has(comment.id));
+      for (const comment of post.comments) {
+        if (comment.likedBy) comment.likedBy = comment.likedBy.filter(id => id !== member.id);
+        if (comment.replyTo && removed.has(comment.replyTo)) delete comment.replyTo;
+      }
+    }
   }
   if (club.demoArchive) removeFromHistory(club.demoArchive, member.id, eventPhotos);
   for (const dataset of new Set([club.availabilityDataset, club.activeAvailabilityDataset])) {

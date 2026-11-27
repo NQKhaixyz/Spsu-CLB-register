@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -202,6 +202,12 @@ export function Loading() {
     </div>
   );
 }
+function dialogControls(dialog: HTMLDivElement | null) {
+  return Array.from(dialog?.querySelectorAll<HTMLElement>(
+    'button:not([disabled]),a[href],input:not([disabled]):not([hidden]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]',
+  ) ?? []);
+}
+
 export function Dialog({
   title,
   description,
@@ -218,24 +224,25 @@ export function Dialog({
   busy?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previous = document.activeElement as HTMLElement;
     const bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const focusables = () =>
-      Array.from(
-        ref.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]),a[href],input:not([disabled]):not([hidden]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]',
-        ) ?? [],
-      );
-    const timer = setTimeout(() => {
-      const list = focusables();
-      (list.find(element => element.matches("input,textarea,select")) ?? list[0])?.focus();
-    }, 30);
+    const dialog = ref.current;
+    if (!dialog?.contains(previous)) {
+      const list = dialogControls(dialog);
+      (list.find(element => element.matches("input,textarea,select")) ?? list[0] ?? dialog)?.focus();
+    }
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      previous?.focus();
+    };
+  }, []);
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onClose();
       if (e.key === "Tab") {
-        const list = focusables();
+        const list = dialogControls(ref.current);
         if (!list.length) return;
         if (e.shiftKey && document.activeElement === list[0]) {
           e.preventDefault();
@@ -247,12 +254,7 @@ export function Dialog({
       }
     };
     document.addEventListener("keydown", handler);
-    return () => {
-      clearTimeout(timer);
-      document.body.style.overflow = bodyOverflow;
-      document.removeEventListener("keydown", handler);
-      previous?.focus();
-    };
+    return () => document.removeEventListener("keydown", handler);
   }, [onClose, busy]);
   return (
     <div
@@ -263,6 +265,7 @@ export function Dialog({
     >
       <div
         ref={ref}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"

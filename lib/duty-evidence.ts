@@ -1,4 +1,4 @@
-import { addDays, isShiftPublished, today, weekId, type Club, type Member, type Shift } from "./club";
+import { addDays, isRosterMember, isShiftPublished, today, weekId, type Club, type Member, type Shift } from "./club";
 export { maxPhotoBytes as maxDutyPhotoBytes, type PhotoEvidence as DutyEvidence, type PhotoEvidenceView as DutyEvidenceView } from "./photo-evidence";
 
 export type EvidenceAssignment = { month: string; shiftId: string; memberId: string };
@@ -15,6 +15,8 @@ export function evidenceSubmissionOpen(shift: Shift, now = new Date()) {
 
 export function findEvidenceAssignment(club: Club, viewer: Member, target: EvidenceAssignment) {
   if (!viewer.active || (viewer.role !== "admin" && viewer.id !== target.memberId)) return null;
+  const member = club.members.find(item => item.id === target.memberId);
+  if (!member || !isRosterMember(member)) return null;
   const schedule = club.schedules.find(item => item.month === target.month);
   const shift = schedule?.shifts.find(item => item.id === target.shiftId);
   if (!schedule || !shift || !isShiftPublished(schedule, shift) || shift.cancelled ||

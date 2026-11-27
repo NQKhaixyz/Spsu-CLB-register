@@ -182,7 +182,8 @@ test("Reset clears exactly the duty week, archives it atomically and enables a n
   }));
   const drafts = planned.schedules[0].shifts.filter((shift) => shift.draft);
   assert.equal(drafts.length, 6);
-  assert.ok(drafts.every((shift) => !shift.cancelled && shift.capacity === 3 && shift.assignments.length === 3));
+  assert.ok(drafts.every((shift) => !shift.cancelled && shift.capacity === 3 && shift.assignments.length === 2));
+  assert.ok(drafts.every(shift => shift.assignments.every(assignment => assignment.memberId !== owner.userId)));
   assert.equal(planned.schedules[0].pendingDutyWeek, undefined);
   assert.deepEqual(workspaceView(planned, viewer, result.revision + 1).club.schedules[0].shifts.map((shift) => shift.id),
     [shifts[0].id, shifts[4].id]);
@@ -218,7 +219,8 @@ test("Withdrawing one week keeps past results and other weeks, hides drafts from
   assert.throws(() => applyAction(live, owner, "shift", { month: month.month, shiftId: shifts[1].id, position: 0, result: "completed" }), /Công bố ca/);
   assert.throws(() => applyAction(live, viewer, "schedule", { month: month.month, week: "2026-11-09", peoplePerShift: 3 }), /BĐH/);
   applyAction(live, owner, "schedule", { month: month.month, week: "2026-11-09", peoplePerShift: 3 });
-  assert.equal(month.shifts[1].assignments.length, 3);
+  assert.equal(month.shifts[1].assignments.length, 2);
+  assert.ok(month.shifts[1].assignments.every(assignment => assignment.memberId !== owner.userId));
   assert.equal(month.shifts[1].capacity, 3);
   assert.deepEqual(month.shifts.filter((s) => !s.draft), [shifts[0], shifts[2], shifts[3]]);
   applyAction(live, owner, "publish", { month: month.month, week: "2026-11-09" });

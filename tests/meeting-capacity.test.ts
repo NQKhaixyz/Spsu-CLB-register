@@ -12,7 +12,7 @@ import { syncAvailabilityProfiles } from "../lib/availability-profile-import";
 const admin = { userId: "capacity-owner", email: "owner@example.invalid", displayName: "Admin" };
 function fixture() {
   const club = createClub(admin.userId);
-  club.members = Array.from({ length: 6 }, (_, i): Member => ({
+  club.members = Array.from({ length: 7 }, (_, i): Member => ({
     id: `m${i}`, userId: i === 0 ? admin.userId : `u${i}`, name: `Người ${i}`,
     studentId: `SV${i}`, active: true, role: i === 0 ? "admin" : "member",
     joined: "2020-01-01", availability: ["1-am", "1-pm"], extraDuties: false,
@@ -83,9 +83,10 @@ for (const capacity of [1, 3, 5]) test(`Xếp lịch ${capacity} người/ca, kh
   assert.equal(schedule.peoplePerShift, capacity);
   assert.ok(schedule.shifts.every(s => s.assignments.length === capacity && shiftCapacity(s) === capacity));
   assert.ok(schedule.shifts.every(s => new Set(s.assignments.map(a => a.memberId)).size === capacity));
-  assert.ok(club.members.every(m => schedule.shifts.some(s => s.assignments.some(a => a.memberId === m.id))));
+  assert.ok(club.members.slice(1).every(m => schedule.shifts.some(s => s.assignments.some(a => a.memberId === m.id))));
+  assert.ok(schedule.shifts.every(s => s.assignments.every(a => a.memberId !== club.members[0].id)));
   const shift = schedule.shifts[0];
-  const replacement = club.members.find(m => !shift.assignments.some(a => a.memberId === m.id))!;
+  const replacement = club.members.slice(1).find(m => !shift.assignments.some(a => a.memberId === m.id))!;
   applyAction(club, admin, "shift", { month: schedule.month, shiftId: shift.id, position: capacity - 1, replacementId: replacement.id });
   assert.equal(shift.assignments[capacity - 1].memberId, replacement.id);
   assert.throws(() => applyAction(club, admin, "shift", { month: schedule.month, shiftId: shift.id, position: capacity, replacementId: replacement.id }), /Vị trí/);

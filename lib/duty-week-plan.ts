@@ -1,11 +1,12 @@
 import {
-  addDays, canReplanDutyShift, createDutyShiftSlots, fillDutyShifts, weekId,
+  addDays, adminMemberIds, canReplanDutyShift, createDutyShiftSlots, fillDutyShifts, weekId,
   type Club, type Schedule,
 } from "./club";
 import { activeAvailabilityDatasetFor } from "./availability";
 
 export function planDutyWeek(club: Club, week: string, capacity: number) {
   const months = new Set([week.slice(0, 7), addDays(week, 6).slice(0, 7)]);
+  const adminIds = adminMemberIds(club);
   const dataset = activeAvailabilityDatasetFor(club);
   let planned = 0;
   for (const month of months) {
@@ -24,7 +25,7 @@ export function planDutyWeek(club: Club, week: string, capacity: number) {
       schedule.shifts = [...schedule.shifts, ...shifts].sort((a, b) => a.id.localeCompare(b.id));
       if (!existing) club.schedules.push(schedule);
     }
-    const editable = shifts.filter(shift => canReplanDutyShift(schedule, shift));
+    const editable = shifts.filter(shift => canReplanDutyShift(schedule, shift, adminIds));
     if (!editable.length) continue;
     const previous = new Map(editable.map(shift => [shift.id, shift.assignments]));
     for (const shift of editable) {

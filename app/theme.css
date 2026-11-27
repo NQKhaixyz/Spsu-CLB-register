@@ -196,76 +196,7 @@ td,.person-cell strong { font-size:15px; }
   color: var(--green-dark);
 }
 .main-content > .requests-panel { margin-bottom: 20px; }
-.bulletin-list {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.bulletin-card {
-  display: grid;
-  gap: 8px;
-  width: 100%;
-  padding: 18px 20px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-.bulletin-card:hover { background: #f2f6ef; }
-.bulletin-card:focus-visible { outline-offset: -3px; }
-.bulletin-title {
-  color: var(--green-dark);
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-.bulletin-preview {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: .875rem;
-  line-height: 1.55;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-.bulletin-read {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--green);
-  font-size: .875rem;
-  font-weight: 700;
-}
-.bulletin-fulltext {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.7;
-}
-.dialog:has(.bulletin-fulltext) .dialog-heading > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.dialog:has(.bulletin-fulltext) .form-footer { flex-wrap: wrap; }
-.bulletin-social {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  border-top: 1px solid var(--line);
-  padding: 10px 20px 14px;
-}
-.bulletin-like[aria-pressed="true"] { background: #e1efdf; border-color: #7e9f76; color: var(--green-dark); }
-.bulletin-time, .bulletin-comments time { font-size: .8125rem; color: var(--muted); }
-.bulletin-time { margin-top: 6px; }
-.bulletin-comments { display: grid; gap: 12px; border-top: 1px solid var(--line); margin-top: 20px; padding-top: 14px; }
-.bulletin-comments > button { justify-self: start; }
-.bulletin-comments ul { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
-.bulletin-comments li { border-radius: 8px; background: #f3f7f0; padding: 10px 12px; overflow-wrap: anywhere; }
-.bulletin-comments time { display: inline-block; margin-inline-start: 8px; }
-.bulletin-comments p { white-space: pre-wrap; }
+.personal-account { margin-block-end: 18px; }
 .personal-bottom:has(> :only-child) { grid-template-columns: 1fr; }
 @media (max-width: 760px) {
   .workspace-section-nav { display: grid; }

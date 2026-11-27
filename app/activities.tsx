@@ -2,7 +2,7 @@
 import { useCallback, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
 import { activityLabels, activityName, activityPointsFor, canAttendEvent, registrationStatusLabel, eventDescriptionLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
-import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
+import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { EvidencePanel } from "./duty-evidence";
 import { Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
@@ -281,7 +281,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
         {members.map(m => {
           const score = scoresByMember.get(m.id);
           return <tr key={m.id}>
-            <td>{m.name}{isAdmin ? <div className="member-point-actions">
+            <td>{m.name}<small className="score-committee">{memberCommitteeNames(m)}</small>{isAdmin ? <div className="member-point-actions">
               <Button variant="secondary" aria-label={`Nhập điểm · ${m.name}`} disabled={busy} onClick={() => {setDeducting(false); setMember(m);}}>Nhập điểm</Button>
               <Button variant="secondary" aria-label={`Trừ điểm · ${m.name}`} disabled={busy} onClick={() => {setDeducting(true); setMember(m);}}>Trừ điểm</Button>
             </div> : null}</td>

@@ -97,6 +97,7 @@ test("Bulletin posts are readable by members, with BĐH-only writes, safe retrie
   const published = { id: post.id, title: post.title.trim(), content: post.content.trim(), revision: 1 };
   assert.equal(workspaceView(c, reader, 1).club.bulletinPosts, undefined);
   assert.equal(workspaceView(c, reader, 1).bulletin?.posts[0].content, published.content);
+  assert.equal(workspaceView(c, reader, 1).bulletin?.posts[0].author.name, c.members[0].name);
   const second = { id: "bulletin-test-two", title: "Nhắc lịch trực", content: "Kiểm tra lịch tuần này" };
   save(second);
   assert.deepEqual(c.bulletinPosts!.map(item => item.id), [second.id, post.id]);
@@ -138,7 +139,21 @@ test("Publication and expiry use Vietnam time, with private drafts and idempoten
   assert.equal(publicPost?.likeCount, 1);
   assert.equal(publicPost?.liked, true);
   assert.equal(publicPost?.comments.length, 1);
-  assert.equal(publicPost?.comments[0].authorName, pending.name);
+  assert.equal(publicPost?.comments[0].author.name, pending.name);
+  applyAction(c, reader, "setBulletinSaved", { postId: future.id, saved: true });
+  assert.equal(bulletinView(c, pending).posts[0].saved, true);
+  assert.equal(bulletinView(c, c.members[0]).posts[0].saved, false);
+  const answer = { ...comment, id: "comment-a-reply", replyTo: comment.id, content: "Cảm ơn bạn" };
+  assert.throws(() => applyAction(c, owner, "commentOnBulletin", { ...answer, replyTo: future.id }), /Không tìm thấy bình luận/);
+  applyAction(c, owner, "commentOnBulletin", answer);
+  applyAction(c, owner, "commentOnBulletin", answer);
+  applyAction(c, reader, "setBulletinCommentLike", { postId: future.id, commentId: answer.id, liked: true });
+  const replies = bulletinView(c, pending).posts[0].comments;
+  assert.equal(replies.length, 2);
+  assert.equal(replies[1].replyTo, comment.id);
+  assert.equal(replies[1].likeCount, 1);
+  assert.equal(replies[1].liked, true);
+  assert.ok(!("likedBy" in replies[1]));
   applyAction(c, reader, "setBulletinLike", { ...like, liked: false });
   assert.equal(bulletinView(c, pending).posts[0].likeCount, 0);
   assert.throws(() => applyAction(c, reader, "deleteBulletinPost", { id: future.id, revision: 2 }), /Chỉ BĐH/);
@@ -148,6 +163,23 @@ test("Publication and expiry use Vietnam time, with private drafts and idempoten
   assert.deepEqual(copy.bulletinPosts, []);
   assert.equal(pruneExpiredBulletinPosts(c, deleteAt), true);
   assert.deepEqual(c.bulletinPosts, []);
+});
+test("Legacy bulletin authors come from matching creation logs and survive later title edits", () => {
+  const { c, pending } = fixture();
+  const author = c.members[0];
+  author.avatarId = "test-avatar";
+  const createdAt = Date.now() - 60_000;
+  c.bulletinPosts = [
+    { id: "legacy-post", title: "Tin cũ", content: "Nội dung", revision: 1, createdAt },
+    { id: "legacy-unknown", title: "Tin khác", content: "Nội dung", revision: 1 },
+  ];
+  c.logs.push({ at: new Date(createdAt).toISOString(), actor: author.name, actorId: author.id, text: "Đăng bản tin Tin cũ" });
+  const initial = bulletinView(c, pending).posts;
+  assert.deepEqual(initial[0].author, { name: author.name, avatarId: author.avatarId });
+  assert.equal(initial[1].author.name, "Ban điều hành");
+  applyAction(c, owner, "saveBulletinPost", { id: "legacy-post", title: "Tiêu đề mới", content: "Nội dung", revision: 1 });
+  assert.equal(bulletinView(c, pending).posts[0].author.name, author.name);
+  assert.ok(!("createdBy" in bulletinView(c, pending).posts[0]));
 });
 test("Member response removes both staged and active source datasets without modifying admin state",()=>{
   const {c,pending}=fixture(); pending.userId="workspace-member";

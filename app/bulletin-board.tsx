@@ -1,39 +1,201 @@
 "use client";
 
-import { ArrowRight, MessageSquare, Newspaper, Pencil, Plus, ThumbsUp, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { bulletinCommentLimit, bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, type BulletinPostView } from "../lib/bulletin";
+import { Bookmark, CalendarClock, ChevronLeft, Ellipsis, Heart, MessageCircle, Newspaper, Pencil, Plus, Share2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { bulletinCommentLimit, bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, parseBulletinDate, type BulletinAuthor, type BulletinPostView } from "../lib/bulletin";
 import { uid } from "../lib/club";
-import { Button, Dialog, Empty, Field, FormFooter } from "./ui";
+import { Avatar, Button, Dialog, Empty, Field, FormFooter } from "./ui";
 
-type Selection =
-  | { mode: "read"; id: string }
+type Overlay =
   | { mode: "edit"; id: string; original?: BulletinPostView }
-  | { mode: "delete"; original: BulletinPostView };
-type BulletinAction = "saveBulletinPost" | "deleteBulletinPost" | "setBulletinLike" | "commentOnBulletin";
+  | { mode: "delete" | "share"; original: BulletinPostView };
+type BulletinAction = "saveBulletinPost" | "deleteBulletinPost" | "setBulletinLike" | "setBulletinSaved" | "commentOnBulletin" | "setBulletinCommentLike";
+type Act = (action: BulletinAction, data: Record<string, unknown>, message: string) => Promise<boolean>;
+type Feed = "all" | "liked" | "saved" | "scheduled";
+const feedTabs: { id: Feed; label: string }[] = [
+  { id: "all", label: "Tất cả" },
+  { id: "liked", label: "Đã thích" },
+  { id: "saved", label: "Đã lưu" },
+  { id: "scheduled", label: "Đã hẹn" },
+];
 const bulletinClock = new Intl.DateTimeFormat("vi-VN", {
   dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh",
 });
 
-export default function BulletinBoard({ posts, nextChangeAt, isAdmin, busy, onOpen, onAction }: {
+function Byline({ author, time, scheduled = false, small = false }: {
+  author: BulletinAuthor; time?: number; scheduled?: boolean; small?: boolean;
+}) {
+  return <div className="bulletin-byline">
+    <Avatar name={author.name} photoId={author.avatarId} size={small ? "small" : ""} />
+    <div>
+      <strong>{author.name}</strong>
+      {time !== undefined && <time dateTime={new Date(time).toISOString()}>
+        {scheduled && "Hẹn đăng "}{bulletinClock.format(time)}
+      </time>}
+    </div>
+  </div>;
+}
+
+function PostHeader({ post, onEdit, onDelete }: {
+  post: BulletinPostView; onEdit?: () => void; onDelete?: () => void;
+}) {
+  return <header className="bulletin-post-header">
+    <Byline author={post.author} time={post.publishAt ?? post.createdAt} scheduled={!post.published} />
+    {onEdit && onDelete && <details className="bulletin-post-menu">
+      <summary aria-label={`Quản lý bản tin ${post.title}`}><Ellipsis size={20} aria-hidden="true" /></summary>
+      <div className="bulletin-post-menu-items">
+        <button type="button" onClick={event => {
+          event.currentTarget.closest("details")?.removeAttribute("open");
+          onEdit();
+        }}><Pencil size={15} aria-hidden="true" /> Sửa tin</button>
+        <button type="button" onClick={event => {
+          event.currentTarget.closest("details")?.removeAttribute("open");
+          onDelete();
+        }}><Trash2 size={15} aria-hidden="true" /> Xóa tin</button>
+      </div>
+    </details>}
+  </header>;
+}
+
+function PostActions({ post, busy, act, onDiscuss, onShare }: {
+  post: BulletinPostView; busy: boolean; act: Act; onDiscuss: () => void; onShare: () => void;
+}) {
+  return <div className="bulletin-actions" aria-label="Tương tác với bản tin" role="group">
+    <button type="button" aria-pressed={post.liked} disabled={busy}
+      onClick={() => void act("setBulletinLike", { postId: post.id, liked: !post.liked }, post.liked ? "Đã bỏ thích" : "Đã thích bản tin")}>
+      <Heart size={18} aria-hidden="true" /> {post.likeCount > 0 ? `${post.likeCount} lượt thích` : "Thích"}
+    </button>
+    <button type="button" onClick={onDiscuss}><MessageCircle size={18} aria-hidden="true" /> {post.comments.length} bình luận</button>
+    <button type="button" aria-pressed={post.saved} disabled={busy}
+      onClick={() => void act("setBulletinSaved", { postId: post.id, saved: !post.saved }, post.saved ? "Đã bỏ lưu bản tin" : "Đã lưu bản tin")}>
+      <Bookmark size={18} aria-hidden="true" /> {post.saved ? "Đã lưu" : "Lưu"}
+    </button>
+    <button type="button" onClick={onShare}><Share2 size={17} aria-hidden="true" /> Chia sẻ</button>
+  </div>;
+}
+
+function CommentThread({ post, me, busy, act }: {
+  post: BulletinPostView; me: BulletinAuthor; busy: boolean; act: Act;
+}) {
+  const [draftId, setDraftId] = useState(uid);
+  const [replyId, setReplyId] = useState<string>();
+  const editor = useRef<HTMLTextAreaElement>(null);
+  const commentsById = new Map(post.comments.map(comment => [comment.id, comment]));
+  const reply = replyId ? commentsById.get(replyId) : undefined;
+
+  async function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const content = new FormData(form).get("comment");
+    if (await act("commentOnBulletin", {
+      id: draftId, postId: post.id, content, replyTo: reply?.id,
+    }, reply ? "Đã gửi trả lời" : "Đã gửi bình luận")) {
+      form.reset();
+      setReplyId(undefined);
+      setDraftId(uid());
+    }
+  }
+
+  return <section className="bulletin-thread" aria-label="Bình luận">
+    <h2>Bình luận <span>{post.comments.length}</span></h2>
+    {post.comments.length ? <ol className="bulletin-replies">
+      {post.comments.map(comment => {
+        const parent = comment.replyTo ? commentsById.get(comment.replyTo) : undefined;
+        return <li key={comment.id} className={parent ? "bulletin-reply is-reply" : "bulletin-reply"}>
+          <Byline author={comment.author} time={comment.createdAt} small />
+          {parent && <span className="bulletin-reply-label">Trả lời {parent.author.name}</span>}
+          <p>{comment.content}</p>
+          <div className="bulletin-actions">
+            <button type="button" aria-pressed={comment.liked} disabled={busy}
+              onClick={() => void act("setBulletinCommentLike", {
+                postId: post.id, commentId: comment.id, liked: !comment.liked,
+              }, comment.liked ? "Đã bỏ thích bình luận" : "Đã thích bình luận")}>
+              <Heart size={15} aria-hidden="true" /> {comment.likeCount ? `${comment.likeCount} lượt thích` : "Thích"}
+            </button>
+            <button type="button" disabled={busy} onClick={() => {
+              setReplyId(comment.id);
+              editor.current?.focus();
+            }}>Trả lời</button>
+          </div>
+        </li>;
+      })}
+    </ol> : <p className="hint">Chưa có bình luận</p>}
+    <form className="bulletin-comment-form" onSubmit={send}>
+      <Avatar name={me.name} photoId={me.avatarId} />
+      <div>
+        {reply && <div className="bulletin-replying">
+          <span>Đang trả lời {reply.author.name}</span>
+          <button type="button" className="text-button" disabled={busy} onClick={() => setReplyId(undefined)}>Bỏ trả lời</button>
+        </div>}
+        <Field label={reply ? "Viết trả lời" : "Viết bình luận"}>
+          <textarea id="bulletin-comment" ref={editor} name="comment" rows={2} maxLength={bulletinCommentLimit} required />
+        </Field>
+        <Button type="submit" disabled={busy}>{reply ? "Gửi trả lời" : "Gửi bình luận"}</Button>
+      </div>
+    </form>
+  </section>;
+}
+
+function SharePost({ post, onClose }: { post: BulletinPostView; onClose: () => void }) {
+  const url = new URL(window.location.pathname, window.location.origin);
+  url.searchParams.set("tin", post.id);
+  const input = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState("");
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(url.href);
+      setMessage("Đã sao chép link");
+    } catch {
+      input.current?.focus();
+      input.current?.select();
+      setMessage("Link đã được chọn để bạn sao chép");
+    }
+  }
+
+  return <Dialog title="Chia sẻ bản tin" description={post.title} onClose={onClose}>
+    <Field label="Link bản tin">
+      <input ref={input} value={url.href} type="url" readOnly onFocus={event => event.currentTarget.select()} />
+    </Field>
+    {message && <p className="hint" role="status">{message}</p>}
+    <div className="form-footer">
+      <Button variant="secondary" onClick={onClose}>Đóng</Button>
+      <Button onClick={() => void copyLink()}>Sao chép link</Button>
+    </div>
+  </Dialog>;
+}
+
+export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, linkedPostId, onDismissLink, onOpen, onAction }: {
   posts: BulletinPostView[];
   nextChangeAt?: number;
+  me: BulletinAuthor;
   isAdmin: boolean;
   busy: boolean;
+  linkedPostId?: string;
+  onDismissLink: () => void;
   onOpen: (signal: AbortSignal) => Promise<void>;
-  onAction: (action: BulletinAction, data: Record<string, unknown>, message: string) => Promise<boolean>;
+  onAction: Act;
 }) {
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [commentId, setCommentId] = useState(uid);
-  const close = useCallback(() => setSelection(null), []);
-  const selected = selection?.mode === "read" ? posts.find(post => post.id === selection.id) : undefined;
-  const original = selection?.mode === "edit" ? selection.original : undefined;
+  const [readingId, setReadingId] = useState(linkedPostId);
+  const [feed, setFeed] = useState<Feed>("all");
+  const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const threadTitle = useRef<HTMLHeadingElement>(null);
+  const closeOverlay = useCallback(() => setOverlay(null), []);
+  const selected = posts.find(post => post.id === readingId);
+  const original = overlay?.mode === "edit" ? overlay.original : undefined;
+  const scheduled = posts.filter(post => !post.published);
+  const visible = posts.filter(post => feed === "scheduled" ? !post.published :
+    post.published && (feed === "all" || (feed === "liked" && post.liked) || (feed === "saved" && post.saved)));
 
   useEffect(() => {
     const controller = new AbortController();
     void onOpen(controller.signal);
     return () => controller.abort();
-  }, [onOpen]);
+  }, [onOpen, readingId]);
+  const selectedId = selected?.id;
+  useEffect(() => {
+    if (selectedId) threadTitle.current?.focus({ preventScroll: true });
+  }, [selectedId]);
   useEffect(() => {
     if (nextChangeAt === undefined) return;
     const controller = new AbortController();
@@ -49,127 +211,128 @@ export default function BulletinBoard({ posts, nextChangeAt, isAdmin, busy, onOp
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (selection?.mode !== "edit") return;
+    if (overlay?.mode !== "edit") return;
     const fields = new FormData(event.currentTarget);
+    const publishAt = fields.get("publishAt");
     if (await onAction("saveBulletinPost", {
-      id: selection.id,
-      title: String(fields.get("title") ?? ""),
-      content: String(fields.get("content") ?? ""),
-      publishAt: fields.get("publishAt"),
+      id: overlay.id,
+      title: fields.get("title"),
+      content: fields.get("content"),
+      publishAt,
       deleteAt: fields.get("deleteAt"),
       revision: original?.revision,
-    }, original ? "Đã cập nhật bản tin" : "Đã đăng bản tin")) close();
-  }
-
-  async function comment(event: FormEvent<HTMLFormElement>, postId: string) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const content = new FormData(form).get("comment");
-    if (await onAction("commentOnBulletin", { id: commentId, postId, content }, "Đã gửi bình luận")) {
-      form.reset();
-      setCommentId(uid());
+    }, original ? "Đã cập nhật bản tin" : "Đã đăng bản tin")) {
+      if (!readingId) setFeed((parseBulletinDate(publishAt) ?? 0) > Date.now() ? "scheduled" : "all");
+      closeOverlay();
     }
   }
 
-  function likeButton(post: BulletinPostView) {
-    return <button className="btn secondary bulletin-like" type="button" aria-pressed={post.liked}
-      disabled={busy} onClick={() => void onAction("setBulletinLike", { postId: post.id, liked: !post.liked }, post.liked ? "Đã bỏ thích" : "Đã thích bản tin")}>
-      <ThumbsUp size={16} aria-hidden="true" /> {post.liked ? "Đã thích" : "Thích"} · {post.likeCount}
-    </button>;
+  function showPost(id: string) {
+    setReadingId(id);
+    window.scrollTo(0, 0);
   }
 
-  return (
-    <>
-      <div className="page-heading">
-        <h1>Bảng tin</h1>
-        {isAdmin && <Button disabled={busy} onClick={() => setSelection({ mode: "edit", id: uid() })}>
-          <Plus size={16} /> Đăng tin
-        </Button>}
-      </div>
-      {posts.length > 0 ? (
-        <ul className="bulletin-list">
-          {posts.map(post => (
-            <li className="panel" key={post.id}>
-              <button className="bulletin-card" type="button" aria-haspopup="dialog" aria-label={`Xem bản tin ${post.title}`}
-                onClick={() => setSelection({ mode: "read", id: post.id })}>
-                <strong className="bulletin-title">{post.title}</strong>
-                {isAdmin && !post.published && post.publishAt !== undefined &&
-                  <span className="bulletin-time">Hẹn đăng {bulletinClock.format(post.publishAt)}</span>}
-                <span className="bulletin-preview" aria-hidden="true">{post.content}</span>
-                <span className="bulletin-read" aria-hidden="true">Xem nội dung <ArrowRight size={14} /></span>
-              </button>
-              {post.published && <div className="bulletin-social">
-                {likeButton(post)}
-                <Button variant="secondary" onClick={() => setSelection({ mode: "read", id: post.id })}>
-                  <MessageSquare size={16} /> {post.comments.length} bình luận
-                </Button>
-              </div>}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <section className="panel"><Empty title="Chưa có bản tin" icon={Newspaper} /></section>
-      )}
-      {selected && (
-        <Dialog key={selected.id} title={selected.title} onClose={close} wide>
+  function backToFeed() {
+    setReadingId(undefined);
+    onDismissLink();
+    window.scrollTo(0, 0);
+  }
+
+  function postHeader(post: BulletinPostView) {
+    return <PostHeader post={post}
+      onEdit={isAdmin ? () => setOverlay({ mode: "edit", id: post.id, original: post }) : undefined}
+      onDelete={isAdmin ? () => setOverlay({ mode: "delete", original: post }) : undefined}
+    />;
+  }
+
+  function postActions(post: BulletinPostView, onDiscuss: () => void) {
+    return <PostActions post={post} busy={busy} act={onAction}
+      onDiscuss={onDiscuss} onShare={() => setOverlay({ mode: "share", original: post })} />;
+  }
+
+  return <div className="bulletin-board">
+    <header className="bulletin-heading">
+      <div><Newspaper size={24} aria-hidden="true" /><h1>Bảng tin</h1></div>
+      {readingId && <Button variant="secondary" onClick={backToFeed}><ChevronLeft size={16} aria-hidden="true" /> Về bảng tin</Button>}
+    </header>
+    {readingId ? selected ? (
+      <>
+        <article className="panel bulletin-post bulletin-detail">
+          {postHeader(selected)}
+          <h2 className="bulletin-post-title" ref={threadTitle} tabIndex={-1}>{selected.title}</h2>
           <div className="bulletin-fulltext">{selected.content}</div>
-          {isAdmin && selected.deleteAt !== undefined &&
-            <p className="bulletin-time">Tự xóa {bulletinClock.format(selected.deleteAt)} · giờ Việt Nam</p>}
-          {selected.published && <section className="bulletin-comments" aria-label="Bình luận">
-            {likeButton(selected)}
-            <h3>Bình luận · {selected.comments.length}</h3>
-            {selected.comments.length > 0 && <ul>
-              {selected.comments.map(item => <li key={item.id}>
-                <strong>{item.authorName}</strong>
-                <time dateTime={new Date(item.createdAt).toISOString()}>{bulletinClock.format(item.createdAt)}</time>
-                <p>{item.content}</p>
-              </li>)}
-            </ul>}
-            <form onSubmit={event => void comment(event, selected.id)}>
-              <Field label="Viết bình luận"><textarea name="comment" rows={2} maxLength={bulletinCommentLimit} required /></Field>
-              <Button type="submit" disabled={busy}>Gửi bình luận</Button>
-            </form>
-          </section>}
-          <div className="form-footer">
-            <Button variant="secondary" onClick={close}>Đóng</Button>
-            {isAdmin && <Button disabled={busy} onClick={() => setSelection({
-              mode: "edit", id: selected.id, original: selected,
-            })}><Pencil size={15} /> Sửa tin</Button>}
-            {isAdmin && <Button variant="danger" disabled={busy} onClick={() => setSelection({ mode: "delete", original: selected })}>
-              <Trash2 size={15} /> Xóa tin
-            </Button>}
+          {isAdmin && selected.deleteAt !== undefined && <p className="bulletin-note">
+            <CalendarClock size={15} aria-hidden="true" /> Tự xóa {bulletinClock.format(selected.deleteAt)} · Giờ Việt Nam
+          </p>}
+          {selected.published && postActions(selected, () => document.getElementById("bulletin-comment")?.focus())}
+        </article>
+        {selected.published && <CommentThread key={selected.id} post={selected} me={me} busy={busy} act={onAction} />}
+      </>
+    ) : <section className="panel"><Empty title="Bản tin không còn khả dụng" icon={Newspaper} /></section> : (
+      <>
+        {isAdmin && <div className="panel bulletin-compose">
+          <Byline author={me} />
+          <Button disabled={busy} onClick={() => setOverlay({ mode: "edit", id: uid() })}>
+            <Plus size={17} aria-hidden="true" /> Đăng tin
+          </Button>
+        </div>}
+        <div className="bulletin-feeds" aria-label="Lọc bảng tin" role="group">
+          {feedTabs.filter(tab => tab.id !== "scheduled" || isAdmin).map(tab =>
+            <button key={tab.id} type="button" aria-pressed={feed === tab.id} onClick={() => setFeed(tab.id)}>
+              {tab.label}{tab.id === "scheduled" && scheduled.length > 0 ? ` · ${scheduled.length}` : ""}
+            </button>
+          )}
+        </div>
+        {visible.length ? (
+          <ul className="bulletin-list">
+            {visible.map(post => <li key={post.id} className="panel bulletin-post">
+              {postHeader(post)}
+              <button className="bulletin-post-open" type="button" aria-label={`Xem bản tin ${post.title}`} onClick={() => showPost(post.id)}>
+                <strong className="bulletin-post-title">{post.title}</strong>
+                <span className="bulletin-preview" aria-hidden="true">{post.content}</span>
+                <span className="bulletin-read" aria-hidden="true">Xem nội dung</span>
+              </button>
+              {post.published && postActions(post, () => showPost(post.id))}
+            </li>)}
+          </ul>
+        ) : <section className="panel"><Empty icon={Newspaper} title={
+          feed === "saved" ? "Bạn chưa lưu bản tin nào" : feed === "liked" ? "Bạn chưa thích bản tin nào" :
+          feed === "scheduled" ? "Chưa có bản tin đã hẹn" : "Chưa có bản tin"
+        } /></section>}
+      </>
+    )}
+    {overlay?.mode === "share" && <SharePost post={overlay.original} onClose={closeOverlay} />}
+    {isAdmin && overlay?.mode === "edit" && (
+      <Dialog key={overlay.id} title={original ? "Sửa tin" : "Đăng tin"} onClose={closeOverlay} wide busy={busy}>
+        <form onSubmit={save}>
+          <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit} defaultValue={original?.title} /></Field>
+          <Field label="Nội dung"><textarea name="content" rows={7} required maxLength={bulletinContentLimit} defaultValue={original?.content} /></Field>
+          <div className="form-grid">
+            <Field label="Hẹn đăng" hint="Giờ Việt Nam · Để trống để đăng ngay">
+              <input name="publishAt" type="datetime-local" defaultValue={bulletinDateInput(original?.publishAt)} />
+            </Field>
+            <Field label="Hẹn tự xóa" hint="Giờ Việt Nam · Để trống để giữ tin">
+              <input name="deleteAt" type="datetime-local" defaultValue={bulletinDateInput(original?.deleteAt)} />
+            </Field>
           </div>
-        </Dialog>
-      )}
-      {isAdmin && selection?.mode === "edit" && (
-        <Dialog key={`edit:${selection.id}`} title={original ? "Sửa tin" : "Đăng tin"} onClose={close} wide busy={busy}>
-          <form onSubmit={save}>
-            <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit} defaultValue={original?.title} /></Field>
-            <Field label="Nội dung"><textarea name="content" rows={7} required maxLength={bulletinContentLimit} defaultValue={original?.content} /></Field>
-            <div className="form-grid">
-              <Field label="Hẹn đăng" hint="Giờ Việt Nam · Để trống để đăng ngay">
-                <input name="publishAt" type="datetime-local" defaultValue={bulletinDateInput(original?.publishAt)} />
-              </Field>
-              <Field label="Hẹn tự xóa" hint="Giờ Việt Nam · Để trống để giữ tin">
-                <input name="deleteAt" type="datetime-local" defaultValue={bulletinDateInput(original?.deleteAt)} />
-              </Field>
-            </div>
-            <FormFooter label={original ? "Lưu thay đổi" : "Đăng tin"} busy={busy} onCancel={close} />
-          </form>
-        </Dialog>
-      )}
-      {isAdmin && selection?.mode === "delete" && (
-        <Dialog key={`delete:${selection.original.id}`} title="Xóa bản tin" onClose={close} busy={busy}>
-          <p>Xóa “{selection.original.title}” cùng lượt thích và bình luận?</p>
-          <div className="form-footer">
-            <Button variant="secondary" disabled={busy} onClick={close}>Hủy</Button>
-            <Button variant="danger" disabled={busy} onClick={async () => {
-              const { id, revision } = selection.original;
-              if (await onAction("deleteBulletinPost", { id, revision }, "Đã xóa bản tin")) close();
-            }}>Xóa bản tin</Button>
-          </div>
-        </Dialog>
-      )}
-    </>
-  );
+          <FormFooter label={original ? "Lưu thay đổi" : "Đăng tin"} busy={busy} onCancel={closeOverlay} />
+        </form>
+      </Dialog>
+    )}
+    {isAdmin && overlay?.mode === "delete" && (
+      <Dialog title="Xóa bản tin" onClose={closeOverlay} busy={busy}>
+        <p>Xóa “{overlay.original.title}” cùng lượt thích và bình luận?</p>
+        <div className="form-footer">
+          <Button variant="secondary" disabled={busy} onClick={closeOverlay}>Hủy</Button>
+          <Button variant="danger" disabled={busy} onClick={async () => {
+            const { id, revision } = overlay.original;
+            if (await onAction("deleteBulletinPost", { id, revision }, "Đã xóa bản tin")) {
+              closeOverlay();
+              if (readingId === id) backToFeed();
+            }
+          }}>Xóa bản tin</Button>
+        </div>
+      </Dialog>
+    )}
+  </div>;
 }

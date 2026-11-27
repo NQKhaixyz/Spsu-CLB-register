@@ -81,6 +81,7 @@ test("First owner becomes BĐH; normal profile cannot choose admin", () => {
   const c = fixture();
   assert.equal(c.members[0].role, "admin");
   assert.equal(c.members[1].role, "member");
+  assert.deepEqual(c.weeks.at(-1)!.entries.map(entry => entry.memberId), [c.members[1].id]);
   assert.throws(
     () => applyAction(c, memberIdentity, "settings", { name: "Hacked" }),
     /BĐH/,
@@ -156,7 +157,7 @@ test("Absence requires a reason and returning requires approval", () => {
     status: "pending",
     reason: "Em đã đổi lịch",
   });
-  const e = c.weeks.at(-1)!.entries[1];
+  const e = c.weeks.at(-1)!.entries.find(entry => entry.memberId === c.members[1].id)!;
   assert.equal(e.status, "pending");
   assert.equal(e.absent, undefined);
 });
@@ -172,7 +173,7 @@ test("Approval updates status once and rejects a second decision", () => {
   });
   const data = { week: weekId(), memberId: c.members[1].id, approved: true };
   applyAction(c, adminIdentity, "review", data);
-  assert.equal(c.weeks.at(-1)!.entries[1].status, "attending");
+  assert.equal(c.weeks.at(-1)!.entries.find(entry => entry.memberId === data.memberId)?.status, "attending");
   assert.throws(
     () => applyAction(c, adminIdentity, "review", data),
     /đã được xử lý/,
@@ -180,6 +181,7 @@ test("Approval updates status once and rejects a second decision", () => {
 });
 test("Closing handles unregistered and pending separately, preserving excuse", () => {
   const c = fixture();
+  applyAction(c, adminIdentity, "member", { name: "Thành viên chưa đăng ký", studentId: "SV0002" });
   applyAction(c, memberIdentity, "register", {
     status: "absent",
     reason: "Bận học",
@@ -190,11 +192,13 @@ test("Closing handles unregistered and pending separately, preserving excuse", (
   });
   const w = c.weeks.at(-1)!;
   closeWeek(w);
-  assert.equal(w.entries[0].status, "absent");
-  assert.equal(w.entries[0].excused, false);
-  assert.equal(w.entries[1].status, "absent");
-  assert.equal(w.entries[1].excused, true);
-  assert.match(w.entries[1].decision!, /Chưa được duyệt/);
+  const pending = w.entries.find(entry => entry.memberId === c.members[1].id)!;
+  const unregistered = w.entries.find(entry => entry.memberId === c.members[2].id)!;
+  assert.equal(unregistered.status, "absent");
+  assert.equal(unregistered.excused, false);
+  assert.equal(pending.status, "absent");
+  assert.equal(pending.excused, true);
+  assert.match(pending.decision!, /Chưa được duyệt/);
   const before = JSON.stringify(w);
   closeWeek(w);
   assert.equal(JSON.stringify(w), before);

@@ -1,4 +1,4 @@
-import { addDays, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, pausedForScoreWeek, reportMembers, scoreFor, type Club, type ScoreboardRow, type View } from "./club";
+import { addDays, adminMemberIds, rosterAssignments, today, weekId, weeklyScoreFor, isDutyReportShift, isShiftPublished, pausedForScoreWeek, reportMembers, scoreFor, type Assignment, type Club, type ScoreboardRow, type View } from "./club";
 import { committeeLabels, memberCommitteeNames } from "./committees";
 import { bulletinView } from "./bulletin";
 import { academicWeekFor, activeAvailabilityDatasetFor, profileAvailability, profileAvailabilityRows } from "./availability";
@@ -43,6 +43,7 @@ export function workspaceView(
   user: { userId: string; displayName: string; email: string },
   revision: number,
 ) {
+  const adminIds = adminMemberIds(club);
   const academicSettings = activeAvailabilityDatasetFor(club)?.settings;
   // The club's confirmed anchor is week 11, starting Monday 09/11/2026.
   // Compute before filtering private availability data so every member sees it.
@@ -103,6 +104,27 @@ export function workspaceView(
   }
   const view = currentTerminology({ club, me, isAdmin: !!isAdmin, setup: !me, identity: { name: user.displayName, email: user.email }, revision, weeklyScores, personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin });
   delete view.club.bulletinPosts;
+  // Keep stored attendance history, while removal from the visible roster also
+  // frees seats and excludes previous BĐH assignments from the displayed totals.
+  const visibleAssignments = (rows: Assignment[]) =>
+    rosterAssignments(rows, adminIds).map(row => row.originalId && adminIds.has(row.originalId)
+      ? { ...row, originalId: undefined } : row);
+  for (const group of [view.club, view.club.demoArchive]) {
+    if (!group) continue;
+    for (const week of group.weeks) {
+      week.entries = week.entries.filter(entry => !adminIds.has(entry.memberId));
+      if (week.closingSnapshot) {
+        week.closingSnapshot.before = week.closingSnapshot.before.filter(entry => !adminIds.has(entry.memberId));
+        week.closingSnapshot.after = week.closingSnapshot.after.filter(entry => !adminIds.has(entry.memberId));
+      }
+    }
+    for (const schedule of group.schedules) {
+      for (const shift of schedule.shifts) {
+        shift.assignments = visibleAssignments(shift.assignments);
+        if (shift.cancellationSnapshot) shift.cancellationSnapshot = visibleAssignments(shift.cancellationSnapshot);
+      }
+    }
+  }
   // Return personal settings on the signed-in account only.
   for (const member of [...view.club.members, ...(view.club.demoArchive?.members ?? [])]) {
     delete member.fontPreference;

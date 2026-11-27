@@ -19,6 +19,7 @@ import DutyRegister from "./duty-register";
 import DutyEvidenceAction from "./duty-evidence";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
+import { isBulletinId } from "../lib/bulletin";
 import { evidenceSubmissionOpen } from "../lib/duty-evidence";
 import { activeAvailabilityDatasetFor, availabilityForDuty, profileAvailability, profileAvailabilityRows } from "../lib/availability";
 import {
@@ -41,7 +42,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleHelp,
   ClipboardCheck,
   Clock3,
   Coffee,
@@ -89,6 +89,7 @@ import {
   canReplanDutyShift,
   createDutyShiftSlots,
   isDutyReportShift,
+  isRosterMember,
   isShiftPublished,
   statusNames,
   today,
@@ -177,6 +178,7 @@ export default function Workspace() {
   const [auth, setAuth] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
+  const [linkedBulletin, setLinkedBulletin] = useState<string>();
   const [memberSection, setMemberSection] = useState<"profiles" | "availability">("profiles");
   const [editingWeeklyPoints, setEditingWeeklyPoints] = useState(false);
   const [committeeFilter, setCommitteeFilter] = useState<CommitteeFilter>("all");
@@ -223,6 +225,13 @@ export default function Workspace() {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("tin");
+    if (isBulletinId(id)) {
+      setLinkedBulletin(id);
+      setTab("bulletin");
+    }
+  }, []);
   useEffect(() => {
     if (tab !== "members") return;
     const controller = new AbortController();
@@ -386,7 +395,15 @@ export default function Workspace() {
       setBusy(false);
     }
   }
+  function dismissBulletinLink() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("tin")) return;
+    url.searchParams.delete("tin");
+    window.history.replaceState(window.history.state, "", url);
+    setLinkedBulletin(undefined);
+  }
   const go = (next: Tab) => {
+    if (next !== "bulletin") dismissBulletinLink();
     setTab(next);
     setEditingWeeklyPoints(false);
     setFilter("all");
@@ -509,6 +526,7 @@ export default function Workspace() {
   const count = (s: Registration) =>
     week.entries.filter((e) => e.status === s).length;
   const liveMembers = club.members.filter((m) => m.active);
+  const dutyMembers = liveMembers.filter(isRosterMember);
   const ownEntry = currentWeek.entries.find((e) => e.memberId === me!.id);
   const activeDataset = activeAvailabilityDatasetFor(club);
 
@@ -1072,7 +1090,7 @@ export default function Workspace() {
   }
   function changeAssignment(shift: Shift, shiftMonth: string, position: number) {
     const current = shift.assignments[position];
-    const candidates = liveMembers.filter(
+    const candidates = dutyMembers.filter(
       (m) =>
         m.joined <= shift.date &&
         availabilityForDuty(club, m, shift.date, shift.period, shift)
@@ -1129,7 +1147,7 @@ export default function Workspace() {
   }
   function addDutyMember(shift: Shift, shiftMonth: string) {
     const assigned = new Set(shift.assignments.map(assignment => assignment.memberId));
-    const candidates = liveMembers.filter(member => !assigned.has(member.id)).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+    const candidates = dutyMembers.filter(member => !assigned.has(member.id)).sort((a, b) => a.name.localeCompare(b.name, "vi"));
     setModal({
       title: "Thêm người vào ca",
       description: `${dateLabel(shift.date, true)} · Ca ${shift.period === "am" ? "sáng" : "chiều"}`,
@@ -1758,7 +1776,7 @@ export default function Workspace() {
     const linkedIds = activeDataset
       ? new Set(Object.values(activeDataset.memberLinks ?? {}))
       : null;
-    const counts = liveMembers
+    const counts = dutyMembers
       .filter((m) => !linkedIds || linkedIds.has(m.id) || profileAvailability(club, m).length > 0 ||
         activeShifts.some(shift => shift.assignments.some(assignment => assignment.memberId === m.id)))
       .map((m) => ({
@@ -2339,7 +2357,10 @@ export default function Workspace() {
 
   function weekScoreTable() {
     return <Scoreboard title={`Tuần ${dateLabel(week.id)} – ${dateLabel(addDays(week.id, 6))}`} period="tuần"
-      rows={weeklyScores.map(r => ({ ...r, name: findMember(r.memberId)?.name ?? "" }))}
+      rows={weeklyScores.map(row => {
+        const member = findMember(row.memberId);
+        return { ...row, name: member?.name ?? "", committeeNames: memberCommitteeNames(member) };
+      })}
       memberId={isAdmin ? undefined : me!.id} scope={scoreScope} onScopeChange={setScoreScope} />;
   }
 
@@ -2642,7 +2663,7 @@ export default function Workspace() {
             description="Họp và phiếu điểm danh tính theo ngày họp; ca trực tính theo ngày trực thực tế"
           />
           <div className="table-scroll">
-            <table>
+            <table className="scoreboard-table" aria-label="Bảng điểm tháng">
               <thead>
                 <tr>
                   <th>THÀNH VIÊN</th>
@@ -2663,7 +2684,10 @@ export default function Workspace() {
                     <td>
                       <div className="person-cell">
                         <Avatar name={s.m.name} photoId={s.m.avatarId} index={i} />
-                        <strong>{s.m.name}</strong>
+                        <span className="score-name">
+                          <strong>{s.m.name}</strong>
+                          <small className="score-committee">{memberCommitteeNames(s.m)}</small>
+                        </span>
                       </div>
                     </td>
                     <td className="muted mono">{s.m.studentId}</td>
@@ -3017,7 +3041,39 @@ export default function Workspace() {
   }
 
   function personal() {
-    const mine = isAdmin ? undefined : view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
+    const heading = (<>
+      <div className="page-heading">
+        <div className="personal-identity">
+          <Avatar name={me!.name} photoId={me!.avatarId} size="large" />
+          <div>
+            <span className="eyebrow">{me!.name}</span>
+            <h1>Góc của tôi</h1>
+            <p>{isAdmin ? "Quản lý hồ sơ và ảnh đại diện của bạn" : "Đăng ký họp và xem những đóng góp của bạn tại đây"}</p>
+          </div>
+        </div>
+        <div className="heading-actions">
+          <Badge status="neutral">MSSV {me!.studentId}</Badge>
+          {!isAdmin && <Button variant="secondary" onClick={() => { setScoreScope("team"); go("weeklyScores"); }}>Xem điểm toàn Đội</Button>}
+        </div>
+      </div>
+      <section className="panel personal-account">
+        <PanelHead title="Tài khoản" action={
+          <div className="heading-actions">
+            <Button variant="secondary" onClick={ownProfileDialog}>
+              <UserRound size={16} aria-hidden="true" /> Hồ sơ của tôi
+            </Button>
+            <Button variant="secondary" onClick={() => setAvatarEditing(true)}>
+              <ImagePlus size={16} aria-hidden="true" /> Đổi ảnh đại diện
+            </Button>
+            <Button variant="secondary" onClick={() => passwordDialog()}>
+              <ShieldCheck size={16} aria-hidden="true" /> Đổi mật khẩu
+            </Button>
+          </div>
+        } />
+      </section>
+    </>);
+    if (isAdmin) return heading;
+    const mine = view?.personalMonthlyScores?.[month] ?? scoreFor(club, me!.id, month);
     const shifts = club.schedules
       .filter((s) => s.published)
       .flatMap((s) => s.shifts.filter((t) => isShiftPublished(s, t)))
@@ -3028,23 +3084,7 @@ export default function Workspace() {
       .sort((a, b) => a.id.localeCompare(b.id));
     return (
       <>
-        <div className="page-heading">
-          <div className="personal-identity">
-            <Avatar name={me!.name} photoId={me!.avatarId} size="large" />
-            <div>
-              <span className="eyebrow">{me!.name}</span>
-              <h1>Góc của tôi</h1>
-              <p>Đăng ký họp và xem những đóng góp của bạn tại đây</p>
-            </div>
-          </div>
-          <div className="heading-actions">
-            <Badge status="neutral">MSSV {me!.studentId}</Badge>
-            <Button variant="secondary" onClick={() => setAvatarEditing(true)}>
-              <ImagePlus size={16} aria-hidden="true" /> Đổi ảnh đại diện
-            </Button>
-            {!isAdmin && <Button variant="secondary" onClick={() => { setScoreScope("team"); go("weeklyScores"); }}>Xem điểm toàn Đội</Button>}
-          </div>
-        </div>
+        {heading}
         {meetingRegistration()}
         <div className="personal-bottom">
           <section className="panel">
@@ -3112,7 +3152,7 @@ export default function Workspace() {
               <HeartHandshake size={20} />
             </label>
           </section>
-          {mine && <section className="panel personal-score">
+          <section className="panel personal-score">
             <PanelHead title="Đóng góp tháng này" action={monthSelect} />
             <div className="my-score">
               <span>TỔNG ĐIỂM THÁNG</span>
@@ -3136,12 +3176,12 @@ export default function Workspace() {
               Trực đủ/vắng trực tính khi xác minh; họp tính khi chốt, đi muộn
               tính theo ô BĐH tích trên lịch đã công bố
             </p>
-          </section>}
+          </section>
         </div>
-        {!isAdmin ? <div className="member-own-points">
+        <div className="member-own-points">
           <div className="heading-actions">{weekSelect}</div>
           <WeeklyActivityPoints key={week.id} club={club} me={me!} isAdmin={false} week={week.id} weeklyScores={weeklyScores} busy={busy} onAction={act}/>
-        </div> : null}
+        </div>
         <section className="panel">
           <PanelHead title="Lịch sử đăng ký" />
           <div className="history-list">
@@ -3256,10 +3296,6 @@ export default function Workspace() {
           </div>
         </div>
         <div className="sidebar-bottom">
-          <button onClick={ownProfileDialog}>
-            <UserRound size={18} />
-            <span>Hồ sơ của tôi</span>
-          </button>
           <button className={activeTab === "preferences" ? "active" : ""} onClick={() => go("preferences")}>
             <Settings2 size={18} />
             <span>Cài đặt cá nhân</span>
@@ -3268,10 +3304,6 @@ export default function Workspace() {
             <LayoutDashboard size={18} />
             <span>Tổng quan</span>
           </button>}
-          <button onClick={() => passwordDialog()}>
-            <ShieldCheck size={18} />
-            <span>Đổi mật khẩu</span>
-          </button>
           {isAdmin ? (
             <button
               className={activeTab === "settings" ? "active" : ""}
@@ -3281,38 +3313,6 @@ export default function Workspace() {
               <span>Cài đặt Đội</span>
             </button>
           ) : null}
-          <button
-            onClick={() =>
-              setModal({
-                title: "Một nhịp vận hành đơn giản",
-                description: "Hướng dẫn nhanh",
-                content: (
-                  <div className="help-content">
-                    <p>
-                      <strong>Họp tuần:</strong> tự mở thứ Hai, chốt cuối Chủ
-                      nhật, xin vắng cần lý do; đổi sang tham gia cần BĐH duyệt
-                    </p>
-                    <p>
-                      <strong>Lịch trực:</strong> BĐH nhập lịch rảnh, xếp bản
-                      nháp rồi công bố, hai ca/người là ưu tiên; có thể xếp
-                      thêm
-                    </p>
-                    <p>
-                      <strong>Điểm tháng:</strong> điểm trực dựa trên ca đã xác minh,
-                      vắng họp được tính khi chốt, phiếu được BĐH tích đạt cộng mức E theo ngày họp
-                    </p>
-                    <p>
-                      <strong>Báo cáo:</strong> BĐH chọn tháng rồi bấm xuất
-                      Excel, dữ liệu thiếu được ghi rõ trong bản tạm
-                    </p>
-                  </div>
-                ),
-              })
-            }
-          >
-            <CircleHelp size={18} />
-            <span>Hướng dẫn sử dụng</span>
-          </button>
           <div className="sidebar-user">
             <Avatar name={me.name} photoId={me.avatarId} />
             <div>
@@ -3497,8 +3497,9 @@ export default function Workspace() {
           ) : activeTab === "duties" ? (
             duties()
           ) : activeTab === "bulletin" ? (
-            <BulletinBoard posts={view.bulletin?.posts ?? []} nextChangeAt={view.bulletin?.nextChangeAt}
-              isAdmin={isAdmin} busy={busy} onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
+            <BulletinBoard key={linkedBulletin ?? "feed"} posts={view.bulletin?.posts ?? []} nextChangeAt={view.bulletin?.nextChangeAt}
+              me={me} isAdmin={isAdmin} busy={busy} linkedPostId={linkedBulletin} onDismissLink={dismissBulletinLink}
+              onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
           ) : activeTab === "links" ? (
             <SharedLinks
               links={club.links ?? []}

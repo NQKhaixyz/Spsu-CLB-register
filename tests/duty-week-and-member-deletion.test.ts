@@ -42,7 +42,7 @@ test("Publishing or withdrawing a selected duty week includes both months and pr
   const shift = dec.shifts[0];
   applyAction(club, owner, "addDutyMember", { month: dec.month, shiftId: shift.id, memberId: member.id });
   assert.throws(() => applyAction(club, owner, "addDutyMember", { month: dec.month, shiftId: shift.id, memberId: member.id }), /đã có/);
-  const update = { month: dec.month, shiftId: shift.id, position: 1, assignmentMemberId: member.id, result: "completed" };
+  const update = { month: dec.month, shiftId: shift.id, position: 0, assignmentMemberId: member.id, result: "completed" };
   assert.throws(() => applyAction(club, owner, "shift", { ...update, assignmentMemberId: admin.id }), /vừa thay đổi/);
   applyAction(club, owner, "shift", update);
   const points = scoreFor(club, member.id, dec.month).points;
@@ -72,6 +72,34 @@ test("Replanning a full ca keeps a manual assignment even without compatible ava
   applyAction(club, owner, "schedule", { week: "2026-11-30", peoplePerShift: 2 });
   assert.equal(shift.assignments.filter(a => a.memberId === member.id && a.manual).length, 1);
   assert.equal(shift.assignments.length, 2);
+});
+
+test("Meeting and duty views exclude legacy admin entries without changing regular role holders or history", () => {
+  const club = fixture();
+  const [admin, member] = club.members;
+  const [schedule] = club.schedules;
+  const [shift] = schedule.shifts;
+  const [week] = club.weeks;
+  member.position = "captain";
+  member.committee = "cs";
+  week.entries = [newEntry(admin.id), newEntry(member.id)];
+  week.cancelled = true;
+  schedule.published = true;
+  shift.assignments.push({ memberId: member.id, originalId: admin.id, result: "unverified" });
+  const view = workspaceView(club, owner, 1);
+  assert.deepEqual(view.club.weeks[0].entries.map(row => row.memberId), [member.id]);
+  assert.equal(view.club.schedules[0].shifts[0].assignments.length, 1);
+  assert.equal(view.club.schedules[0].shifts[0].assignments[0].originalId, undefined);
+  assert.equal(club.weeks[0].entries.length, 2);
+  assert.equal(club.schedules[0].shifts[0].assignments.length, 2);
+  assert.throws(() => applyAction(club, owner, "register", { status: "attending" }), /tài khoản thành viên/);
+  assert.throws(() => applyAction(club, owner, "entry", { week: week.id, memberId: admin.id, status: "attending" }), /tài khoản thành viên/);
+  assert.throws(() => applyAction(club, owner, "addDutyMember", { month: schedule.month, shiftId: shift.id, memberId: admin.id }), /thành viên/);
+  applyAction(club, owner, "close", { week: week.id });
+  assert.equal(week.entries[0].status, "unregistered");
+  assert.equal(week.entries[1].status, "absent");
+  const closed = workspaceView(club, owner, 2).club.weeks[0];
+  assert.deepEqual(closed.closingSnapshot?.after.map(row => row.memberId), [member.id]);
 });
 
 test("The order changed by BĐH is used for members, and a stale neighbor cannot move the wrong link", () => {

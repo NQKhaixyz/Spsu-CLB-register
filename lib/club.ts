@@ -253,8 +253,16 @@ export function createClub(ownerId: string): Club {
     logs: [],
   };
 }
+export const isRosterMember = (member: Member) => member.role === "member";
+export const adminMemberIds = (club: Pick<Club, "members">) =>
+  new Set(club.members.filter(member => !isRosterMember(member)).map(member => member.id));
+export const rosterAssignments = (rows: Assignment[], adminIds: ReadonlySet<string>) =>
+  rows.filter(row => !adminIds.has(row.memberId));
+
 export function syncWeeks(club: Club, date = today()) {
   const current = weekId(date);
+  const members = club.members.filter(isRosterMember);
+  const adminIds = adminMemberIds(club);
   let changed = false;
   const latest = [...club.weeks].sort((a, b) => b.id.localeCompare(a.id))[0]
     ?.id;
@@ -269,7 +277,7 @@ export function syncWeeks(club: Club, date = today()) {
         location: "Phòng sinh hoạt Đội",
         closed: false,
         cancelled: false,
-        entries: club.members
+        entries: members
           .filter(
             (m) => m.joined <= addDays(id, 6) && !pausedForScoreWeek(m, id),
           )
@@ -279,7 +287,7 @@ export function syncWeeks(club: Club, date = today()) {
     }
   for (const w of club.weeks)
     if (!w.closed && !w.reopenedForCorrection && addDays(w.id, 7) <= date) {
-      closeWeek(w);
+      closeWeek(w, adminIds);
       club.logs.unshift({
         at: new Date().toISOString(),
         actor: "Hệ thống",
@@ -295,7 +303,7 @@ export function syncWeeks(club: Club, date = today()) {
       location: "Phòng sinh hoạt Đội",
       closed: false,
       cancelled: false,
-      entries: club.members
+      entries: members
         .filter((m) => m.active && m.joined <= date)
         .map((m) => newEntry(m.id)),
     });
@@ -318,7 +326,7 @@ export function syncWeeks(club: Club, date = today()) {
         changed = true;
       }
     }
-    for (const m of club.members.filter(
+    for (const m of members.filter(
       (m) =>
         m.active &&
         m.joined <= date &&
@@ -370,10 +378,11 @@ export function newEntry(memberId: string): Entry {
     passed: false,
   };
 }
-export function closeWeek(week: Week) {
+export function closeWeek(week: Week, adminIds?: ReadonlySet<string>) {
   if (week.closed) return;
   const before = structuredClone(week.entries);
   for (const e of week.entries) {
+    if (adminIds?.has(e.memberId)) continue;
     if (e.status === "pending") {
       e.decision = "Chưa được duyệt khi chốt";
       e.status = "absent";
@@ -420,18 +429,20 @@ export function isUpcomingShift(shift: Shift, now = new Date()) {
     Date.parse(shift.date + "T" + shift.startTime + ":00+07:00") > now.getTime()
   );
 }
-const isUnverifiedDutyShift = (shift: Shift) =>
-  !shift.cancelled && shift.assignments.every((assignment) => assignment.result === "unverified" && !assignment.late);
-export const canReplanDutyShift = (schedule: Schedule, shift: Shift) =>
-  !isShiftPublished(schedule, shift) && isUnverifiedDutyShift(shift);
+const isUnverifiedDutyShift = (shift: Shift, adminIds?: ReadonlySet<string>) =>
+  !shift.cancelled && shift.assignments.every(assignment =>
+    adminIds?.has(assignment.memberId) || (assignment.result === "unverified" && !assignment.late),
+  );
+export const canReplanDutyShift = (schedule: Schedule, shift: Shift, adminIds?: ReadonlySet<string>) =>
+  !isShiftPublished(schedule, shift) && isUnverifiedDutyShift(shift, adminIds);
 
-export function canWithdrawDutyShift(schedule: Schedule, shift: Shift, from: string) {
-  return isShiftPublished(schedule, shift) && isUnverifiedDutyShift(shift) &&
+export function canWithdrawDutyShift(schedule: Schedule, shift: Shift, from: string, adminIds?: ReadonlySet<string>) {
+  return isShiftPublished(schedule, shift) && isUnverifiedDutyShift(shift, adminIds) &&
     shift.date >= from && shift.date <= addDays(weekId(from), 6);
 }
 
-export function canEditDutyDraft(shift: Shift, now = new Date()) {
-  if (!shift.draft || !isUnverifiedDutyShift(shift)) return false;
+export function canEditDutyDraft(shift: Shift, now = new Date(), adminIds?: ReadonlySet<string>) {
+  if (!shift.draft || !isUnverifiedDutyShift(shift, adminIds)) return false;
   if (!shift.withdrawnOn) return isUpcomingShift(shift, now);
   const end = addDays(weekId(shift.withdrawnOn), 6);
   return today(now) <= end && shift.date >= shift.withdrawnOn && shift.date <= end;
@@ -555,8 +566,12 @@ export function makeSchedule(club: Club, month: string, peoplePerShift = club.pe
 
 export function fillDutyShifts(club: Club, month: string, shifts: Shift[], fixedShifts: Shift[] = []) {
   const availableFor = createDutyAvailability(club);
+  const adminIds = adminMemberIds(club);
+  for (const shift of shifts) {
+    if (!shift.cancelled) shift.assignments = rosterAssignments(shift.assignments, adminIds);
+  }
   const members = club.members.filter(
-    (m) => m.active && m.joined <= monthDays(month).at(-1)!,
+    (m) => isRosterMember(m) && m.active && m.joined <= monthDays(month).at(-1)!,
   );
   const counts = new Map(members.map((m) => [m.id, 0]));
   const allShifts = [...shifts, ...fixedShifts];

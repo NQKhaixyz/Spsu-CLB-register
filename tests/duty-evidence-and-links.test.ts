@@ -22,6 +22,7 @@ test("Minh chứng mở khi bắt đầu ca và hết hạn đúng đầu tuần
 
 test("Chỉ BĐH hoặc người trực được mở minh chứng của ca đã công bố", () => {
   const club = createClub(adminIdentity.userId);
+  club.members = [admin, member];
   const shift: Shift = { id: "2026-11-14-am", date: "2026-11-14", period: "am", assignments: [{ memberId: member.id, result: "unverified" }] };
   club.schedules = [{ month: "2026-11", published: true, shifts: [shift] }];
   const target = { month: "2026-11", shiftId: shift.id, memberId: member.id };
@@ -29,6 +30,8 @@ test("Chỉ BĐH hoặc người trực được mở minh chứng của ca đã
   assert.equal(findEvidenceAssignment(club, member, target), shift);
   assert.equal(findEvidenceAssignment(club, { ...member, id: "other" }, target), null);
   assert.equal(findEvidenceAssignment(club, { ...admin, active: false }, target), null);
+  shift.assignments.push({ memberId: admin.id, result: "unverified" });
+  assert.equal(findEvidenceAssignment(club, admin, { ...target, memberId: admin.id }), null);
   shift.draft = true;
   assert.equal(findEvidenceAssignment(club, admin, target), null);
   shift.draft = false;
