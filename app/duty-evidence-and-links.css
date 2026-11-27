@@ -10,7 +10,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
 }
-.duty-evidence-meta, .duty-evidence-actions {
+.duty-evidence-meta, .duty-evidence-actions, .shared-link-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -39,4 +39,57 @@
 }
 .upcoming-row > .duty-evidence {
   flex: 1 0 100%;
+}
+.shared-link-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.shared-links {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.shared-link {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.shared-link-content {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 260px;
+  overflow-wrap: anywhere;
+}
+.shared-link-content > div {
+  min-width: 0;
+}
+.shared-link-icon {
+  color: var(--green-dark);
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.shared-link h2 {
+  font-size: 17px;
+  margin: 0 0 4px;
+}
+.shared-link h2 a {
+  color: var(--green-dark);
+}
+.shared-link h2 svg {
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.shared-link-address {
+  color: var(--muted);
+  font-size: 13px;
+}
+.shared-link p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
 }

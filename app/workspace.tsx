@@ -21,6 +21,7 @@ import AvailabilityPage, { AvailabilityPreview } from "./availability";
 import DutyRegister from "./duty-register";
 import DutyEvidenceAction from "./duty-evidence";
 import DutyWeekActions from "./duty-week-actions";
+import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
 import { FeedbackPage, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import { AcademicWeekSettings } from "./academic-week-settings";
@@ -129,6 +130,7 @@ type Tab =
   | "requests"
   | "duties"
   | "bulletin"
+  | "links"
   | "feedback"
   | "members"
   | "reports"
@@ -145,7 +147,7 @@ type Modal = {
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
   scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
-  bulletin: { icon: Newspaper, sections: ["bulletin"] },
+  bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
   feedback: { icon: MessageSquare, sections: ["feedback"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
@@ -556,7 +558,10 @@ export default function Workspace() {
     return !!event && (event.requiresEvidence ? eventEvidenceView(row, event, me).canReview : isEventOpen(event, currentDay));
   }).length;
   const pendingTotal = pending.length + activityPending;
-  const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "scoreboard" ? [
+  const sectionOptions: { id: Tab; label: string; pending?: number }[] = activeSidebarTab === "bulletin" ? [
+    { id: "bulletin", label: "Bài đăng" },
+    { id: "links", label: "Link" },
+  ] : activeSidebarTab === "scoreboard" ? [
     { id: "weeklyScores", label: "Điểm tuần" },
     { id: "reports", label: "Điểm tháng" },
     ...(isAdmin ? [{ id: "semesterScores" as const, label: "Học kỳ" }] : []),
@@ -3327,7 +3332,8 @@ export default function Workspace() {
           {club.demo &&
           !(activeTab === "members" && memberSection === "availability") &&
           !(activeTab === "duties" && club.schedules.some(schedule => schedule.sourceFilename &&
-            schedule.shifts.some(shift => weekId(shift.date) === dutyWeek))) ? (
+            schedule.shifts.some(shift => weekId(shift.date) === dutyWeek))) &&
+          activeTab !== "links" ? (
             <div className="demo-banner">
               <Sparkles size={15} />
               <span>
@@ -3380,6 +3386,11 @@ export default function Workspace() {
             <BulletinBoard key={linkedBulletin ?? "feed"} posts={view.bulletin?.posts ?? []} nextChangeAt={view.bulletin?.nextChangeAt}
               me={me} isAdmin={isAdmin} busy={busy} linkedPostId={linkedBulletin} onDismissLink={dismissBulletinLink}
               onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
+          ) : activeTab === "links" ? (
+            <section className="bulletin-links" aria-label="Danh sách liên kết">
+              <SharedLinks links={club.links ?? []} isAdmin={isAdmin} busy={busy}
+                onAction={(action, data) => act(action, data, action === "deleteSharedLink" ? "Đã xóa link" : action === "moveSharedLink" ? "Đã đổi thứ tự link" : "Đã lưu link", false)} />
+            </section>
           ) : activeTab === "feedback" ? (
             <FeedbackPage entries={view.feedback ?? []} busy={busy} onSubmit={submitFeedback} onRecall={recallFeedback} />
           ) : activeTab === "members" ? (

@@ -1,4 +1,4 @@
-.bulletin-board {
+.bulletin-board, .bulletin-links {
   max-width: 44rem;
   margin-inline: auto;
 }
