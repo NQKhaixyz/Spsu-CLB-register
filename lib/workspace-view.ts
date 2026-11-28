@@ -129,12 +129,16 @@ export function workspaceView(
     delete club.dutyWithdrawal;
     delete club.semesterScoreDraft;
   }
-  const { memberFeedback: _privateFeedback, feedbackResetReceipt: _feedbackResetReceipt, sharing: _sharing, ...visibleClub } = club;
+  const { memberFeedback: _privateFeedback, feedbackResetReceipt: _feedbackResetReceipt, sharing: _sharing,
+    activityNotices: _activityNotices, ...visibleClub } = club;
   const view = currentTerminology({ club: visibleClub, me, isAdmin: !!isAdmin, setup: !me,
     identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, currentMonthScores,
     personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin, feedback, sharing, sharingReport });
   delete view.club.bulletinPosts;
   delete view.club.bulletinUploads;
+  if (view.club.activityRegistrations) {
+    view.club.activityRegistrations = view.club.activityRegistrations.filter(row => !adminIds.has(row.memberId));
+  }
   for (const row of view.club.activityRegistrations ?? []) {
     if (row.evidence) delete row.evidence.linkUrl;
   }

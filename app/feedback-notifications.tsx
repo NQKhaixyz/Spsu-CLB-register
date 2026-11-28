@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Bell, CheckCheck, Feather, MessageSquare, MessageSquarePlus, Shield, X } from "lucide-react";
-import type { FeedbackNotificationInbox, FeedbackNotificationKind } from "../lib/feedback-notifications";
+import { Bell, CalendarDays, CheckCheck, ClipboardList, Feather, MessageSquare, MessageSquarePlus, Newspaper, Shield, X } from "lucide-react";
+import { dateLabel } from "../lib/club";
+import type { MemberNotificationInbox, FeedbackNotificationKind } from "../lib/feedback-notifications";
 import { sharingNoticeTitles } from "../lib/sharing-types";
+import type { WorkspaceNotification } from "../lib/workspace-notifications";
 import { MemberName } from "./member-identity";
+import { formatScore } from "./scoreboard";
 
-const inboxPath = "/api/feedback-notifications";
+const inboxPath = "/api/feedback-notifications?include=workspace";
 const pollInterval = 30_000;
 const notificationClock = new Intl.DateTimeFormat("vi-VN", {
   dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh",
@@ -15,26 +18,43 @@ const notificationKinds = {
   received: { title: "Feedback mới", icon: MessageSquarePlus },
   reply: { title: "Phản hồi feedback mới", icon: MessageSquare },
   consent: { title: "Đã đồng ý công khai feedback", icon: CheckCheck },
-} satisfies Record<FeedbackNotificationKind, { title: string; icon: typeof Bell }>;
+  bulletin: { title: "Bài đăng mới", icon: Newspaper },
+  score: { title: "Đã cập nhật điểm của bạn", icon: ClipboardList },
+  duty: { title: "Bạn có lịch trực C1", icon: CalendarDays },
+} satisfies Record<FeedbackNotificationKind | WorkspaceNotification["kind"], { title: string; icon: typeof Bell }>;
 
-export default function FeedbackNotifications({ pending, onOpenPending, onOpenFeedback, onOpenSharing }: {
+function notificationDetail(notification: MemberNotificationInbox["notifications"][number]) {
+  if (notification.kind === "bulletin") return notification.postTitle;
+  if (notification.kind === "score")
+    return `Tuần ${dateLabel(notification.week, true)} · ${notification.change > 0 ? "+" : ""}${formatScore(notification.change)} điểm`;
+  if (notification.kind === "duty") {
+    const times = [notification.startTime, notification.endTime].filter(Boolean).join(" – ");
+    return [`Ca ${notification.period === "am" ? "sáng" : "chiều"}`, dateLabel(notification.date, true), times].filter(Boolean).join(" · ");
+  }
+}
+
+export default function WorkspaceNotifications({ pending, onOpenPending, onOpenFeedback, onOpenSharing,
+  onOpenBulletin, onOpenScoreWeek, onOpenDutyWeek }: {
   pending: number;
   onOpenPending: () => void;
   onOpenFeedback: (feedbackId: string) => void;
   onOpenSharing: (sharingId: string) => void;
+  onOpenBulletin: (postId: string) => void;
+  onOpenScoreWeek: (week: string) => void;
+  onOpenDutyWeek: (week: string) => void;
 }) {
   const panelId = useId();
   const center = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [inbox, setInbox] = useState<FeedbackNotificationInbox>();
+  const [inbox, setInbox] = useState<MemberNotificationInbox>();
   const [loadError, setLoadError] = useState(false);
   const notifications = inbox?.notifications ?? [];
   const unread = notifications.filter(notification => !notification.read).length;
   const bellLabel = ["Thông báo", unread ? `${unread} chưa đọc` : "", pending ? `${pending} đăng ký chờ xử lý` : ""]
     .filter(Boolean).join(", ");
 
-  const receiveInbox = useCallback((next: FeedbackNotificationInbox) => {
+  const receiveInbox = useCallback((next: MemberNotificationInbox) => {
     setInbox(current => current && current.revision > next.revision ? current : next);
     setLoadError(false);
   }, []);
@@ -48,7 +68,7 @@ export default function FeedbackNotifications({ pending, onOpenPending, onOpenFe
         return;
       }
       if (!response.ok) throw new Error("Chưa tải được thông báo");
-      const next: FeedbackNotificationInbox = await response.json();
+      const next: MemberNotificationInbox = await response.json();
       if (!signal?.aborted) receiveInbox(next);
     } catch {
       if (!signal?.aborted) setLoadError(true);
@@ -91,10 +111,13 @@ export default function FeedbackNotifications({ pending, onOpenPending, onOpenFe
     };
   }, [open]);
 
-  async function openNotification(notification: FeedbackNotificationInbox["notifications"][number]) {
+  async function openNotification(notification: MemberNotificationInbox["notifications"][number]) {
     setOpen(false);
     if ("sharingId" in notification) onOpenSharing(notification.sharingId);
-    else onOpenFeedback(notification.feedbackId);
+    else if ("feedbackId" in notification) onOpenFeedback(notification.feedbackId);
+    else if (notification.kind === "bulletin") onOpenBulletin(notification.postId);
+    else if (notification.kind === "score") onOpenScoreWeek(notification.week);
+    else onOpenDutyWeek(notification.week);
     if (notification.read) return;
     try {
       const response = await fetch(inboxPath, {
@@ -144,14 +167,16 @@ export default function FeedbackNotifications({ pending, onOpenPending, onOpenFe
           const { title, icon: Icon } = "sharingId" in notification
             ? { title: sharingNoticeTitles[notification.kind], icon: notification.kind.startsWith("cupid") ? Feather : Shield }
             : notificationKinds[notification.kind];
+          const detail = notificationDetail(notification);
           return <li key={notification.id}>
             <button type="button" className="notification-item" data-unread={!notification.read}
               onClick={() => void openNotification(notification)}>
               <span className="notification-item-icon"><Icon size={17} aria-hidden="true" /></span>
               <span className="notification-item-copy">
                 <strong>{title}</strong>
+                {detail && <span className="notification-item-detail">{detail}</span>}
                 <span className="notification-item-meta">
-                  {notification.actorId ? <MemberName memberId={notification.actorId} /> : <span>{"sharingId" in notification ? "Nhịp Đội" : "Ẩn danh"}</span>}
+                  {notification.actorId ? <MemberName memberId={notification.actorId} /> : <span>{"feedbackId" in notification ? "Ẩn danh" : "Nhịp Đội"}</span>}
                   <time dateTime={new Date(notification.createdAt).toISOString()}>{notificationClock.format(notification.createdAt)}</time>
                 </span>
               </span>

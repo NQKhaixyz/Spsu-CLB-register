@@ -1,8 +1,9 @@
 import { env } from "cloudflare:workers";
 import { canManageBulletin, canReadBulletin, isBulletinId } from "../../../lib/bulletin";
 import {
-  bulletinByteRange, bulletinMediaByteLimit, bulletinMediaKey, bulletinMediaLimit, bulletinStageMs, bulletinVideoLimitMb,
-  isBulletinMediaId, isBulletinMediaType, type BulletinMedia, type BulletinVideoType,
+  bulletinByteRange, bulletinDocumentLimitMb, bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit,
+  bulletinMediaKey, bulletinMediaLimit, bulletinStageMs, bulletinVideoLimitMb,
+  isBulletinDocument, isBulletinMediaId, isBulletinMediaType, type BulletinMedia, type BulletinVideoType,
 } from "../../../lib/bulletin-media";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
@@ -46,6 +47,11 @@ async function serve(request: Request, head = false) {
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "Accept-Ranges": "bytes",
     });
+    if (isBulletinDocument(file.type)) {
+      const filename = encodeURIComponent(file.name ?? "Tai-lieu").replace(/['()*]/g, character =>
+        "%" + character.charCodeAt(0).toString(16).toUpperCase());
+      headers.set("Content-Disposition", "attachment; filename*=UTF-8''" + filename);
+    }
     if (head) {
       if (!await bucket.head(key)) throw notFound();
       headers.set("Content-Length", String(file.bytes));
@@ -71,7 +77,7 @@ async function serve(request: Request, head = false) {
 export const GET = (request: Request) => serve(request);
 export const HEAD = (request: Request) => serve(request, true);
 
-async function validateVideo(request: Request, type: BulletinVideoType) {
+async function uploadPrefix(request: Request) {
   // Inspect a small prefix on the cloned stream, so the original upload can
   // be streamed to R2 without buffering the complete video in the worker.
   const reader = request.clone().body!.getReader();
@@ -88,10 +94,33 @@ async function validateVideo(request: Request, type: BulletinVideoType) {
   } finally {
     void reader.cancel().catch(() => {});
   }
+  return prefix.subarray(0, offset);
+}
+
+function validateVideo(prefix: Uint8Array, type: BulletinVideoType) {
   const valid = type === "video/webm"
     ? prefix[0] === 0x1a && prefix[1] === 0x45 && prefix[2] === 0xdf && prefix[3] === 0xa3
     : ["ftyp", "moov", "mdat", "wide", "free", "skip"].includes(new TextDecoder().decode(prefix.subarray(4, 8)));
-  if (offset < prefix.length || !valid) throw new AuthError("Tệp video không hợp lệ, hãy chọn MP4, WebM hoặc MOV", 415);
+  if (prefix.length < 12 || !valid) throw new AuthError("Tệp video không hợp lệ, hãy chọn MP4, WebM hoặc MOV", 415);
+}
+
+function documentName(request: Request, type: string) {
+  let name = "";
+  try {
+    name = bulletinDocumentName(decodeURIComponent(request.headers.get("X-Upload-Name") ?? ""));
+  } catch {
+    throw new AuthError("Tên tài liệu không hợp lệ", 400);
+  }
+  if (!name || name.length > 255 || bulletinDocumentType(name) !== type)
+    throw new AuthError("Chọn tệp PDF, DOCX, XLSX hoặc PPTX đúng định dạng", 415);
+  return name;
+}
+
+function validateDocument(prefix: Uint8Array, type: string) {
+  const valid = type === "application/pdf"
+    ? new TextDecoder().decode(prefix.subarray(0, 5)) === "%PDF-"
+    : prefix[0] === 0x50 && prefix[1] === 0x4b && prefix[2] === 0x03 && prefix[3] === 0x04;
+  if (prefix.length < 8 || !valid) throw new AuthError("Nội dung tệp không đúng định dạng tài liệu", 415);
 }
 
 export async function POST(request: Request) {
@@ -101,18 +130,27 @@ export async function POST(request: Request) {
     const existing = user.club.bulletinPosts?.find(post => post.id === postId);
     if (existing && !canManageBulletin(user.club, existing, user.member)) throw new AuthError("Bạn chỉ có thể sửa bản tin của mình", 403);
     const type = request.headers.get("content-type")?.split(";")[0];
-    if (!isBulletinMediaType(type) || !request.body) throw new AuthError("Chọn ảnh hoặc video MP4, WebM hay MOV", 415);
+    if (!isBulletinMediaType(type) || !request.body) throw new AuthError("Chọn ảnh, video MP4, WebM, MOV hoặc tài liệu PDF, DOCX, XLSX, PPTX", 415);
     const bytes = Number(request.headers.get("x-upload-size"));
     const declared = request.headers.get("content-length");
     if (!Number.isSafeInteger(bytes) || bytes < 1 || (declared !== null && Number(declared) !== bytes))
       throw new AuthError("Kích thước tệp không hợp lệ", 400);
-    if (bytes > bulletinMediaByteLimit(type))
-      throw new AuthError(type === "image/jpeg" ? "Ảnh vượt quá 2 MB" : `Video vượt quá ${bulletinVideoLimitMb} MB`, 413);
+    const document = isBulletinDocument(type);
+    if (bytes > bulletinMediaByteLimit(type)) {
+      const message = type === "image/jpeg" ? "Ảnh vượt quá 2 MB"
+        : document ? `Tài liệu vượt quá ${bulletinDocumentLimitMb} MB` : `Video vượt quá ${bulletinVideoLimitMb} MB`;
+      throw new AuthError(message, 413);
+    }
+    const name = document ? documentName(request, type) : undefined;
     const photo = type === "image/jpeg" ? await readPhoto(request) : undefined;
-    if (type !== "image/jpeg") await validateVideo(request, type);
+    if (type !== "image/jpeg") {
+      const prefix = await uploadPrefix(request);
+      if (document) validateDocument(prefix, type);
+      else validateVideo(prefix, type);
+    }
     if (photo && photo.length !== bytes) throw new AuthError("Tệp ảnh bị thiếu dữ liệu", 400);
 
-    const file: BulletinMedia = { id: crypto.randomUUID(), type, bytes };
+    const file: BulletinMedia = { id: crypto.randomUUID(), type, bytes, ...(name ? { name } : {}) };
     const key = bulletinMediaKey(file.id);
     await mutate(user.userId, club => {
       const member = club.members.find(item => item.userId === user.userId && item.id === user.member.id);
@@ -136,7 +174,7 @@ export async function POST(request: Request) {
             bucket.put(key, stream.readable, options),
             request.body.pipeTo(stream.writable, { signal: controller.signal }),
           ]);
-          if (!object) throw new Error("Unable to store bulletin video");
+          if (!object) throw new Error("Unable to store bulletin attachment");
         } catch (error) {
           controller.abort();
           throw error;

@@ -51,6 +51,7 @@ import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees"
 import { isFontId } from "./interface-fonts";
 import { isMemberPosition } from "./member-positions";
 import { planDutyWeek } from "./duty-week-plan";
+import { captureWorkspaceNotifications } from "./workspace-notifications";
 import type { AvailabilitySettings } from "./club";
 
 export type Identity = { userId: string; email: string; displayName: string };
@@ -78,7 +79,20 @@ export function applyAction(
   action: string,
   data: Record<string, any>,
 ) {
-  let me = club.members.find((m) => m.userId === identity.userId);
+  const member = club.members.find(entry => entry.userId === identity.userId);
+  const updateNotices = captureWorkspaceNotifications(club, member, action, data);
+  applyClubAction(club, identity, action, data, member);
+  updateNotices?.();
+}
+
+function applyClubAction(
+  club: Club,
+  identity: Identity,
+  action: string,
+  data: Record<string, any>,
+  initialMember: Member | undefined,
+) {
+  let me = initialMember;
   const admin = me?.role === "admin" && me.active;
   const note = (text: string) => {
     club.logs.unshift({
@@ -302,10 +316,10 @@ export function applyAction(
         upload.id === fileId && upload.postId === id && upload.uploaderId === me.id && upload.expiresAt > now,
       );
       check(file, "Tệp đính kèm không còn dùng được. Chọn lại tệp rồi thử lưu.");
-      return { id: file.id, type: file.type, bytes: file.bytes };
+      return { id: file.id, type: file.type, bytes: file.bytes, ...(file.name ? { name: file.name } : {}) };
     });
     check(content.length <= bulletinContentLimit, `Nội dung tối đa ${bulletinContentLimit} ký tự.`);
-    check(content || media.length, "Nhập nội dung hoặc thêm ảnh hay video.");
+    check(content || media.length, "Nhập nội dung hoặc thêm tệp đính kèm.");
 
     const publishAt = data.publishAt === undefined ? post?.publishAt : parseBulletinDate(data.publishAt);
     const deleteAt = data.deleteAt === undefined ? post?.deleteAt : parseBulletinDate(data.deleteAt);
@@ -318,10 +332,16 @@ export function applyAction(
         post.publishAt === publishAt && post.deleteAt === deleteAt) return;
       check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để xem nội dung mới.");
       if (post.createdBy === undefined) post.createdBy = bulletinAuthorId(club, post) ?? null;
+      if (post.notice && post.notice.appearsAt > now) {
+        post.notice.appearsAt = Math.max(now, publishAt ?? now);
+      }
       Object.assign(post, fields, { revision: post.revision + 1 });
     } else {
       check(revision === undefined, "Không tìm thấy bản tin cần sửa.");
-      (club.bulletinPosts ??= []).unshift({ id, ...fields, createdAt: now, createdBy: me.id, revision: 1 });
+      (club.bulletinPosts ??= []).unshift({
+        id, ...fields, createdAt: now, createdBy: me.id, revision: 1,
+        notice: { id: crypto.randomUUID(), appearsAt: Math.max(now, publishAt ?? now) },
+      });
     }
     if (club.bulletinUploads && media.length)
       club.bulletinUploads = club.bulletinUploads.filter(upload => !mediaIds.includes(upload.id));

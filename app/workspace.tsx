@@ -24,7 +24,7 @@ import DutyWeekActions from "./duty-week-actions";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
 import { FeedbackPage, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
-import FeedbackNotifications from "./feedback-notifications";
+import WorkspaceNotifications from "./feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
 import SharingPanel from "./sharing-panel";
 import { indexSharingAdjustments } from "../lib/sharing-scores";
@@ -482,6 +482,26 @@ export default function Workspace() {
     setSharingTarget({ id });
     if (tab === "personal") void load();
   }
+  function openBulletinFromNotification(id: string) {
+    closeProfile();
+    go("bulletin");
+    const url = new URL(window.location.href);
+    url.searchParams.set("tin", id);
+    window.history.replaceState(window.history.state, "", url);
+    setLinkedBulletin(id);
+  }
+  function openScoreFromNotification(week: string) {
+    closeProfile();
+    go("weeklyScores");
+    setSelectedWeek(week);
+    setScoreScope("mine");
+  }
+  function openDutyFromNotification(week: string) {
+    closeProfile();
+    go("duties");
+    setDutyWeek(week);
+    if (tab === "duties") void load();
+  }
   if (loading) return <Loading />;
   if (auth) return <Login onSuccess={load} />;
   if (!view)
@@ -596,7 +616,7 @@ export default function Workspace() {
     { id: "reports", label: "Điểm tháng" },
     { id: "semesterScores", label: "Học kỳ" },
   ] : activeSidebarTab === "activity" ? [
-    { id: "meetings", label: "Đăng ký họp", pending: pending.length },
+    { id: "meetings", label: isAdmin ? "Họp hằng tuần" : "Đăng ký họp", pending: pending.length },
     { id: "duties", label: "Lịch trực C1" },
     { id: "requests", label: isAdmin ? "Tạo sự kiện" : "Sự kiện", pending: activityPending },
   ] : [];
@@ -3344,9 +3364,11 @@ export default function Workspace() {
             >
               <RefreshCw size={17} className={busy ? "spin" : ""} />
             </button>
-            <FeedbackNotifications key={me.id} pending={isAdmin ? pendingTotal : 0}
+            <WorkspaceNotifications key={me.id} pending={isAdmin ? pendingTotal : 0}
               onOpenPending={() => go(pending.length ? "meetings" : "requests")}
-              onOpenFeedback={openFeedbackFromNotification} onOpenSharing={openSharingFromNotification} />
+              onOpenFeedback={openFeedbackFromNotification} onOpenSharing={openSharingFromNotification}
+              onOpenBulletin={openBulletinFromNotification} onOpenScoreWeek={openScoreFromNotification}
+              onOpenDutyWeek={openDutyFromNotification} />
             <span className="topbar-divider" />
             <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} size="small" />
             <span className="topbar-role">

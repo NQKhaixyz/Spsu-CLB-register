@@ -1,6 +1,7 @@
 import type { Club } from "./club";
 import type { StoredFeedback } from "./feedback";
 import type { SharingNotice } from "./sharing-types";
+import { markWorkspaceNotificationRead, workspaceNotificationsFor, type WorkspaceNotification } from "./workspace-notifications";
 
 export type FeedbackNotificationKind = "received" | "reply" | "consent";
 export type StoredFeedbackNotification = {
@@ -14,18 +15,20 @@ type FeedbackNotification = Omit<StoredFeedbackNotification, "memberId"> & {
   feedbackId: string;
   actorId?: string;
 };
-type InboxNotification = FeedbackNotification | Omit<SharingNotice, "memberId">;
-export type FeedbackNotificationInbox = { revision: number; notifications: InboxNotification[] };
+type InboxNotification = FeedbackNotification | Omit<SharingNotice, "memberId"> | WorkspaceNotification;
+export type MemberNotificationInbox = { revision: number; notifications: InboxNotification[] };
 
-export function memberNotificationsFor(club: Club, viewerId: string): InboxNotification[] {
+export function memberNotificationsFor(club: Club, viewerId: string, includeWorkspace = true): InboxNotification[] {
   return [...feedbackNotificationsFor(club, viewerId),
     ...(club.sharing?.notices ?? []).flatMap(({ memberId, ...notice }) => memberId === viewerId ? [notice] : []),
+    ...(includeWorkspace ? workspaceNotificationsFor(club, viewerId) : []),
   ].sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function markMemberNotificationRead(club: Club, viewerId: string, id: string) {
+export function markMemberNotificationRead(club: Club, viewerId: string, id: string, includeWorkspace = true) {
   const notice = club.sharing?.notices.find(item => item.memberId === viewerId && item.id === id);
-  if (!notice) return markFeedbackNotificationRead(club, viewerId, id);
+  if (!notice) return markFeedbackNotificationRead(club, viewerId, id) ||
+    (includeWorkspace && markWorkspaceNotificationRead(club, viewerId, id));
   notice.read = true;
   return true;
 }

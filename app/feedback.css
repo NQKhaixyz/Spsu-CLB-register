@@ -113,6 +113,7 @@
 }
 .notification-item-copy { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .notification-item-copy strong { font-size: .875rem; }
+.notification-item-detail { font-size: .875rem; }
 .notification-item-meta { display: flex; gap: 0 9px; flex-wrap: wrap; color: var(--muted); font-size: .8125rem; }
 .notification-item-meta time { white-space: nowrap; }
 .notification-unread { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }

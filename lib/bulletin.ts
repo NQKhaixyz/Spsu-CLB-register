@@ -30,6 +30,7 @@ export type BulletinPost = {
   savedBy?: string[];
   comments?: BulletinComment[];
   media?: BulletinMedia[];
+  notice?: { id: string; appearsAt: number; readBy?: string[] };
 };
 
 export type BulletinAuthor = { memberId?: string; name: string; avatarId?: string };
@@ -39,7 +40,7 @@ export type BulletinCommentView = Omit<BulletinComment, "memberId" | "likedBy" |
   liked: boolean;
   likeCount: number;
 };
-export type BulletinPostView = Omit<BulletinPost, "createdBy" | "likedBy" | "savedBy" | "comments"> & {
+export type BulletinPostView = Omit<BulletinPost, "createdBy" | "likedBy" | "savedBy" | "comments" | "notice"> & {
   author: BulletinAuthor;
   canManage: boolean;
   published: boolean;
@@ -110,7 +111,7 @@ export function bulletinView(club: Club, viewer: Member, now = Date.now()) {
     .filter(post => canReadBulletin(post, viewer, now))
     .sort((a, b) => (b.publishAt ?? b.createdAt ?? 0) - (a.publishAt ?? a.createdAt ?? 0))
     .map(post => {
-      const { createdBy: _createdBy, likedBy, savedBy, comments, ...publicPost } = post;
+      const { createdBy: _createdBy, notice: _notice, likedBy, savedBy, comments, ...publicPost } = post;
       return {
         ...publicPost,
         author: people.get(bulletinAuthorId(club, post) ?? "") ?? { name: "Ban điều hành" },

@@ -188,7 +188,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
               {awaitingRegistration > 0 && <Button disabled={busy} onClick={() => showRegistrations(event.id)}>
                 Duyệt đăng ký <span className="activity-count">{awaitingRegistration}</span>
               </Button>}
-              {!cancelled && !ended && (!own || multiple) && <Button disabled={busy}
+              {!isAdmin && !cancelled && !ended && (!own || multiple) && <Button disabled={busy}
                 variant={actionableProof || awaitingRegistration ? "secondary" : "primary"} onClick={() => void register(event)}>
                 {own && multiple ? "Đăng ký thêm lượt" : "Đăng ký tham gia"}
               </Button>}

@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { eventContributionError, isEventRoundQuantity, isPointAmount, memberEventRegistrations, recordedEventQuantity, reviewEventRegistration, type ActivityRegistration, type ClubEvent } from "../../../lib/activity";
+import { captureWorkspaceNotifications } from "../../../lib/workspace-notifications";
 import type { Club, Member } from "../../../lib/club";
 import { eventEvidenceLink, eventEvidenceTarget, eventEvidenceView, eventPhotoId } from "../../../lib/event-evidence";
 import { eventPhotoKey, eventPhotoStagingMs, removeEventPhoto } from "../../../lib/event-photo-storage";
@@ -160,10 +161,12 @@ export async function PATCH(request: Request) {
         if (!isEventRoundQuantity(quantity)) throw new AuthError("Nhập số lượt nguyên từ 0 đến 10.000.", 400);
         if (previousQuantity !== current.recordedRounds) throw changed();
       }
+      const updateNotices = captureWorkspaceNotifications(club, member, "reviewActivity", { id: row.id });
       reviewEventRegistration(club, member, { id: row.id, confirmed: status === "approved", reason, contributionPoints, quantity, previousQuantity }, text => {
         club.logs.unshift({ at: new Date().toISOString(), actor: member.name, actorId: member.id, text });
         club.logs = club.logs.slice(0, 2000);
       }, id);
+      updateNotices?.();
       return eventEvidenceView(row, event, member);
     });
     return json(result);

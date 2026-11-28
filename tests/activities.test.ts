@@ -257,11 +257,17 @@ test("Contribution events require an individual award on approval or direct addi
 test("BĐH accounts can manage the workspace and are excluded from both scoreboards and all Excel sheets", async () => {
   const c = fixture();
   const event = createEvent(c);
-  applyAction(c, admin, "registerEvent", { eventId: event.id });
+  assert.throws(() => applyAction(c, admin, "registerEvent", { eventId: event.id }), /tài khoản thành viên/);
+  assert.throws(() => applyAction(c, admin, "register", { status: "attending" }), /tài khoản thành viên/);
+  applyAction(c, user, "registerEvent", { eventId: event.id });
   const row = c.activityRegistrations![0];
   applyAction(c, admin, "reviewActivity", { id: row.id, confirmed: true });
   const month = today().slice(0, 7), week = weekId();
   const owner = c.members[0];
+  const legacy = { ...row, id: "old-admin-registration", memberId: owner.id };
+  c.activityRegistrations!.push(legacy);
+  assert.throws(() => applyAction(c, admin, "reviewActivity", { id: legacy.id, confirmed: true }), /tài khoản thành viên/);
+  assert.ok(workspaceView(c, admin, 1).club.activityRegistrations?.every(item => item.memberId !== owner.id));
   c.schedules = [{ month, published: true, shifts: [{ id: "shift-admin", date: today(), period: "pm",
     assignments: [{ memberId: owner.id, result: "completed" }] }] }];
   const args = { memberId: owner.id, week, date: today(), kind: "special", points: 2 };
@@ -747,7 +753,7 @@ test("Cancelling an event preserves registrations and removes its count and poin
   assert.ok(cancelledAt);
   assert.equal(event.cancelledAt, cancelledAt);
   assert.deepEqual(c.activityRegistrations, registrationHistory);
-  assert.throws(() => register(c, event.id, admin), /đã hủy/);
+  assert.throws(() => register(c, event.id, user), /đã hủy/);
   assert.throws(() => applyAction(c, admin, "reviewActivity", { id: pending.id, confirmed: true }), /đã hủy/);
   assert.throws(() => applyAction(c, other, "withdrawActivity", { id: pending.id }), /đã hủy/);
   assert.throws(() => applyAction(c, admin, "editEvent", { ...event, points: 8 }), /đã hủy/);

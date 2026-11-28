@@ -1,11 +1,12 @@
 "use client";
 
-import { ImagePlus, Video, X } from "lucide-react";
+import { FileText, ImagePlus, Video, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, type BulletinPostView } from "../lib/bulletin";
 import {
-  bulletinMediaByteLimit, bulletinMediaEndpoint, bulletinMediaLimit, bulletinMediaUrl, bulletinStageMs,
-  bulletinVideoLimitMb, bulletinVideoTypes, isBulletinMediaId, isBulletinVideo, type BulletinMedia, type BulletinMediaType,
+  bulletinDocumentAccept, bulletinDocumentLimitMb, bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit,
+  bulletinMediaEndpoint, bulletinMediaLimit, bulletinMediaUrl, bulletinStageMs, bulletinVideoLimitMb, bulletinVideoTypes,
+  isBulletinDocument, isBulletinMediaId, isBulletinVideo, type BulletinMedia, type BulletinMediaType,
 } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 import { BulletinAttachmentView } from "./bulletin-attachments";
@@ -25,7 +26,7 @@ type DraftMedia = {
 
 const videoExtensions = { mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime" } as const;
 export const bulletinVideoAccept = [...bulletinVideoTypes, ".mp4", ".webm", ".mov"].join(",");
-export type BulletinMediaSelection = { files: File[]; kind: "image" | "video" };
+export type BulletinMediaSelection = { files: File[]; kind: "image" | "video" | "document" };
 
 async function prepareSelection({ files, kind }: BulletinMediaSelection) {
   if (files.length > bulletinMediaLimit)
@@ -35,13 +36,20 @@ async function prepareSelection({ files, kind }: BulletinMediaSelection) {
     if (kind === "image") {
       if (file.size > 24 * 1024 * 1024) throw new Error("Ảnh đã chọn vượt quá 24 MB");
       prepared.push({ label: file.name, type: "image/jpeg", body: await preparePhoto(file) });
-    } else {
+    } else if (kind === "video") {
       const extension = file.name.split(".").at(-1)?.toLowerCase() as keyof typeof videoExtensions;
       const type = isBulletinVideo(file.type) ? file.type : videoExtensions[extension];
       if (!isBulletinVideo(type)) throw new Error("Chọn video MP4, WebM hoặc MOV");
       if (file.size > bulletinMediaByteLimit(type)) throw new Error(`Video tối đa ${bulletinVideoLimitMb} MB mỗi tệp`);
       if (!file.size) throw new Error("Video không có dữ liệu");
       prepared.push({ label: file.name, type, body: file });
+    } else {
+      const label = bulletinDocumentName(file.name);
+      const type = bulletinDocumentType(label);
+      if (!type || label.length > 255) throw new Error("Chọn tệp PDF, DOCX, XLSX hoặc PPTX có tên hợp lệ");
+      if (!file.size) throw new Error("Tài liệu không có dữ liệu");
+      if (file.size > bulletinMediaByteLimit(type)) throw new Error(`Tài liệu tối đa ${bulletinDocumentLimitMb} MB mỗi tệp`);
+      prepared.push({ label, type, body: file });
     }
   }
   return prepared;
@@ -51,7 +59,10 @@ async function sendFile(postId: string, draft: DraftMedia) {
   if (!draft.body) throw new Error("Tệp đã hết hạn, hãy chọn lại");
   const response = await fetch(bulletinMediaEndpoint + "?" + new URLSearchParams({ postId }), {
     method: "POST",
-    headers: { "Content-Type": draft.type, "X-Upload-Size": String(draft.body.size) },
+    headers: {
+      "Content-Type": draft.type, "X-Upload-Size": String(draft.body.size),
+      ...(isBulletinDocument(draft.type) ? { "X-Upload-Name": encodeURIComponent(draft.label) } : {}),
+    },
     body: draft.body,
   });
   const file = await response.json().catch(() => null) as (BulletinMedia & { error?: string }) | null;
@@ -71,13 +82,14 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
 }) {
   const [files, setFiles] = useState<DraftMedia[]>(() => (original?.media ?? []).map((file, index) => ({
     key: file.id, file, type: file.type, url: bulletinMediaUrl(postId, file.id),
-    label: `${file.type === "image/jpeg" ? "Ảnh" : "Video"} ${index + 1}`,
+    label: file.name ?? `${file.type === "image/jpeg" ? "Ảnh" : "Video"} ${index + 1}`,
   })));
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [selection, setSelection] = useState(initialSelection);
   const photos = useRef<HTMLInputElement>(null);
   const videos = useRef<HTMLInputElement>(null);
+  const documents = useRef<HTMLInputElement>(null);
   const previews = useRef(new Set<string>());
   const waiting = busy || !!status || !!selection;
   useEffect(() => {
@@ -133,7 +145,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
       return;
     }
     if (!String(fields.get("content") ?? "").trim() && !files.length) {
-      setError("Nhập nội dung hoặc thêm ảnh hay video");
+      setError("Nhập nội dung hoặc thêm tệp đính kèm");
       return;
     }
     setStatus("Đang lưu bản tin…");
@@ -170,18 +182,23 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
         <div className="bulletin-picker-actions">
           <input ref={photos} type="file" accept="image/*" multiple hidden onChange={event => choose(event, "image")} />
           <input ref={videos} type="file" accept={bulletinVideoAccept} multiple hidden onChange={event => choose(event, "video")} />
+          <input ref={documents} type="file" accept={bulletinDocumentAccept} multiple hidden onChange={event => choose(event, "document")} />
           <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => photos.current?.click()}>
             <ImagePlus size={16} aria-hidden="true" /> Thêm ảnh
           </Button>
           <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => videos.current?.click()}>
             <Video size={16} aria-hidden="true" /> Thêm video
           </Button>
+          <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => documents.current?.click()}>
+            <FileText size={16} aria-hidden="true" /> Thêm tài liệu
+          </Button>
           <small>{files.length}/{bulletinMediaLimit} tệp</small>
         </div>
         <p className="hint">Video MP4, WebM hoặc MOV tối đa {bulletinVideoLimitMb} MB mỗi tệp</p>
+        <p className="hint">PDF, DOCX, XLSX hoặc PPTX tối đa {bulletinDocumentLimitMb} MB mỗi tệp</p>
         {files.length > 0 && <ul className="bulletin-drafts">
           {files.map(file => <li key={file.key}>
-            <BulletinAttachmentView type={file.type} url={file.url} label={file.label} />
+            {!isBulletinDocument(file.type) && <BulletinAttachmentView type={file.type} url={file.url} label={file.label} />}
             <div>
               <span title={file.label}>{file.label}</span>
               <button type="button" className="icon-button" disabled={waiting} aria-label={`Gỡ ${file.label}`}

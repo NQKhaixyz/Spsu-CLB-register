@@ -10,6 +10,7 @@ import "./duty-evidence-and-links.test";
 import "./duty-week-and-member-deletion.test";
 import "./feedback.test";
 import "./sharing.test";
+import "./workspace-notifications.test";
 import assert from "node:assert/strict";
 import {
   addDays,

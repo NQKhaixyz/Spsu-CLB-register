@@ -1,4 +1,5 @@
 import { activityKinds, activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
+import type { StoredActivityNotice } from "./workspace-notifications";
 import type { SharedLink } from "./shared-links";
 import type { BulletinPost, BulletinPostView } from "./bulletin";
 import type { BulletinUpload } from "./bulletin-media";
@@ -150,6 +151,7 @@ export type Club = {
   schedules: Schedule[];
   links?: SharedLink[];
   bulletinPosts?: BulletinPost[];
+  activityNotices?: StoredActivityNotice[];
   memberFeedback?: StoredFeedback[];
   sharing?: SharingState;
   feedbackResetReceipt?: FeedbackResetReceipt;

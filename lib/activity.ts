@@ -348,6 +348,8 @@ export function reviewEventRegistration(
   const row = club.activityRegistrations?.find(r => r.id === data.id);
   requireValue(row, "Không tìm thấy đăng ký.");
   requireValue(row.kind === "event", "Mục hoạt động này đã ngừng dùng. Hãy ghi điểm qua Tạo sự kiện.");
+  const member = club.members.find(item => item.id === row.memberId && item.role === "member");
+  requireValue(member, "Chỉ duyệt đăng ký sự kiện của tài khoản thành viên.");
   const event = eventForActivity(club, row);
   requireValue(event, "Không tìm thấy sự kiện của đăng ký.");
   requireValue(!event.cancelledAt, "Sự kiện đã hủy.");
@@ -363,8 +365,6 @@ export function reviewEventRegistration(
       "Mở và duyệt minh chứng trước khi xác nhận đăng ký này.");
   }
   if (event.scoringMode === "perRound" && data.confirmed) {
-    const member = club.members.find(item => item.id === row.memberId);
-    requireValue(member, "Không tìm thấy thành viên.");
     saveEventRoundCount(club, me, event, member, data, log, "photo", row);
     return;
   }
@@ -485,6 +485,7 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     throw new Error("Vui lòng đăng ký vào sự kiện do BĐH tạo.");
   }
   if (action === "registerEvent") {
+    requireValue(me.role === "member", "Đăng ký sự kiện dành cho tài khoản thành viên.");
     requireValue(!me.needsStudentId, "Bổ sung MSSV trước khi đăng ký hoạt động.");
     const event = club.events?.find(event => event.id === data.eventId);
     requireValue(event, "Không tìm thấy sự kiện.");
@@ -512,6 +513,7 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
     return true;
   }
   if (action === "withdrawActivity") {
+    requireValue(me.role === "member", "Đăng ký sự kiện dành cho tài khoản thành viên.");
     const row = club.activityRegistrations?.find((r) => r.id === data.id && r.memberId === me.id);
     requireValue(row?.status === "pending" && !row.supersededBy, "Chỉ rút đăng ký của bạn khi đang chờ xác nhận.");
     const event = eventForActivity(club, row);

@@ -1,8 +1,9 @@
 "use client";
 
-import { Bookmark, CalendarClock, ChevronLeft, Ellipsis, Heart, ImagePlus, MessageCircle, Newspaper, Pencil, Plus, Share2, Trash2, Video } from "lucide-react";
+import { Bookmark, CalendarClock, ChevronLeft, Ellipsis, FileText, Heart, ImagePlus, MessageCircle, Newspaper, Pencil, Plus, Share2, Trash2, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { bulletinCommentLimit, parseBulletinDate, type BulletinAuthor, type BulletinCommentView, type BulletinPostView } from "../lib/bulletin";
+import { bulletinDocumentAccept } from "../lib/bulletin-media";
 import { uid, type Member } from "../lib/club";
 import { BulletinAttachments } from "./bulletin-attachments";
 import { BulletinComposer, bulletinVideoAccept, type BulletinMediaSelection } from "./bulletin-composer";
@@ -232,6 +233,7 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
   const threadTitle = useRef<HTMLHeadingElement>(null);
   const quickPhoto = useRef<HTMLInputElement>(null);
   const quickVideo = useRef<HTMLInputElement>(null);
+  const quickDocument = useRef<HTMLInputElement>(null);
   const closeOverlay = useCallback(() => setOverlay(null), []);
   const selected = posts.find(post => post.id === readingId);
   const original = overlay?.mode === "edit" ? overlay.original : undefined;
@@ -339,8 +341,11 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
             onClick={() => quickPhoto.current?.click()}><ImagePlus size={20} aria-hidden="true" /></button>
           <button className="bulletin-compose-media" type="button" disabled={busy} aria-label="Thêm video" title="Thêm video"
             onClick={() => quickVideo.current?.click()}><Video size={20} aria-hidden="true" /></button>
+          <button type="button" className="bulletin-compose-media" disabled={busy} aria-label="Thêm tài liệu" title="Thêm tài liệu"
+            onClick={() => quickDocument.current?.click()}><FileText size={20} aria-hidden="true" /></button>
           <input ref={quickPhoto} type="file" accept="image/*" multiple hidden onChange={event => composeFromFile(event, "image")} />
           <input ref={quickVideo} type="file" accept={bulletinVideoAccept} multiple hidden onChange={event => composeFromFile(event, "video")} />
+          <input ref={quickDocument} type="file" accept={bulletinDocumentAccept} multiple hidden onChange={event => composeFromFile(event, "document")} />
         </div>
         <div className="bulletin-feeds" aria-label="Lọc bảng tin" role="group">
           {feedTabs.filter(tab => tab.id !== "scheduled" || isAdmin).map(tab =>
