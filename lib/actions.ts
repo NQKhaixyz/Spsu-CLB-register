@@ -47,6 +47,7 @@ import { editMemberFeedback, eraseFeedbackMembers, recallMemberFeedback, replyTo
 import { applySharingAction, endSharingForMember, eraseSharingMembers } from "./sharing";
 import { semesterMonthLimit, validSemesterScoreRange } from "./semester-scores";
 import { bulletinAuthorId, bulletinCommentLimit, bulletinContentLimit, bulletinTitleLimit, canManageBulletin, isBulletinId, isBulletinPublished, parseBulletinDate } from "./bulletin";
+import { bulletinRichText, normalizeBulletinRichDocument } from "./bulletin-rich";
 import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bulletin-media";
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
 import { isFontId } from "./interface-fonts";
@@ -312,9 +313,14 @@ function applyClubAction(
 
     check(admin || (data.publishAt === undefined && data.deleteAt === undefined), "Chỉ BĐH được hẹn giờ bản tin.");
     const title = typeof data.title === "string" ? data.title.trim() : "";
-    const content = typeof data.content === "string" ? data.content.trim() : "";
+    const inputText = typeof data.content === "string" ? data.content.trim() : "";
     check(data.contentFormat === undefined || data.contentFormat === "emphasis", "Định dạng bản tin không hợp lệ.");
-    const contentFormat = data.contentFormat ?? post?.contentFormat;
+    const richContent = data.richContent === undefined
+      ? (post?.content === inputText ? post.richContent : undefined)
+      : normalizeBulletinRichDocument(data.richContent);
+    check(data.richContent === undefined || richContent !== undefined, "Định dạng bản tin không hợp lệ.");
+    const content = richContent ? bulletinRichText(richContent).trim() : inputText;
+    const contentFormat = richContent ? undefined : data.contentFormat ?? post?.contentFormat;
     check(title.length > 0 && title.length <= bulletinTitleLimit, `Nhập tiêu đề từ 1 đến ${bulletinTitleLimit} ký tự.`);
     const now = Date.now();
     const previousMedia = post?.media ?? [];
@@ -335,10 +341,11 @@ function applyClubAction(
     const deleteAt = data.deleteAt === undefined ? post?.deleteAt : parseBulletinDate(data.deleteAt);
     check(!Number.isNaN(publishAt) && !Number.isNaN(deleteAt), "Giờ hẹn không hợp lệ. Dùng giờ Việt Nam.");
     check(deleteAt === undefined || deleteAt > Math.max(now, publishAt ?? now), "Giờ xóa phải sau thời điểm đăng và sau hiện tại.");
-    const fields = { title, content, contentFormat, publishAt, deleteAt, media: media.length ? media : undefined };
+    const fields = { title, content, contentFormat, richContent, publishAt, deleteAt, media: media.length ? media : undefined };
     if (post) {
       const sameMedia = previousMedia.length === media.length && previousMedia.every((file, index) => file.id === media[index].id);
       if (sameMedia && post.title === title && post.content === content && post.contentFormat === contentFormat &&
+        JSON.stringify(post.richContent) === JSON.stringify(richContent) &&
         post.publishAt === publishAt && post.deleteAt === deleteAt) return;
       check(revision === post.revision, "Bản tin vừa được cập nhật. Tải lại để xem nội dung mới.");
       if (post.createdBy === undefined) post.createdBy = bulletinAuthorId(club, post) ?? null;

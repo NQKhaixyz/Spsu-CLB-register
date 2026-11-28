@@ -2,7 +2,7 @@
 
 import { Bookmark, CalendarClock, ChevronLeft, Ellipsis, FileText, Heart, ImagePlus, MessageCircle, Newspaper, Pencil, Plus, Share2, Trash2, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { bulletinCommentLimit, parseBulletinDate, type BulletinAuthor, type BulletinCommentView, type BulletinPostView } from "../lib/bulletin";
+import { bulletinCommentLimit, parseBulletinDate, type BulletinAuthor, type BulletinBody, type BulletinCommentView, type BulletinPostView } from "../lib/bulletin";
 import { bulletinDocumentAccept } from "../lib/bulletin-media";
 import { uid, type Member } from "../lib/club";
 import { BulletinAttachments } from "./bulletin-attachments";
@@ -274,14 +274,13 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
     return () => { clearTimeout(timer); controller.abort(); };
   }, [nextChangeAt, onOpen]);
 
-  async function save(fields: FormData, mediaIds: string[]) {
+  async function save(fields: FormData, mediaIds: string[], body: BulletinBody) {
     if (overlay?.mode !== "edit") return false;
     const publishAt = fields.get("publishAt");
     const saved = await onAction("saveBulletinPost", {
       id: overlay.id,
       title: fields.get("title"),
-      content: fields.get("content"),
-      contentFormat: fields.get("contentFormat") ?? undefined,
+      ...body,
       mediaIds,
       ...(isAdmin ? { publishAt, deleteAt: fields.get("deleteAt") } : {}),
       revision: original?.revision,
@@ -372,7 +371,7 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
               {postHeader(post)}
               <button className="bulletin-post-open" type="button" aria-label={`Xem bản tin ${post.title}`} onClick={() => showPost(post.id)}>
                 <strong className="bulletin-post-title">{post.title}</strong>
-                {post.content && <span className="bulletin-preview" aria-hidden="true"><BulletinText {...post} /></span>}
+                {post.content && <span className="bulletin-preview" aria-hidden="true"><BulletinText {...post} preview /></span>}
                 <span className="bulletin-read" aria-hidden="true">Xem thêm</span>
               </button>
               <BulletinAttachments postId={post.id} title={post.title} files={post.media} onOpen={() => showPost(post.id)} />

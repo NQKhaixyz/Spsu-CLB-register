@@ -1,5 +1,6 @@
 import type { Club, Member } from "./club";
 import type { BulletinMedia } from "./bulletin-media";
+import type { BulletinRichDocument } from "./bulletin-rich";
 
 export const bulletinTitleLimit = 120;
 export const bulletinContentLimit = 8000;
@@ -16,11 +17,15 @@ type BulletinComment = {
   likedBy?: string[];
 };
 
-export type BulletinPost = {
-  id: string;
-  title: string;
+export type BulletinBody = {
   content: string;
   contentFormat?: "emphasis";
+  richContent?: BulletinRichDocument;
+};
+
+export type BulletinPost = BulletinBody & {
+  id: string;
+  title: string;
   revision: number;
   createdAt?: number;
   createdBy?: string | null;

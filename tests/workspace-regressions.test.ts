@@ -9,6 +9,7 @@ import { sidebarTabLabels, sidebarTabs, teamSidebarOrder } from "../lib/workspac
 import { memberPositions, memberRoleLabel } from "../lib/member-positions";
 import { bulletinDateInput, bulletinView, parseBulletinDate, pruneBulletinState, pruneExpiredBulletinPosts } from "../lib/bulletin";
 import { bulletinInline, pastedMarkdownEmphasis, toggleBulletinEmphasis } from "../lib/bulletin-format";
+import { bulletinEditorDocument, bulletinRichText, normalizeBulletinRichDocument } from "../lib/bulletin-rich";
 import { bulletinByteRange, bulletinMediaIds, bulletinMediaKey, removedBulletinKeys } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 
@@ -143,6 +144,58 @@ test("Bulletin posts are readable by members, with author editing, safe retries 
   assert.equal(workspaceView(c, reader, 2).bulletin?.posts[1].content, edit.content);
   assert.equal(workspaceView(c, reader, 2).bulletin?.posts[1].revision, 2);
 });
+test("Rich bulletin bodies preserve nested formatting through edits and member reads", () => {
+  const { c, pending } = fixture();
+  pending.userId = "bulletin-rich-reader";
+  const reader = { userId: pending.userId, displayName: pending.name, email: "" };
+  const richContent = {
+    type: "doc",
+    content: [
+      { type: "paragraph", attrs: { indent: 2 }, content: [{ type: "text", text: "Lời nhắc", marks: [
+        { type: "bold" }, { type: "underline" }, { type: "textStyle", attrs: { color: "#234f8d", fontSize: "21px" } },
+      ] }] },
+      { type: "orderedList", attrs: { start: 3 }, content: [{ type: "listItem", content: [
+        { type: "paragraph", content: [{ type: "text", text: "Mang tài liệu", marks: [{ type: "strike" }] }] },
+        { type: "bulletList", content: [{ type: "listItem", content: [
+          { type: "paragraph", content: [{ type: "text", text: "Sổ ghi chép" }] },
+        ] }] },
+      ] }] },
+    ],
+  };
+  const post = { id: "rich-bulletin-test", title: "Lịch tập trung", content: "Bản xem trước từ máy khách", richContent };
+  const save = (data: Record<string, unknown>) => applyAction(c, owner, "saveBulletinPost", data);
+  save(post);
+  save(post);
+  const saved = () => workspaceView(c, reader, 1).bulletin!.posts[0];
+  const plain = "Lời nhắc\nMang tài liệu\nSổ ghi chép";
+  assert.equal(saved().content, plain);
+  assert.equal(saved().revision, 1);
+  assert.deepEqual(saved().richContent, richContent);
+  save({ id: post.id, title: "Đã đổi tiêu đề", revision: 1, content: plain });
+  assert.equal(saved().revision, 2);
+  assert.deepEqual(saved().richContent, richContent);
+  assert.throws(() => save({ ...post, revision: 2, richContent: { type: "doc", content: [{ type: "media" }] } }), /Định dạng bản tin/);
+  assert.throws(() => save({ ...post, revision: 2, richContent: bulletinEditorDocument({ content: "a".repeat(8001) }) }), /Định dạng bản tin/);
+  assert.equal(saved().revision, 2);
+});
+
+test("Bulletin editor opens plain and emphasis posts without reinterpreting literal text", () => {
+  const plain = "<b>Nội dung</b> **dấu sao**\n\nHẹn gặp";
+  assert.equal(bulletinRichText(bulletinEditorDocument({ content: plain })), plain);
+  const doc = bulletinEditorDocument({ content: "**Đậm _và nghiêng_**\nKế hoạch", contentFormat: "emphasis" });
+  assert.equal(bulletinRichText(doc), "Đậm và nghiêng\nKế hoạch");
+  assert.deepEqual(doc.content[0], { type: "paragraph", content: [
+    { type: "text", text: "Đậm ", marks: [{ type: "bold" }] },
+    { type: "text", text: "và nghiêng", marks: [{ type: "bold" }, { type: "italic" }] },
+  ] });
+  const imported = normalizeBulletinRichDocument({ type: "doc", content: [{ type: "paragraph", content: [{
+    type: "text", text: "Nội dung", marks: [{ type: "textStyle", attrs: { fontSize: "90px", color: "red; display:none" } }],
+  }] }] });
+  assert.deepEqual(imported, { type: "doc", content: [{ type: "paragraph", content: [{
+    type: "text", text: "Nội dung", marks: [{ type: "textStyle", attrs: { fontSize: "32px" } }],
+  }] }] });
+});
+
 test("Publication and expiry use Vietnam time, with private drafts and idempotent social actions", () => {
   const { c, pending } = fixture();
   pending.userId = "bulletin-interaction";

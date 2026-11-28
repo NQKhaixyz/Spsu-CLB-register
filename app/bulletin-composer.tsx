@@ -1,8 +1,8 @@
 "use client";
 
 import { FileText, ImagePlus, Video, X } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, type BulletinPostView } from "../lib/bulletin";
+import { lazy, Suspense, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, type BulletinBody, type BulletinPostView } from "../lib/bulletin";
 import {
   bulletinDocumentAccept, bulletinDocumentLimitMb, bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit,
   bulletinMediaEndpoint, bulletinMediaLimit, bulletinMediaUrl, bulletinStageMs, bulletinVideoLimitMb, bulletinVideoTypes,
@@ -12,8 +12,9 @@ import { displayMessage } from "../lib/display-message";
 import { BulletinAttachmentView } from "./bulletin-attachments";
 import { BulletinText } from "./bulletin-text";
 import { preparePhoto } from "./prepare-photo";
-import { TextEmphasisEditor } from "./text-emphasis-editor";
 import { Button, Dialog, Field, FormFooter } from "./ui";
+
+const BulletinRichEditor = lazy(() => import("./bulletin-rich-editor"));
 
 type DraftMedia = {
   key: string;
@@ -80,7 +81,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
   initialSelection?: BulletinMediaSelection;
   isAdmin: boolean;
   busy: boolean;
-  onSave: (form: FormData, mediaIds: string[]) => Promise<boolean>;
+  onSave: (form: FormData, mediaIds: string[], body: BulletinBody) => Promise<boolean>;
   onClose: () => void;
 }) {
   const [files, setFiles] = useState<DraftMedia[]>(() => (original?.media ?? []).map((file, index) => ({
@@ -89,7 +90,11 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
   })));
   const [status, setStatus] = useState("");
   const [title, setTitle] = useState(original?.title ?? "");
-  const [draft, setDraft] = useState({ content: original?.content ?? "", contentFormat: original?.contentFormat });
+  const [initialBody] = useState<BulletinBody>(() => ({
+    content: original?.content ?? "", contentFormat: original?.contentFormat, richContent: original?.richContent,
+  }));
+  const [draft, setDraft] = useState<BulletinBody | undefined>(initialBody);
+  const [editorExpanded, setEditorExpanded] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(true);
   const [error, setError] = useState("");
   const [selection, setSelection] = useState(initialSelection);
@@ -150,7 +155,8 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
       setError("Nhập tiêu đề cho bản tin");
       return;
     }
-    if (!String(fields.get("content") ?? "").trim() && !files.length) {
+    if (!draft) return;
+    if (!draft.content.trim() && !files.length) {
       setError("Nhập nội dung hoặc thêm tệp đính kèm");
       return;
     }
@@ -171,7 +177,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
         mediaIds.push(uploaded.id);
       }
       setStatus("Đang lưu bản tin…");
-      await onSave(fields, mediaIds);
+      await onSave(fields, mediaIds, draft);
     } catch (reason) {
       setError(displayMessage(reason instanceof Error ? reason.message : "Chưa lưu được bản tin"));
     } finally {
@@ -179,15 +185,21 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
     }
   }
 
-  return <Dialog title={original ? "Sửa tin" : "Đăng tin"} onClose={onClose} wide className="bulletin-composer-dialog" busy={waiting}>
+  return <Dialog title={original ? "Sửa tin" : "Đăng tin"} onClose={onClose} wide
+    className={editorExpanded ? "bulletin-composer-dialog bulletin-editor-expanded" : "bulletin-composer-dialog"} busy={waiting}>
     <form onSubmit={save}>
       <div className="bulletin-compose-layout">
         <div className="bulletin-compose-fields">
           <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit}
             value={title} onChange={event => setTitle(event.target.value)} /></Field>
-          <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={9} maxLength={bulletinContentLimit} autoGrow autoFormatPaste
-            initialText={original?.content} initialFormat={original?.contentFormat} required={!files.length} busy={waiting}
-            onDraftChange={(content, contentFormat) => setDraft({ content, contentFormat })} />
+          <Suspense fallback={<div className="bulletin-editable" role="status">Đang mở trình soạn thảo</div>}>
+            <BulletinRichEditor initial={initialBody} busy={waiting} expanded={editorExpanded}
+              onExpand={() => setEditorExpanded(open => !open)} onDraftChange={body => {
+                setDraft(body);
+                setError("");
+              }} />
+          </Suspense>
+          {!draft && <p className="form-error" role="alert">Rút gọn nội dung còn tối đa {bulletinContentLimit} ký tự hoặc giảm số cấp của danh sách để lưu</p>}
           <div className="bulletin-picker">
             <div className="bulletin-picker-actions">
               <input ref={photos} type="file" accept="image/*" multiple hidden onChange={event => choose(event, "image")} />
@@ -236,7 +248,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
           <article className="bulletin-compose-preview-body" id="bulletin-draft-preview">
             <h4 className="bulletin-post-title">{title.trim() || "Tiêu đề bài đăng"}</h4>
             <div className="bulletin-fulltext">
-              {draft.content.trim() ? <BulletinText {...draft} /> : <span className="hint">Nội dung sẽ hiện ở đây</span>}
+              {draft?.content.trim() ? <BulletinText {...draft} /> : <span className="hint">Nội dung sẽ hiện ở đây</span>}
             </div>
             {files.length > 0 && <ul className="bulletin-media-gallery">
               {files.map(file => <li key={file.key} className={isBulletinDocument(file.type) ? "bulletin-media-document" :
@@ -247,7 +259,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
           </article>
         </section>
       </div>
-      <FormFooter label={original ? "Lưu thay đổi" : "Đăng tin"} busy={waiting} onCancel={onClose} />
+      <FormFooter label={original ? "Lưu thay đổi" : "Đăng tin"} busy={waiting} disabled={!draft} onCancel={onClose} />
     </form>
   </Dialog>;
 }
