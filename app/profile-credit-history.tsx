@@ -8,7 +8,7 @@ import { Button } from "./ui";
 
 type CreditHistoryPage = { entries: CreditHistoryEntry[]; balanceCents: number; before?: number; recordedSince?: number; debt: CreditDebtHistoryView };
 type HistoryCursor = { source: "balance" | "debt"; before: number };
-type DebtChartPoint = { at?: number; debtCents: string; repaidCents: number | null; event: string };
+type DebtChartPoint = { at?: number; dayOnly?: true; debtCents: string; repaidCents: number | null; event: string };
 const clock = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const day = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const axis = new Intl.NumberFormat("vi-VN", { notation: "compact", maximumFractionDigits: 1 });
@@ -22,10 +22,10 @@ const debtEvent: Record<CreditDebtKind, string> = {
 
 function CreditBalanceChart({ entries, balanceCents }: { entries: CreditHistoryEntry[]; balanceCents: number }) {
   const points = entries.flatMap(entry => entry.balanceCents === null ? [] : [{
-    balance: entry.balanceCents, label: clock.format(entry.at),
+    balance: entry.balanceCents, label: (entry.dayOnly ? day : clock).format(entry.at),
   }]).reverse();
   const oldest = entries.at(-1);
-  if (oldest && oldest.balanceCents !== null) {
+  if (oldest && !oldest.dayOnly && oldest.balanceCents !== null) {
     points.unshift({ label: "Trước khoản đầu đang xem", balance: oldest.balanceCents - oldest.changeCents });
   }
   if (points.at(-1)?.balance !== balanceCents) points.push({ label: "Hiện tại", balance: balanceCents });
@@ -47,7 +47,7 @@ function CreditBalanceChart({ entries, balanceCents }: { entries: CreditHistoryE
 function CreditDebtChart({ debt }: { debt: CreditDebtHistoryView }) {
   if (!debt.entries.length) return <p className="hint">Chưa có biến động nợ được ghi nhận</p>;
   const changes: DebtChartPoint[] = [...debt.entries].reverse().map(entry => ({
-    at: entry.at, debtCents: entry.debtCents, repaidCents: entry.repaidCents || null,
+    at: entry.at, dayOnly: entry.dayOnly, debtCents: entry.debtCents, repaidCents: entry.repaidCents || null,
     event: debtEvent[entry.kind],
   }));
   if (debt.before === undefined && debt.entries.at(-1)?.kind === "loan")
@@ -71,7 +71,7 @@ function CreditDebtChart({ debt }: { debt: CreditDebtHistoryView }) {
           if (!active || !point) return null;
           return <div className="credit-debt-tooltip" role="status">
             <strong>{point.event}</strong>
-            {point.at !== undefined && <time dateTime={new Date(point.at).toISOString()}>{clock.format(point.at)}</time>}
+            {point.at !== undefined && <time dateTime={new Date(point.at).toISOString()}>{(point.dayOnly ? day : clock).format(point.at)}</time>}
             <dl>
               <div><dt>Dư nợ</dt><dd>{formatCredits(BigInt(point.debtCents))} credits</dd></div>
               {point.repaidCents !== null && <div><dt>Đã trả</dt><dd>{formatCredits(point.repaidCents)} credits</dd></div>}
@@ -145,7 +145,7 @@ export function ProfileCreditHistory({ memberId }: { memberId: string }) {
       </p>}
       {page.entries.length ? <ol className="credit-history-entries">
         {page.entries.map(entry => <li key={entry.sequence}>
-          <div><strong>{entry.label}</strong><time dateTime={new Date(entry.at).toISOString()}>{clock.format(entry.at)}</time></div>
+          <div><strong>{entry.label}</strong><time dateTime={new Date(entry.at).toISOString()}>{(entry.dayOnly ? day : clock).format(entry.at)}</time></div>
           <div>
             <strong data-change={Math.sign(entry.changeCents)}>{entry.changeCents > 0 ? "+" : ""}{formatCredits(entry.changeCents)}</strong>
             {entry.balanceCents !== null && <small>Dư {formatCredits(entry.balanceCents)}</small>}

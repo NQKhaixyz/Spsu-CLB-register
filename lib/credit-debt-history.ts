@@ -38,8 +38,9 @@ export async function initializeCreditDebtHistory(db: D1Database, club: Club, re
   const members = club.members.filter(member => member.userId);
 
   await ensureCreditHistory(db);
-  const { results } = await db.prepare(`SELECT member_id AS memberId, changed_at AS at, kind, label, change_cents AS changeCents
-    FROM credit_history WHERE kind IN ('loan', 'loanRepayment') AND write_revision<=? AND changed_at>=?
+  const { results } = await db.prepare(`SELECT member_id AS memberId, changed_at AS at,
+    CASE WHEN kind='hammerRepayment' THEN 'loanRepayment' ELSE kind END AS kind, label, change_cents AS changeCents
+    FROM credit_history WHERE kind IN ('loan', 'loanRepayment', 'hammerRepayment') AND write_revision<=? AND changed_at>=?
     ORDER BY sequence`).bind(revision, since).all<LegacyMovement & { memberId: string }>();
   const individualMovements = new Map<string, LegacyMovement[]>();
   for (const row of results) {

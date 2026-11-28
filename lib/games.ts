@@ -1,5 +1,5 @@
 import type { Club } from "./club";
-import { recordCreditDebt, recordCreditEntry, type CreditDebtKind, type CreditMovement, type PendingCreditEntry } from "./credit-history";
+import { recordCreditDebt, recordCreditEntry, type StoredCreditDebtKind, type CreditMovement, type PendingCreditEntry } from "./credit-history";
 import { activeSharingPeriod, type SharingPeriod } from "./sharing-types";
 import type { CreditExchangeReceipt } from "./credit-exchange";
 
@@ -19,6 +19,9 @@ const startingBalance = 1_000_000;
 const creditCents = 100;
 export const CREDIT_LOAN_LIMIT_CENTS = 1_000_000 * creditCents;
 export const CREDIT_LOAN_INTEREST_PERCENT = 20;
+export const HAMMER_PRICE_CENTS = 1_500 * creditCents;
+export const SHIELD_DURATION_MS = 86_400_000;
+const hammerMaxPercent = 50;
 const winnerCentsPerCredit = 195;
 const coinWinCentsPerCredit = COIN_WIN_PAYOUT_CENTS - creditCents;
 const maxBalance = Number.MAX_SAFE_INTEGER;
@@ -34,6 +37,8 @@ type Wallet = {
   balanceCents: number;
   version: number;
   loanDebtCents?: string;
+  creditShieldExpiresAt?: number;
+  hammersPurchased?: number;
   spins: WheelSpin[];
   flips?: CoinFlip[];
   wheelProgress?: WheelProgress;
@@ -64,6 +69,26 @@ export type CreditLoanCommand = { operationId: string; interestCents?: number } 
   | { kind: "approve" | "decline" | "cancel"; requestId: string }
 );
 type CreditLoanOperation = { memberId: string; command: CreditLoanCommand; requestedCupidLoan: boolean };
+export type CreditItemCommand = { operationId: string; walletVersion: number } & (
+  | { kind: "shield"; quotedCostCents: number }
+  | { kind: "hammer"; targetMemberId: string }
+);
+export type CreditItemResult = { at: number; costCents: number } & (
+  | { kind: "shield"; expiresAt: number }
+  | { kind: "hammer"; outcome: "blocked" | "empty" | "hit"; percent?: number; takenCents: number; repaidCents: number }
+);
+export type CreditItemReceipt = CreditItemResult & { id: string; targetName?: string };
+export type CreditItemsView = {
+  revision: number;
+  serverNow: number;
+  walletVersion: number;
+  balanceCents: string;
+  sharedWallet: boolean;
+  shieldExpiresAt?: number;
+  shieldCostCents: number;
+  hammersPurchased: number;
+  targets: { memberId: string; name: string }[];
+};
 const defaultWallet: Wallet = { balanceCents: startingBalance, version: 0, spins: [] };
 
 export type WheelSpin = {
@@ -176,6 +201,19 @@ export function parseCreditLoanCommand(input: unknown): CreditLoanCommand {
   throw invalid();
 }
 
+export function parseCreditItemCommand(input: unknown): CreditItemCommand {
+  const invalid = () => new GameRuleError("Thao tác mua vật phẩm không hợp lệ");
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw invalid();
+  const { operationId, kind, walletVersion, quotedCostCents, targetMemberId } = input as Record<string, unknown>;
+  if (typeof operationId !== "string" || !requestIdFormat.test(operationId) || !integerBetween(walletVersion, 0, maxBalance))
+    throw invalid();
+  if (kind === "shield" && integerBetween(quotedCostCents, 0, maxBalance))
+    return { operationId, kind, walletVersion, quotedCostCents };
+  if (kind === "hammer" && typeof targetMemberId === "string" && targetMemberId.length > 0 && targetMemberId.length <= 120)
+    return { operationId, kind, walletVersion, targetMemberId };
+  throw invalid();
+}
+
 export function parseGameCommand(body: unknown): GameCommand | CoinFlipCommand {
   const invalid = () => new GameRuleError("Thao tác trò chơi không hợp lệ");
   if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
@@ -283,7 +321,7 @@ function sharedLoanDebt(period?: SharingPeriod) {
   return BigInt(period?.loanDebtCents ?? "0");
 }
 
-function recordDebtBalance(games: GamesState, memberId: string, at: number, kind: CreditDebtKind, period?: SharingPeriod, repaidCents = 0) {
+function recordDebtBalance(games: GamesState, memberId: string, at: number, kind: StoredCreditDebtKind, period?: SharingPeriod, repaidCents = 0) {
   const debtCents = (personalLoanDebt(games, memberId) + sharedLoanDebt(period)).toString();
   recordCreditDebt(games, memberId, { at, kind, debtCents, repaidCents });
 }
@@ -325,9 +363,12 @@ export function mergeCupidCredits(club: Club, period: SharingPeriod, at: number)
   const total = BigInt(walletFor(games, one).balanceCents) + BigInt(walletFor(games, other).balanceCents);
   const equal = Number(total / two);
   period.creditRemainder = Number(total % two) || undefined;
+  const shieldExpiresAt = Math.max(walletFor(games, one).creditShieldExpiresAt ?? 0, walletFor(games, other).creditShieldExpiresAt ?? 0);
+  if (shieldExpiresAt > at) period.creditShieldExpiresAt = shieldExpiresAt;
   for (const memberId of [one, other]) {
     const difference = equal - walletFor(games, memberId).balanceCents;
-    saveWalletBalance(games, memberId, equal);
+    const wallet = saveWalletBalance(games, memberId, equal);
+    delete wallet.creditShieldExpiresAt;
     recordCreditEntry(games, { memberId, at, balanceCents: equal, changeCents: difference, kind: "cupid", label: "Gộp ví Cupid" });
   }
 }
@@ -344,7 +385,11 @@ export function separateCupidCredits(club: Club, period: SharingPeriod, at: numb
     recordCreditEntry(games, { memberId: one, at, balanceCents: balance + remainder, changeCents: remainder,
       kind: "cupid", label: "Phần lẻ khi kết thúc Cupid" });
   }
-  for (const memberId of period.memberIds) saveWalletBalance(games, memberId, walletFor(games, memberId).balanceCents);
+  for (const memberId of period.memberIds) {
+    const wallet = saveWalletBalance(games, memberId, walletFor(games, memberId).balanceCents);
+    if ((period.creditShieldExpiresAt ?? 0) > at) wallet.creditShieldExpiresAt = period.creditShieldExpiresAt;
+  }
+  delete period.creditShieldExpiresAt;
   delete period.creditRemainder;
   const unpaid = sharedLoanDebt(period);
   if (unpaid > zero) {
@@ -516,7 +561,7 @@ function updateBalance(club: Club, memberId: string, at: number, movements: read
 }
 
 function applyLoanPayment(games: GamesState, memberId: string, period: SharingPeriod | undefined, amount: bigint,
-  at: number, kind: "repayment" | "automatic") {
+  at: number, kind: "repayment" | "automatic" | "hammerAutomatic") {
   const shared = sharedLoanDebt(period);
   const jointPayment = amount < shared ? amount : shared;
   if (period && jointPayment > zero) {
@@ -543,10 +588,11 @@ function updateCreditIncome(club: Club, memberId: string, at: number, movements:
   const halfIncome = BigInt(Math.floor(Math.max(0, incomeCents) / 2));
   const payment = debt < halfIncome ? debt : halfIncome;
   const repaidCents = Number(payment);
+  const fromHammer = movements.some(movement => movement.kind === "hammerIncome");
   const wallet = updateBalance(club, memberId, at, repaidCents
-    ? [...movements, { kind: "loanRepayment", label: "Tự trả nợ credits", changeCents: -repaidCents }]
+    ? [...movements, { kind: fromHammer ? "hammerRepayment" : "loanRepayment", label: "Tự trả nợ credits", changeCents: -repaidCents }]
     : movements);
-  if (payment > zero) applyLoanPayment(club.games!, memberId, period, payment, at, "automatic");
+  if (payment > zero) applyLoanPayment(club.games!, memberId, period, payment, at, fromHammer ? "hammerAutomatic" : "automatic");
   return { wallet, repaidCents };
 }
 
@@ -602,6 +648,75 @@ function creditHeadroom(club: Club, memberId: string) {
   const total = balance + BigInt(walletFor(games, pair.partnerId).balanceCents) + BigInt(pair.period.creditRemainder ?? 0);
   // Each wallet must still be able to settle its own open wagers after a split.
   return two * (maxCreditBalance - (reserve > partnerReserve ? reserve : partnerReserve)) - total;
+}
+
+function shieldPrice(balance: bigint) {
+  return Number((balance + BigInt(4)) / BigInt(5));
+}
+
+export function creditItemsView(club: Club, memberId: string, revision: number, now: number): CreditItemsView {
+  const wallet = walletFor(club.games, memberId);
+  const pair = creditPair(club, memberId);
+  const balance = sharedWalletBalance(club, memberId, pair);
+  const expiry = (pair?.period ?? wallet).creditShieldExpiresAt;
+  const targets = club.members
+    .filter(member => member.id !== memberId && member.id !== pair?.partnerId && canReceiveCredits(club, member))
+    .map(({ id, name }) => ({ memberId: id, name }))
+    .sort((a, b) => rankNames.compare(a.name, b.name) || a.memberId.localeCompare(b.memberId));
+  return {
+    revision, serverNow: now, walletVersion: wallet.version, balanceCents: balance.toString(), sharedWallet: !!pair,
+    shieldCostCents: shieldPrice(balance), shieldExpiresAt: expiry && expiry > now ? expiry : undefined,
+    hammersPurchased: wallet.hammersPurchased ?? 0, targets,
+  };
+}
+
+export function applyCreditItemCommand(club: Club, memberId: string, command: CreditItemCommand,
+  at: number, percent: number): CreditItemResult {
+  const member = club.members.find(person => person.id === memberId);
+  if (!member || !canReceiveCredits(club, member))
+    throw new GameRuleError("Vật phẩm dành cho tài khoản đang hoạt động", 403);
+  const games: GamesState = club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
+  const wallet = walletFor(games, memberId);
+  if (wallet.version !== command.walletVersion)
+    throw new GameRuleError("Ví vừa thay đổi. Kiểm tra số dư trước khi mua", 409);
+  const pair = creditPair(club, memberId);
+  const balance = sharedWalletBalance(club, memberId, pair);
+  if (command.kind === "shield") {
+    if (((pair?.period ?? wallet).creditShieldExpiresAt ?? 0) > at)
+      throw new GameRuleError("Khiên đang bảo vệ ví. Bạn có thể mua lại khi khiên hết hạn", 409);
+    const costCents = shieldPrice(balance);
+    if (costCents !== command.quotedCostCents)
+      throw new GameRuleError("Giá khiên vừa thay đổi. Kiểm tra lại giá trước khi mua", 409);
+    const next = updateBalance(club, memberId, at, [{ kind: "shieldFee", label: "Mua khiên", changeCents: -costCents }]);
+    const expiresAt = at + SHIELD_DURATION_MS;
+    (pair?.period ?? next).creditShieldExpiresAt = expiresAt;
+    return { kind: "shield", at, costCents, expiresAt };
+  }
+
+  const targetId = command.targetMemberId;
+  const target = club.members.find(person => person.id === targetId);
+  if (!target || !canReceiveCredits(club, target) || memberId === targetId || targetId === pair?.partnerId)
+    throw new GameRuleError("Chọn một thành viên đang dùng ví khác", 409);
+  if (balance < BigInt(HAMMER_PRICE_CENTS)) throw new GameRuleError("Ví cần đủ 1.500 credits để mua búa", 409);
+  if (!integerBetween(percent, 0, hammerMaxPercent)) throw new RangeError("Tỷ lệ búa ngoài dải");
+
+  const targetPair = creditPair(club, targetId);
+  const targetBalance = sharedWalletBalance(club, targetId, targetPair);
+  if (targetBalance / two > creditHeadroom(club, memberId) + BigInt(HAMMER_PRICE_CENTS))
+    throw new GameRuleError("Ví không đủ chỗ để nhận toàn bộ kết quả có thể xảy ra", 409);
+  const targetWallet = walletFor(games, targetId);
+  const blocked = ((targetPair?.period ?? targetWallet).creditShieldExpiresAt ?? 0) > at;
+  const takenCents = blocked ? 0 : Number(targetBalance * BigInt(percent) / BigInt(100));
+  const charged = updateBalance(club, memberId, at, [{ kind: "hammerFee", label: "Mua búa", changeCents: -HAMMER_PRICE_CENTS }]);
+  charged.hammersPurchased = (wallet.hammersPurchased ?? 0) + 1;
+  const applied = { kind: "hammer" as const, at, costCents: HAMMER_PRICE_CENTS, takenCents };
+  if (blocked) return { ...applied, outcome: "blocked", repaidCents: 0 };
+  if (!takenCents) return { ...applied, outcome: "empty", percent, repaidCents: 0 };
+
+  updateBalance(club, targetId, at, [{ kind: "hammerLoss", label: "Credits bị lấy bằng búa", changeCents: -takenCents }]);
+  const { repaidCents } = updateCreditIncome(club, memberId, at,
+    [{ kind: "hammerIncome", label: "Credits nhận từ búa", changeCents: takenCents }], takenCents - HAMMER_PRICE_CENTS);
+  return { ...applied, outcome: "hit", percent, repaidCents };
 }
 
 function checkLoanHeadroom(club: Club, memberId: string, amountCents: number, interestCents: number) {
@@ -751,14 +866,21 @@ export function wheelFactorForRoll(roll: number): WheelFactor {
   return WHEEL_FACTORS[roll];
 }
 
-export function drawWheelFactor(): WheelFactor {
-  const buckets = WHEEL_FACTORS.length;
+function drawUniformIndex(buckets: number) {
   const sample = new Uint32Array(1);
   const uniformLimit = Math.floor(2 ** 32 / buckets) * buckets;
   do {
     crypto.getRandomValues(sample);
   } while (sample[0] >= uniformLimit);
-  return wheelFactorForRoll(sample[0] % buckets);
+  return sample[0] % buckets;
+}
+
+export function drawWheelFactor(): WheelFactor {
+  return wheelFactorForRoll(drawUniformIndex(WHEEL_FACTORS.length));
+}
+
+export function drawHammerPercent() {
+  return drawUniformIndex(hammerMaxPercent + 1);
 }
 
 function trimFinishedRooms(games: GamesState) {

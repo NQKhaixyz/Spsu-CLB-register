@@ -7,6 +7,7 @@ import { clearLegacyInactivity, initializeCreditHistory } from "./games";
 import { settleRoundEventNotices } from "./round-event-notifications";
 import { clearPendingCreditEntries, creditHistoryWrites } from "./credit-history";
 import { initializeCreditDebtHistory } from "./credit-debt-history";
+import { ensureCreditItemReceipts, writeCreditItemReceipt, type NewCreditItemReceipt } from "./credit-item-receipts";
 import { activateCreditSharing } from "./sharing";
 
 async function updateTimedRules(db: D1Database, club: Club, revision: number) {
@@ -44,13 +45,17 @@ export async function readState(ownerId: string, canInitialize: boolean) {
   }
   throw new Error("Dữ liệu Đội vừa thay đổi, vui lòng thử lại.");
 }
-export async function writeState(club: Club, revision: number, removedObjects: string[] = []) {
+export async function writeState(club: Club, revision: number, removedObjects: string[] = [], itemReceipt?: NewCreditItemReceipt) {
   const db = env.DB!;
+  if (itemReceipt) await ensureCreditItemReceipts(db);
   const payload = JSON.stringify(club);
-  const update = db.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=?")
-    .bind(payload, revision);
+  const sql = "UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=?";
+  const update = itemReceipt
+    ? db.prepare(sql + " AND NOT EXISTS(SELECT 1 FROM credit_item_receipts WHERE operation_id=?)").bind(payload, revision, itemReceipt.operationId)
+    : db.prepare(sql).bind(payload, revision);
   const statements = [update];
   statements.push(...await creditHistoryWrites(db, club.games, revision + 1, payload));
+  if (itemReceipt) statements.push(writeCreditItemReceipt(db, itemReceipt, revision + 1, payload));
   if (removedObjects.length) statements.push(queuePhotoDeletions(db, removedObjects, revision + 1, payload));
   const r = statements.length > 1 ? (await db.batch(statements))[0] : await update.run();
   if (r.meta.changes) clearPendingCreditEntries(club.games);

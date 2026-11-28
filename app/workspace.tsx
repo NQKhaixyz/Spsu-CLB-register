@@ -30,6 +30,7 @@ import { DirectNoticeComposer } from "./direct-notice-composer";
 import GamesPage from "./games";
 import CreditExchange from "./credit-exchange";
 import CreditLoans from "./credit-loans";
+import CreditItems from "./credit-items";
 import { sidebarNoticeCounts, useWorkspaceNotifications } from "./use-workspace-notifications";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
@@ -147,6 +148,7 @@ type Tab =
   | "coinflip"
   | "exchange"
   | "creditLoans"
+  | "creditItems"
   | "xo"
   | "wheel"
   | "members"
@@ -170,7 +172,7 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
-const gameTabs: readonly Tab[] = ["coinflip", "xo", "wheel", "exchange", "creditLoans", "creditsRank"];
+const gameTabs: readonly Tab[] = ["coinflip", "xo", "wheel", "exchange", "creditLoans", "creditItems", "creditsRank"];
 const getForm = (e: FormEvent<HTMLFormElement>) => {
   e.preventDefault();
   return Object.fromEntries(new FormData(e.currentTarget));
@@ -733,6 +735,7 @@ export default function Workspace() {
     { id: "wheel", label: "Vòng quay may mắn" },
     ...(!isAdmin ? [{ id: "exchange" as const, label: "Đổi điểm tháng" }] : []),
     { id: "creditLoans", label: "Vay credits" },
+    { id: "creditItems", label: "Vật phẩm" },
     { id: "creditsRank", label: "Hạng credits" },
   ] : [];
   const count = (s: Registration) =>
@@ -3593,6 +3596,8 @@ export default function Workspace() {
             <CreditExchange key={me.id} onExchanged={() => { void load(); }} onOpenLoans={() => go("creditLoans")} />
           ) : activeTab === "creditLoans" ? (
             <CreditLoans key={me.id} memberId={me.id} />
+          ) : activeTab === "creditItems" ? (
+            <CreditItems key={me.id} />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (

@@ -10,6 +10,7 @@ import { AuthError } from "./password";
 import { deleteQueuedPhotos, queuePhotoDeletions } from "./photo-deletion";
 import { readState } from "./store";
 import { creditHistoryWrites, ensureCreditHistory } from "./credit-history";
+import { ensureCreditItemReceipts, eraseCreditItemReceipts } from "./credit-item-receipts";
 
 export async function deleteMember(identity: Identity, data: Record<string, unknown>) {
   const db = env.DB;
@@ -35,10 +36,11 @@ export async function deleteMember(identity: Identity, data: Record<string, unkn
     const statements = [
       db.prepare("UPDATE club_state SET payload=?, revision=revision+1 WHERE id='main' AND revision=?").bind(payload, revision),
     ];
-    await ensureCreditHistory(db);
+    await Promise.all([ensureCreditHistory(db), ensureCreditItemReceipts(db)]);
     statements.push(...await creditHistoryWrites(db, club.games, updated, payload),
       db.prepare(`DELETE FROM credit_history WHERE member_id=? AND ${gate}`).bind(member.id, updated, payload),
       db.prepare(`DELETE FROM credit_debt_history WHERE member_id=? AND ${gate}`).bind(member.id, updated, payload));
+    statements.push(...eraseCreditItemReceipts(db, member.id, updated, payload));
     for (const archived of archives.results) {
       const archive = JSON.parse(archived.payload);
       scrubWeekArchive(archive, member.id, eventPhotos);

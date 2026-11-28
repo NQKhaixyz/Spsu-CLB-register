@@ -14,6 +14,7 @@ import "./workspace-notifications.test";
 import "./games.test";
 import "./credit-exchange.test";
 import "./credit-loans.test";
+import "./credit-items.test";
 import assert from "node:assert/strict";
 import {
   addDays,

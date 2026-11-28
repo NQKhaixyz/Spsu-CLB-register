@@ -94,6 +94,26 @@
 .credit-exchange-grid .field { margin-block: 0; }
 .credit-exchange-grid .btn { justify-self: start; }
 .credit-exchange-receipt { margin-block: 0 14px; }
+.credit-items-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.credit-item-card > .btn, .credit-item-history > .btn { justify-self: start; }
+.credit-item-card .field { margin: 0; min-width: 0; }
+.credit-item-card .field select { width: 100%; min-width: 0; min-height: 44px; }
+.credit-items-page .btn { min-height: 44px; }
+.credit-items-status { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.credit-shield-active { display: grid; justify-items: start; gap: 5px; padding: 12px 14px; border-radius: 12px; background: #e8efe3; color: var(--green-dark); }
+.credit-shield-active strong { font-size: clamp(1.75rem, 6vw, 2.35rem); line-height: 1.18; font-variant-numeric: tabular-nums; }
+.credit-shield-active time, .credit-hammer-count, .credit-item-transaction :is(time, span) { color: var(--muted); font-size: .84rem; }
+.credit-hammer-count { margin-inline-start: auto; }
+.credit-item-confirm { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.credit-item-confirm p { margin: 0 0 8px; }
+.credit-item-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.credit-item-history { margin-top: 14px; }
+.credit-item-transaction { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.credit-item-transaction:last-child { text-align: end; }
+@media (max-width: 650px) {
+  .credit-items-grid { grid-template-columns: minmax(0, 1fr); }
+  .credit-item-history li { align-items: start; }
+}
 .credit-loan-summary, .credit-loan-actions, .credit-exchange-debt { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .credit-exchange-debt { justify-content: space-between; }
 .credit-loan-request, .credit-exchange-debt { margin-block: 0 14px; }

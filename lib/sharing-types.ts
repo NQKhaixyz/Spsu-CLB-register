@@ -9,6 +9,7 @@ export type SharingPeriod = {
   endedAt?: number;
   asset?: "credits";
   creditRemainder?: number;
+  creditShieldExpiresAt?: number;
   endingCreditBalance?: number;
   loanDebtCents?: string;
   loanRequest?: CreditLoanRequest;

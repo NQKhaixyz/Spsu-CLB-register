@@ -1,12 +1,16 @@
 import type { GamesState } from "./games";
 
 export type CreditHistoryKind = "coinflip" | "wheel" | "xo" | "refund" | "adjustment" | "inactivity" | "exchange" | "cupid" | "loan" | "loanRepayment";
-export type CreditMovement = { kind: CreditHistoryKind; changeCents: number; label: string };
+type ItemMovementKind = "shieldFee" | "hammerFee" | "hammerIncome" | "hammerLoss" | "hammerRepayment";
+export type CreditMovement = { kind: CreditHistoryKind | ItemMovementKind; changeCents: number; label: string };
 export type PendingCreditEntry = CreditMovement & { memberId: string; at: number; balanceCents: number | null };
-export type CreditHistoryEntry = Omit<PendingCreditEntry, "memberId"> & { sequence: number };
+export type CreditHistoryEntry = Omit<PendingCreditEntry, "memberId" | "kind"> & {
+  kind: CreditHistoryKind; sequence: number; dayOnly?: true;
+};
 export type CreditDebtKind = "opening" | "loan" | "repayment" | "automatic" | "cupidSplit";
-type CreditDebtSnapshot = { at: number; kind: CreditDebtKind; debtCents: string; repaidCents: number };
-export type CreditDebtEntry = CreditDebtSnapshot & { sequence: number };
+export type StoredCreditDebtKind = CreditDebtKind | "hammerAutomatic";
+type CreditDebtSnapshot = { at: number; kind: StoredCreditDebtKind; debtCents: string; repaidCents: number };
+export type CreditDebtEntry = Omit<CreditDebtSnapshot, "kind"> & { kind: CreditDebtKind; sequence: number; dayOnly?: true };
 export type CreditDebtHistoryView = {
   debtCents: string;
   personalDebtCents: string;
@@ -18,6 +22,12 @@ export type CreditDebtHistoryView = {
 const pending = new WeakMap<GamesState, PendingCreditEntry[]>();
 const pendingDebt = new WeakMap<GamesState, (CreditDebtSnapshot & { memberId: string })[]>();
 const prepared = new WeakSet<D1Database>();
+const vietnamOffsetMs = 7 * 60 * 60 * 1_000;
+const dayMs = 86_400_000;
+
+function vietnamDayStart(at: number) {
+  return Math.floor((at + vietnamOffsetMs) / dayMs) * dayMs - vietnamOffsetMs;
+}
 
 export function recordCreditEntry(games: GamesState, entry: PendingCreditEntry) {
   if (!entry.changeCents) return;
@@ -86,26 +96,46 @@ export async function creditHistoryWrites(db: D1Database, games: GamesState | un
 
 export async function creditHistoryPage(db: D1Database, memberId: string, revision: number, before?: number) {
   await ensureCreditHistory(db);
-  const sql = `SELECT sequence, changed_at AS at, kind, label, change_cents AS changeCents, balance_cents AS balanceCents
-    FROM credit_history WHERE member_id=? AND write_revision<=?`;
   const batchSize = 40;
-  const tail = " ORDER BY sequence DESC LIMIT ?";
-  const query = before === undefined ? db.prepare(sql + tail).bind(memberId, revision, batchSize + 1)
-    : db.prepare(sql + " AND sequence<?" + tail).bind(memberId, revision, before, batchSize + 1);
-  const { results } = await query.all<CreditHistoryEntry>();
-  const entries = results.slice(0, batchSize);
+  const { results } = await db.prepare(`WITH visible AS (
+    SELECT ROW_NUMBER() OVER (ORDER BY entry.sequence) AS sequence, changed_at AS at,
+      kind, label, change_cents AS changeCents, balance_cents AS balanceCents
+    FROM credit_history AS entry WHERE member_id=? AND write_revision<=? AND kind NOT IN ('hammerFee','shieldFee')
+    ) SELECT * FROM visible WHERE (? IS NULL OR sequence<?) ORDER BY sequence DESC LIMIT ?`)
+    .bind(memberId, revision, before ?? null, before ?? null, batchSize + 1)
+    .all<Omit<CreditHistoryEntry, "kind"> & { kind: CreditHistoryKind | "hammerIncome" | "hammerLoss" | "hammerRepayment" }>();
+  const entries = results.slice(0, batchSize).map((entry): CreditHistoryEntry => {
+    switch (entry.kind) {
+      case "loan":
+      case "hammerIncome":
+        return { ...entry, kind: "loan", label: "Vay ngân hàng", at: vietnamDayStart(entry.at), dayOnly: true };
+      case "hammerLoss":
+        return { ...entry, kind: "adjustment", label: "Điều chỉnh credits", at: vietnamDayStart(entry.at), dayOnly: true };
+      case "hammerRepayment":
+        return { ...entry, kind: "loanRepayment", label: "Tự trả nợ credits", at: vietnamDayStart(entry.at), dayOnly: true };
+      default:
+        return { ...entry, kind: entry.kind };
+    }
+  });
   return { entries, before: results.length > batchSize ? entries.at(-1)?.sequence : undefined };
 }
 
 export async function creditDebtHistoryPage(db: D1Database, memberId: string, revision: number, since: number, before?: number) {
   await ensureCreditHistory(db);
   const batchSize = 40;
-  const sql = `SELECT sequence, changed_at AS at, kind, debt_cents AS debtCents, repaid_cents AS repaidCents
-    FROM credit_debt_history WHERE member_id=? AND write_revision<=? AND changed_at>=?`;
-  const tail = " ORDER BY sequence DESC LIMIT ?";
-  const query = before === undefined ? db.prepare(sql + tail).bind(memberId, revision, since, batchSize + 1)
-    : db.prepare(sql + " AND sequence<?" + tail).bind(memberId, revision, since, before, batchSize + 1);
-  const { results } = await query.all<CreditDebtEntry>();
-  const entries = results.slice(0, batchSize);
+  const { results } = await db.prepare(`WITH visible AS (
+    SELECT ROW_NUMBER() OVER (ORDER BY entry.sequence) AS sequence, changed_at AS at, kind,
+      debt_cents AS debtCents, repaid_cents AS repaidCents
+    FROM credit_debt_history AS entry WHERE member_id=? AND write_revision<=? AND changed_at>=?
+    ) SELECT * FROM visible WHERE (? IS NULL OR sequence<?) ORDER BY sequence DESC LIMIT ?`)
+    .bind(memberId, revision, since, before ?? null, before ?? null, batchSize + 1)
+    .all<Omit<CreditDebtEntry, "kind"> & { kind: StoredCreditDebtKind }>();
+  const entries = results.slice(0, batchSize).map((entry): CreditDebtEntry => {
+    if (entry.kind === "hammerAutomatic" || entry.kind === "loan") {
+      const kind = entry.kind === "hammerAutomatic" ? "automatic" : "loan";
+      return { ...entry, kind, at: vietnamDayStart(entry.at), dayOnly: true };
+    }
+    return { ...entry, kind: entry.kind };
+  });
   return { entries, before: results.length > batchSize ? entries.at(-1)?.sequence : undefined };
 }
