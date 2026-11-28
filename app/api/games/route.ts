@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const json = (data: unknown, status = 200) => Response.json(data, {
   status, headers: { "Cache-Control": "private, no-store" },
 });
-const supportsLargeBoard = (rules: string | null) => rules === "2" || rules === GAME_RULES_VERSION;
+const supportsLargeBoard = (rules: string | null) => rules === "2" || rules === "3" || rules === GAME_RULES_VERSION;
 
 export async function GET(request: Request) {
   try {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const rules = new URL(request.url).searchParams.get("rules");
     const largeBoard = supportsLargeBoard(rules);
     if (command.kind === "spin" && rules !== GAME_RULES_VERSION)
-      throw new GameRuleError("Tải bản mới của Nhịp Đội để quay với tỷ lệ mới", 409);
+      throw new GameRuleError("Tải lại trang để áp dụng cách hoàn cược mới", 409);
     if (command.kind === "create" && !largeBoard)
       throw new GameRuleError("Tải bản mới của Nhịp Đội để tạo phòng XO 20 × 20", 409);
     const factor = command.kind === "spin" ? drawWheelFactor() : undefined;

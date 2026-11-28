@@ -5,19 +5,23 @@ export type WheelFactor = typeof WHEEL_FACTORS[number];
 export type Mark = "X" | "O";
 export type XoSize = 3 | 20;
 export const XO_BOARD_SIZE = 20;
-export const GAME_RULES_VERSION = "3";
-export const WHEEL_REFUND_EVERY = 10;
+export const GAME_RULES_VERSION = "4";
+export const WHEEL_REFUND_EVERY = 5;
+export const WHEEL_REFUND_PERCENT = 70;
 
 const startingBalance = 1_000_000;
 const creditCents = 100;
 const winnerCentsPerCredit = 195;
 const maxBalance = Number.MAX_SAFE_INTEGER;
 const recentCount = 5;
+const wheelHistoryLimit = 10;
+const previousWheelRefund = { rounds: 10, percent: 50 };
+const currentWheelRefund = { rounds: WHEEL_REFUND_EVERY, percent: WHEEL_REFUND_PERCENT };
 const requestIdFormat = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const creditNumber = new Intl.NumberFormat("vi-VN");
 const rankNames = new Intl.Collator("vi-VN", { numeric: true });
 
-type WheelProgress = { spins: number; netCredits: number };
+type WheelProgress = { spins: number; netCredits: number; legacyRefund?: true };
 const emptyWheelProgress: WheelProgress = { spins: 0, netCredits: 0 };
 type Wallet = {
   balanceCents: number;
@@ -78,7 +82,7 @@ export type GamesView = {
   openRooms: OpenXoRoom[];
   ownRooms: XoRoom[];
   spins: WheelSpin[];
-  wheelProgress: { spins: number; pendingRefundCents: number };
+  wheelProgress: { spins: number; pendingRefundCents: number; legacyRefund?: typeof previousWheelRefund };
 };
 export type GamesResponse = GamesView & { spin?: WheelSpin };
 export type CreditsRanking = {
@@ -259,7 +263,7 @@ export function adjustGameCredits(club: Club, command: CreditAdjustmentCommand, 
   if (balance < 0) throw new GameRuleError("Số credits muốn trừ lớn hơn số dư hiện tại");
   const room = liveRoomFor(games, memberId);
   const reservedPrize = room ? xoPrizeCents(room.stake) : 0;
-  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits);
+  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits, wheelRefundTerms(wallet, reservedPrize).percent);
   if (!Number.isSafeInteger(balance) || balance > maxBalance - reservedPrize - reservedRefund)
     throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
   const next = updateBalance(games, memberId, balance - wallet.balanceCents);
@@ -284,15 +288,26 @@ function liveRoomFor(games: GamesState | undefined, memberId: string) {
   return games?.rooms.find(room => isLiveRoom(room) && isPlayer(room, memberId));
 }
 
-function wheelRefundCents(netCredits = 0) {
-  return Math.max(0, -netCredits) * (creditCents / 2);
+function wheelRefundCents(netCredits = 0, percent = WHEEL_REFUND_PERCENT) {
+  return Math.max(0, -netCredits) * (creditCents * percent / 100);
+}
+
+function wheelRefundTerms(wallet: Wallet, reservedPrize: number) {
+  const progress = wallet.wheelProgress ?? emptyWheelProgress;
+  // Carry forward incomplete groups that already passed the new fifth-spin
+  // boundary. A balance set under the old terms must also stay payable.
+  if (progress.legacyRefund || progress.spins >= WHEEL_REFUND_EVERY ||
+    (progress.spins > 0 && wallet.balanceCents > maxBalance - reservedPrize - wheelRefundCents(progress.netCredits)))
+    return previousWheelRefund;
+  return currentWheelRefund;
 }
 
 function maxWheelStake(games: GamesState | undefined, memberId: string) {
-  const { balanceCents, wheelProgress } = walletFor(games, memberId);
+  const wallet = walletFor(games, memberId);
+  const { balanceCents, wheelProgress } = wallet;
   const room = liveRoomFor(games, memberId);
   const reservedPrize = room ? room.stake * winnerCentsPerCredit : 0;
-  const reservedRefund = wheelRefundCents(wheelProgress?.netCredits);
+  const reservedRefund = wheelRefundCents(wheelProgress?.netCredits, wheelRefundTerms(wallet, reservedPrize).percent);
   return Math.min(
     Math.floor(balanceCents / (5 * creditCents)),
     Math.floor((maxBalance - balanceCents - reservedPrize - reservedRefund) / (5 * creditCents)),
@@ -366,7 +381,10 @@ export function dropMemberFromGames(club: Club, memberId: string, erase = false,
 
 export function gamesView(club: Club, memberId: string, revision: number, legacyOnly = false): GamesView {
   const games = club.games;
-  const { balanceCents, version, spins, wheelProgress } = walletFor(games, memberId);
+  const wallet = walletFor(games, memberId);
+  const { balanceCents, version, spins, wheelProgress } = wallet;
+  const room = liveRoomFor(games, memberId);
+  const terms = wheelRefundTerms(wallet, room ? xoPrizeCents(room.stake) : 0);
   const activeMembers = new Set(club.members.filter(member => member.active).map(member => member.id));
   const rooms = legacyOnly ? (games?.rooms ?? []).filter(room => xoSize(room) === 3) : games?.rooms ?? [];
   return {
@@ -379,7 +397,8 @@ export function gamesView(club: Club, memberId: string, revision: number, legacy
       .sort((a, b) => Number(isLiveRoom(b)) - Number(isLiveRoom(a)) || b.updatedAt - a.updatedAt)
       .slice(0, recentCount),
     spins,
-    wheelProgress: { spins: wheelProgress?.spins ?? 0, pendingRefundCents: wheelRefundCents(wheelProgress?.netCredits) },
+    wheelProgress: { spins: wheelProgress?.spins ?? 0, pendingRefundCents: wheelRefundCents(wheelProgress?.netCredits, terms.percent),
+      ...(terms === previousWheelRefund ? { legacyRefund: terms } : {}) },
   };
 }
 
@@ -388,7 +407,7 @@ function reserveXoStake(games: GamesState, memberId: string, stake: number, wall
   if (walletVersion !== wallet.version) throw new GameRuleError("Số dư đã thay đổi, kiểm tra lại mức cược", 409);
   if (liveRoomFor(games, memberId)) throw new GameRuleError("Bạn đang có phòng XO", 409);
   if (wallet.balanceCents < stake * creditCents) throw new GameRuleError("Bạn không đủ credits để đặt cược");
-  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits);
+  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits, wheelRefundTerms(wallet, 0).percent);
   if (wallet.balanceCents > maxBalance - reservedRefund - (winnerCentsPerCredit - creditCents) * stake)
     throw new GameRuleError("Mức cược vượt giới hạn tính toán");
   updateBalance(games, memberId, -stake * creditCents);
@@ -413,17 +432,21 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     if (wheelFactor === undefined) throw new Error("Máy chủ chưa chọn hệ số");
     const netCents = wheelNetCents(command.stake, wheelFactor);
     const progress = wallet.wheelProgress ?? emptyWheelProgress;
+    const room = liveRoomFor(games, memberId);
+    const terms = wheelRefundTerms(wallet, room ? xoPrizeCents(room.stake) : 0);
     const spins = progress.spins + 1;
     const netCredits = progress.netCredits + netCents / creditCents;
-    const settleRefund = spins === WHEEL_REFUND_EVERY;
-    const refundCents = settleRefund ? wheelRefundCents(netCredits) : 0;
+    const settleRefund = spins >= terms.rounds;
+    const refundCents = settleRefund ? wheelRefundCents(netCredits, terms.percent) : 0;
     const next = updateBalance(games, memberId, netCents + refundCents);
-    next.wheelProgress = settleRefund ? emptyWheelProgress : { spins, netCredits };
+    next.wheelProgress = settleRefund ? emptyWheelProgress : {
+      spins, netCredits, ...(terms === previousWheelRefund ? { legacyRefund: true } : {}),
+    };
     const spin: WheelSpin = {
       id: command.id, at, stake: command.stake, factor: wheelFactor, netCents, balanceCents: next.balanceCents,
       ...(refundCents ? { refundCents } : {}),
     };
-    next.spins = [spin, ...next.spins].slice(0, WHEEL_REFUND_EVERY);
+    next.spins = [spin, ...next.spins].slice(0, wheelHistoryLimit);
     return spin;
   }
   const room = games.rooms.find(room => room.id === command.id);

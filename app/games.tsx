@@ -3,7 +3,7 @@
 import { ArrowDownRight, ArrowUpRight, Coins, Dices, Gamepad2, LoaderCircle, Plus, RotateCw, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
-  formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY,
+  formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY, WHEEL_REFUND_PERCENT,
   xoPrizeCents, xoSize, xoWinLength, XO_BOARD_SIZE,
   type GameCommand, type GamesResponse, type GamesView, type OpenXoRoom,
   type WheelFactor, type WheelSpin, type XoRoom,
@@ -296,7 +296,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
 }) {
   const [wager, setWager] = useState("1");
   const { maxWheelStake, version } = view.wallet;
-  const { spins, pendingRefundCents } = view.wheelProgress;
+  const { spins, pendingRefundCents, legacyRefund } = view.wheelProgress;
   const stake = checkedStake(wager, maxWheelStake);
   const latest = view.spins[0];
   const activeMotion = motion && (motion.moving || motion.spin.id === latest?.id) ? motion : undefined;
@@ -348,15 +348,16 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
           </small>
         </form>
         <div className="game-wheel-progress">
-          <strong>Hoàn cược 50%</strong>
-          <span>{spins}/{WHEEL_REFUND_EVERY} lượt</span>
+          <strong>Hoàn cược {legacyRefund?.percent ?? WHEEL_REFUND_PERCENT}%</strong>
+          <span>{spins}/{legacyRefund?.rounds ?? WHEEL_REFUND_EVERY} lượt</span>
           {pendingRefundCents > 0 && <small>Dự kiến hoàn {formatCredits(pendingRefundCents)} credits</small>}
+          {legacyRefund && <small>Nhóm đang dở theo mức cũ · Nhóm sau áp dụng {WHEEL_REFUND_PERCENT}% sau {WHEEL_REFUND_EVERY} lượt</small>}
         </div>
         <details className="game-wheel-rules">
           <summary>Cách tính kết quả</summary>
           <p>Cả {wheelSectorCount} ô có xác suất bằng nhau, 1/{wheelSectorCount} hay khoảng {wheelProbability} mỗi ô</p>
           <p>Số dư thay đổi bằng mức cược nhân hệ số rồi trừ mức cược</p>
-          <p>Sau mỗi {WHEEL_REFUND_EVERY} lượt, ví nhận lại 50% phần lỗ ròng sau khi bù trừ các lượt lãi và lỗ</p>
+          <p>Sau mỗi {WHEEL_REFUND_EVERY} lượt, ví nhận lại {WHEEL_REFUND_PERCENT}% phần lỗ ròng sau khi bù trừ các lượt lãi và lỗ</p>
           <p>Nếu hòa vốn hoặc có lãi trong nhóm {WHEEL_REFUND_EVERY} lượt thì mức hoàn là 0</p>
           <ul>
             <li><ArrowDownRight size={16} aria-hidden="true" /> Cược 1 gặp ô ×−4, số dư giảm 5 credits</li>
