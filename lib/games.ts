@@ -5,7 +5,7 @@ export type WheelFactor = typeof WHEEL_FACTORS[number];
 export type Mark = "X" | "O";
 export type XoSize = 3 | 20;
 export const XO_BOARD_SIZE = 20;
-export const GAME_RULES_VERSION = "2";
+export const GAME_RULES_VERSION = "3";
 export const WHEEL_REFUND_EVERY = 10;
 
 const startingBalance = 1_000_000;
@@ -210,28 +210,20 @@ export function xoPrizeCents(stake: number) {
   return stake * winnerCentsPerCredit;
 }
 
-export function wheelOdds(factor: WheelFactor) {
-  return factor > 0 ? 10 : 8;
-}
-
 export function wheelFactorForRoll(roll: number): WheelFactor {
-  if (integerBetween(roll, 0, 99)) {
-    for (const factor of WHEEL_FACTORS) {
-      const weight = wheelOdds(factor);
-      if (roll < weight) return factor;
-      roll -= weight;
-    }
-  }
-  throw new RangeError("Số ngẫu nhiên ngoài dải vòng quay");
+  if (!integerBetween(roll, 0, WHEEL_FACTORS.length - 1))
+    throw new RangeError("Số ngẫu nhiên ngoài dải vòng quay");
+  return WHEEL_FACTORS[roll];
 }
 
 export function drawWheelFactor(): WheelFactor {
+  const buckets = WHEEL_FACTORS.length;
   const sample = new Uint32Array(1);
-  const uniformLimit = Math.floor(2 ** 32 / 100) * 100;
+  const uniformLimit = Math.floor(2 ** 32 / buckets) * buckets;
   do {
     crypto.getRandomValues(sample);
   } while (sample[0] >= uniformLimit);
-  return wheelFactorForRoll(sample[0] % 100);
+  return wheelFactorForRoll(sample[0] % buckets);
 }
 
 function trimFinishedRooms(games: GamesState) {

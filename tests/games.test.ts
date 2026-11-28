@@ -219,13 +219,19 @@ test("Legacy XO rooms finish with 3×3 rules and keep their payouts", () => {
   assert.equal(view(host.id).wallet.balanceCents, 1_000_095);
 });
 
-test("Exactly 100 equally likely rolls implement the new wheel weights", () => {
-  const outcomes = Array.from({ length: 100 }, (_, roll) => wheelFactorForRoll(roll));
-  assert.deepEqual(WHEEL_FACTORS.map(factor => outcomes.filter(actual => actual === factor).length), [8, 8, 8, 8, 8, 10, 10, 10, 10, 10, 10]);
-  assert.equal(outcomes[39], 0);
-  assert.equal(outcomes[40], 1);
-  assert.equal(outcomes[99], 6);
-  for (const roll of [-1, 99.5, 100, NaN]) assert.throws(() => wheelFactorForRoll(roll), RangeError);
+test("Each wheel factor gets one equal roll and the biased random tail is rejected", ({ mock }) => {
+  const outcomes = Array.from({ length: 11 }, (_, roll) => wheelFactorForRoll(roll));
+  assert.deepEqual(outcomes, WHEEL_FACTORS);
+  for (const roll of [-1, 10.5, 11, NaN]) assert.throws(() => wheelFactorForRoll(roll), RangeError);
+  const values = [4_294_967_295, 4_294_967_291];
+  const random = mock.method(crypto, "getRandomValues", <T extends ArrayBufferView | null>(buffer: T): T => {
+    const value = values.shift();
+    assert.ok(buffer instanceof Uint32Array && value !== undefined);
+    buffer[0] = value;
+    return buffer;
+  });
+  assert.equal(drawWheelFactor(), 6);
+  assert.equal(random.mock.callCount(), 2);
 });
 
 test("Every ten wheel turns settle half the net loss once and profitable groups refund zero", () => {

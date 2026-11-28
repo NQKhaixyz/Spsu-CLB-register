@@ -3,7 +3,7 @@
 import { ArrowDownRight, ArrowUpRight, Coins, Dices, Gamepad2, LoaderCircle, Plus, RotateCw, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
-  formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, wheelOdds, WHEEL_FACTORS, WHEEL_REFUND_EVERY,
+  formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY,
   xoPrizeCents, xoSize, xoWinLength, XO_BOARD_SIZE,
   type GameCommand, type GamesResponse, type GamesView, type OpenXoRoom,
   type WheelFactor, type WheelSpin, type XoRoom,
@@ -16,6 +16,9 @@ const gamesPath = "/api/games?rules=" + GAME_RULES_VERSION;
 const creditNumber = new Intl.NumberFormat("vi-VN");
 const spinTime = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const wheelDuration = 2_350;
+const wheelSectorCount = WHEEL_FACTORS.length;
+const wheelSectorAngle = 360 / wheelSectorCount;
+const wheelProbability = new Intl.NumberFormat("vi-VN", { style: "percent", maximumFractionDigits: 2 }).format(1 / wheelSectorCount);
 
 const signedCredits = (cents: number) => (cents > 0 ? "+" : "") + formatCredits(cents);
 const factorLabel = (factor: WheelFactor) => "×" + (factor < 0 ? "−" + Math.abs(factor) : factor);
@@ -26,8 +29,7 @@ function checkedStake(raw: string, max: number) {
 }
 
 function angleFor(factor: WheelFactor | undefined) {
-  const segment = wheelSegments.find(item => item.factor === factor);
-  return segment ? (360 - segment.angle) % 360 : 0;
+  return factor === undefined ? 0 : (360 - WHEEL_FACTORS.indexOf(factor) * wheelSectorAngle) % 360;
 }
 
 export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memberId: string }) {
@@ -279,19 +281,13 @@ function XoMatch({ room, memberId, disabled, onSubmit, onSurrender }: {
 }
 
 const wheelColors = ["#e3a38b", "#efb5a1", "#f4c9ab", "#f8d9b9", "#f6efda", "#dce7d5", "#c6ddbc", "#b0d1a5", "#9dc799", "#90bc9d", "#7bab94"];
-const wheelStart = -wheelOdds(WHEEL_FACTORS[0]) * 3.6 / 2;
-const wheelSegments = WHEEL_FACTORS.reduce<{ factor: WheelFactor; start: number; end: number; angle: number }[]>((segments, factor) => {
-  const start = segments.at(-1)?.end ?? 0;
-  const end = start + wheelOdds(factor);
-  segments.push({ factor, start, end, angle: wheelStart + (start + end) * 3.6 / 2 });
-  return segments;
-}, []);
-const wheelFill = "conic-gradient(from " + wheelStart + "deg, " +
-  wheelSegments.map(({ start, end }, index) => wheelColors[index] + " " + start + "% " + end + "%").join(", ") + ")";
-const wheelLabels = wheelSegments.map(({ factor, angle }) => ({
+const wheelFill = "conic-gradient(from " + (-wheelSectorAngle / 2) + "deg, " +
+  wheelColors.map((color, index) => color + " " + (100 * index / wheelSectorCount) + "% " +
+    (100 * (index + 1) / wheelSectorCount) + "%").join(", ") + ")";
+const wheelLabels = WHEEL_FACTORS.map((factor, index) => ({
   factor,
-  left: 50 + 36 * Math.sin(Math.PI * angle / 180),
-  top: 50 - 36 * Math.cos(Math.PI * angle / 180),
+  left: 50 + 36 * Math.sin(2 * Math.PI * index / wheelSectorCount),
+  top: 50 - 36 * Math.cos(2 * Math.PI * index / wheelSectorCount),
 }));
 
 function WheelGame({ view, motion, disabled, onSubmit }: {
@@ -314,7 +310,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
   }
   return <div className="games-wheel-layout">
     <div className="games-card games-wheel-panel">
-      <div className="game-wheel" role="img" aria-label="Vòng quay gồm 11 ô từ âm 4 đến 6"
+      <div className="game-wheel" role="img" aria-label="Vòng quay gồm 11 ô đồng xác suất từ âm 4 đến 6"
         style={{ "--wheel-angle": angle + "deg", "--wheel-duration": wheelDuration + "ms" } as CSSProperties}>
         <div className="game-wheel-pointer" />
         <div className="game-wheel-viewport">
@@ -358,7 +354,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
         </div>
         <details className="game-wheel-rules">
           <summary>Cách tính kết quả</summary>
-          <p>Ô ×1 đến ×6 có tỷ lệ 10% mỗi ô. Ô ×−4 đến ×0 có tỷ lệ 8% mỗi ô</p>
+          <p>Cả {wheelSectorCount} ô có xác suất bằng nhau, 1/{wheelSectorCount} hay khoảng {wheelProbability} mỗi ô</p>
           <p>Số dư thay đổi bằng mức cược nhân hệ số rồi trừ mức cược</p>
           <p>Sau mỗi {WHEEL_REFUND_EVERY} lượt, ví nhận lại 50% phần lỗ ròng sau khi bù trừ các lượt lãi và lỗ</p>
           <p>Nếu hòa vốn hoặc có lãi trong nhóm {WHEEL_REFUND_EVERY} lượt thì mức hoàn là 0</p>
