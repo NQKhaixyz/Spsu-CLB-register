@@ -9,9 +9,9 @@ export const COIN_WIN_PAYOUT_CENTS = 190;
 export type Mark = "X" | "O";
 export type XoSize = 3 | 20;
 export const XO_BOARD_SIZE = 20;
-export const GAME_RULES_VERSION = "5";
+export const GAME_RULES_VERSION = "6";
 export const WHEEL_REFUND_EVERY = 10;
-export const WHEEL_REFUND_PERCENT = 10;
+export const WHEEL_REFUND_PERCENT = 45;
 export const WEEKLY_INACTIVE_CREDIT_CHARGE = 100_000;
 
 const startingBalance = 1_000_000;

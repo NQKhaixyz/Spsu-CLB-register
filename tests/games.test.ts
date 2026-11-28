@@ -141,7 +141,7 @@ test("Issuer wallet adjustments are idempotent and preserve rewards, exact credi
   assert.equal(grant.result.receipt.beforeCents, original);
   assert.equal(grant.result.balanceCents, original + 700_000);
   assert.equal(creditsRanking(club, 1).rows[0].memberId, host.id);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 50 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 225 });
   assert.deepEqual(adjustGameCredits(club, command, "issuer", 102), { changed: false, result: grant.result });
   assert.throws(() => adjustGameCredits(club, { ...command, memberId: guest.id }, "issuer", 103), /đã được sử dụng/);
   assert.throws(() => adjustGameCredits(club, { ...command, amountCents: 100 }, "issuer", 103), /đã được sử dụng/);
@@ -157,7 +157,7 @@ test("Issuer wallet adjustments are idempotent and preserve rewards, exact credi
     ...command, operationId: crypto.randomUUID(), mode: "set", amountCents: 0, walletVersion: reduced.result.walletVersion,
   }), "issuer", 106);
   assert.equal(cleared.result.balanceCents, 0);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 50 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 225 });
   assert.equal(parseCreditAmount("25,01"), 2501);
   assert.equal(parseCreditAmount("0.95"), 95);
   assert.equal(parseCreditAmount("1.005"), undefined);
@@ -269,7 +269,7 @@ test("Wheel rejects a possible overdraft and protects old retries after recent r
     run(host.id, { kind: "spin", id: crypto.randomUUID(), stake: 1, walletVersion: view(host.id).wallet.version }, 1);
   assert.equal(view(host.id).spins.length, 10);
   assert.throws(() => run(host.id, allRemaining, 6), /Số dư đã thay đổi/);
-  assert.equal(view(host.id).wallet.balanceCents, 999_550);
+  assert.equal(view(host.id).wallet.balanceCents, 999_725);
 });
 
 test("Game commands require an integer wager, a current cursor, and a valid board position", () => {
@@ -325,7 +325,7 @@ test("Each wheel factor gets one equal roll and the biased random tail is reject
   assert.equal(random.mock.callCount(), 2);
 });
 
-test("Every ten wheel turns settle ten percent of the net loss once and profitable groups refund zero", () => {
+test("Every ten wheel turns settle 45 percent of the net loss once and profitable groups refund zero", () => {
   const { host, guest, view, run } = fixture();
   assert.equal(WHEEL_REFUND_EVERY, 10);
   const play = (stake: number, factor: WheelFactor, id: string = crypto.randomUUID()) => {
@@ -333,32 +333,32 @@ test("Every ten wheel turns settle ten percent of the net loss once and profitab
     return { command, spin: run(host.id, command, factor) };
   };
   play(1, -4);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 50 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 225 });
   play(1, 6);
   assert.deepEqual(view(host.id).wheelProgress, { spins: 2, pendingRefundCents: 0 });
   play(2, -1);
   for (let turn = 3; turn < 9; turn++) assert.equal(play(1, 1).spin?.refundCents, undefined);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 9, pendingRefundCents: 40 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 9, pendingRefundCents: 180 });
   assert.equal(view(host.id).wallet.balanceCents, 999_600);
   const { command, spin } = play(1, 0, spinId);
   assert.equal(spin?.netCents, -100);
-  assert.equal(spin?.refundCents, 50);
-  assert.equal(view(host.id).wallet.balanceCents, 999_550);
+  assert.equal(spin?.refundCents, 225);
+  assert.equal(view(host.id).wallet.balanceCents, 999_725);
   assert.deepEqual(view(host.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   assert.deepEqual(run(host.id, command, -4), spin);
-  assert.equal(view(host.id).wallet.balanceCents, 999_550);
+  assert.equal(view(host.id).wallet.balanceCents, 999_725);
   play(3, 0);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 30 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 135 });
   assert.deepEqual(view(guest.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   play(1, 6);
   play(1, 2);
   for (let turn = 3; turn < 9; turn++) play(1, 1);
   const profitable = play(1, 1).spin;
   assert.equal(profitable?.refundCents, undefined);
-  assert.equal(view(host.id).wallet.balanceCents, 999_850);
+  assert.equal(view(host.id).wallet.balanceCents, 1_000_025);
   assert.deepEqual(view(host.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   for (const factor of [0, 2, 1, 1, 1, 1, 1, 1, 1, 1] as const) assert.equal(play(1, factor).spin?.refundCents, undefined);
-  assert.equal(view(host.id).wallet.balanceCents, 999_850);
+  assert.equal(view(host.id).wallet.balanceCents, 1_000_025);
 });
 
 test("Incomplete five-turn groups keep their accrued loss and continue to the tenth spin", () => {
@@ -367,12 +367,12 @@ test("Incomplete five-turn groups keep their accrued loss and continue to the te
     [host.id]: { balanceCents: 999_500, version: 4, spins: [], wheelProgress: { spins: 4, netCredits: -5 } },
     [guest.id]: { balanceCents: 999_500, version: 9, spins: [], wheelProgress: { spins: 9, netCredits: -5 } },
   } };
-  assert.deepEqual(view(guest.id).wheelProgress, { spins: 9, pendingRefundCents: 50 });
+  assert.deepEqual(view(guest.id).wheelProgress, { spins: 9, pendingRefundCents: 225 });
   const spin = (id: string) =>
     run(id, { kind: "spin", id: crypto.randomUUID(), stake: 1, walletVersion: view(id).wallet.version }, 1);
   assert.equal(spin(host.id)?.refundCents, undefined);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 5, pendingRefundCents: 50 });
-  assert.equal(spin(guest.id)?.refundCents, 50);
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 5, pendingRefundCents: 225 });
+  assert.equal(spin(guest.id)?.refundCents, 225);
   assert.deepEqual(view(guest.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   spin(guest.id);
   assert.equal(view(guest.id).wheelProgress.spins, 1);

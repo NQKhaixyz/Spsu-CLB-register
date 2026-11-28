@@ -130,7 +130,8 @@ export function workspaceView(
     delete club.semesterScoreDraft;
   }
   const { memberFeedback: _privateFeedback, feedbackResetReceipt: _feedbackResetReceipt, sharing: _sharing,
-    activityNotices: _activityNotices, directNotices: _directNotices, games: _games, roundEventNoticesSince: _roundNoticesSince, ...visibleClub } = club;
+    activityNotices: _activityNotices, directNotices: _directNotices, games: _games, roundEventNoticesSince: _roundNoticesSince,
+    dismissedNoticeIds: _dismissedNoticeIds, ...visibleClub } = club;
   const view = currentTerminology({ club: visibleClub, me, isAdmin: !!isAdmin, setup: !me,
     identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, currentMonthScores,
     personalMonthlyScores, directoryAvailability, currentAcademicWeek, bulletin, feedback, sharing, sharingReport });

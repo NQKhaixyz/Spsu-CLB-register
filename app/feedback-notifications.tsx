@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Bell, CalendarDays, Check, CheckCheck, ClipboardList, Feather, Mail, MessageSquare, MessageSquarePlus, Newspaper, Plus, Shield, X } from "lucide-react";
+import { Bell, CalendarDays, Check, CheckCheck, ClipboardList, Feather, Mail, MessageSquare, MessageSquarePlus, Newspaper, Plus, Shield, Trash2, X } from "lucide-react";
 import { dateLabel } from "../lib/club";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { sharingNoticeTitles } from "../lib/sharing-types";
@@ -63,7 +63,7 @@ export default function WorkspaceNotifications({ state, pending, onOpenPending, 
   const center = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const { notifications, loadError, loaded, refresh, read } = state;
+  const { notifications, loadError, loaded, refresh, read, dismiss } = state;
   const unread = notifications.filter(notice => !notice.read).length;
   const bellLabel = ["Thông báo", unread ? unread + " chưa đọc" : "", pending ? pending + " đăng ký chờ xử lý" : ""]
     .filter(Boolean).join(", ");
@@ -147,8 +147,12 @@ export default function WorkspaceNotifications({ state, pending, onOpenPending, 
                 <span className="sr-only">{notice.read ? "Đã đọc" : "Chưa đọc"}</span>
               </span>
             </button>
-            {!notice.read && <button type="button" className="icon-button notification-read-button" title="Đánh dấu đã đọc"
-              aria-label={"Đánh dấu đã đọc · " + title} onClick={() => void read([notice.id])}><Check size={16} aria-hidden="true" /></button>}
+            <div className="notification-entry-actions">
+              {!notice.read && <button type="button" className="icon-button notification-read-button" title="Đánh dấu đã đọc"
+                aria-label={"Đánh dấu đã đọc · " + title} onClick={() => void read([notice.id])}><Check size={16} aria-hidden="true" /></button>}
+              <button type="button" className="icon-button notification-delete-button" title="Xóa thông báo"
+                aria-label={"Xóa thông báo · " + title} onClick={() => void dismiss(notice.id)}><Trash2 size={16} aria-hidden="true" /></button>
+            </div>
           </li>;
         })}
       </ul> : !loadError && <p className="notification-status">{loaded ? "Chưa có thông báo" : "Đang tải thông báo…"}</p>}

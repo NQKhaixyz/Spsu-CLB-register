@@ -103,7 +103,9 @@
   gap: 10px;
   padding: 11px 13px;
 }
-.notification-read-button { align-self: center; margin-inline-end: 5px; flex: none; color: var(--green-dark); }
+.notification-entry-actions { display: grid; flex: none; align-content: center; gap: 3px; margin-inline-end: 5px; }
+.notification-read-button { color: var(--green-dark); }
+.notification-delete-button { color: #854a41; }
 .notification-item:hover, .notification-pending:hover { background: #e6eee3; }
 .notification-item:focus-visible, .notification-pending:focus-visible {
   outline: 2px solid var(--green);

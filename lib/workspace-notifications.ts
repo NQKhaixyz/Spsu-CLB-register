@@ -24,9 +24,11 @@ export function workspaceNotificationsFor(club: Club, viewerId: string, now = Da
     notifications.push({ ...notice, kind: "direct", read: readBy?.includes(viewerId) ? true : undefined });
   }
   if (!isRosterMember(viewer)) return notifications;
+  const knownEvents = new Set(club.events?.map(event => event.id));
   for (const { memberId, ...notice } of club.activityNotices ?? []) {
     if (memberId !== viewerId) continue;
     if (notice.kind !== "duty") {
+      if (notice.kind === "activity" && notice.target.area === "event" && !knownEvents.has(notice.target.eventId)) continue;
       notifications.push(notice);
       continue;
     }
@@ -41,6 +43,19 @@ export function workspaceNotificationsFor(club: Club, viewerId: string, now = Da
     notifications.push({ ...details, week: weekId(date), date, period, startTime, endTime });
   }
   return notifications;
+}
+
+export function removeEventNotices(club: Club, eventId: string) {
+  const removed = new Set<string>();
+  if (club.activityNotices) club.activityNotices = club.activityNotices.filter(notice => {
+    const matches = notice.kind === "activity" && notice.target.area === "event" && notice.target.eventId === eventId;
+    if (matches) removed.add(notice.id);
+    return !matches;
+  });
+  if (!removed.size || !club.dismissedNoticeIds) return;
+  for (const [memberId, ids] of Object.entries(club.dismissedNoticeIds)) {
+    club.dismissedNoticeIds[memberId] = ids.filter(id => !removed.has(id));
+  }
 }
 
 function withReader(readBy: string[] | undefined, memberId: string) {

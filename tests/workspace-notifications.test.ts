@@ -4,8 +4,8 @@ import { applyAction, type Identity } from "../lib/actions";
 import { bulletinDateInput } from "../lib/bulletin";
 import { bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit, validBulletinDocumentPrefix } from "../lib/bulletin-media";
 import { addDays, createClub, syncWeeks, today, weekId, type Member } from "../lib/club";
-import { memberNotificationsFor, markMemberNotificationRead, markMemberNotificationsRead, visibleMemberNotifications } from "../lib/feedback-notifications";
-import { workspaceNotificationsFor, markWorkspaceNotificationRead } from "../lib/workspace-notifications";
+import { dismissMemberNotification, memberNotificationsFor, markMemberNotificationRead, markMemberNotificationsRead, visibleMemberNotifications } from "../lib/feedback-notifications";
+import { removeEventNotices, workspaceNotificationsFor, markWorkspaceNotificationRead } from "../lib/workspace-notifications";
 import { workspaceView } from "../lib/workspace-view";
 import { settleRoundEventNotices } from "../lib/round-event-notifications";
 
@@ -192,6 +192,28 @@ test("An ordinary event decision creates one status notice for the participant",
   assert.deepEqual(activity.target, { area: "event", eventId });
   assert.match(activity.body, /1 lượt được duyệt/);
   assert.deepEqual(memberNotificationsFor(club, other.id), []);
+});
+
+test("Dismissing a shared notice only removes it for that account and a deleted event clears its notices", () => {
+  const { club, admin, minh, other, run } = fixture();
+  const directId = crypto.randomUUID();
+  run(admin, "sendDirectNotice", { id: directId, title: "Tin chung", body: "Lịch tuần này", audience: "all" });
+  assert.equal(dismissMemberNotification(club, minh.id, directId), true);
+  assert.equal(dismissMemberNotification(club, minh.id, directId), true);
+  assert.deepEqual(memberNotificationsFor(structuredClone(club), minh.id), []);
+  assert.equal(memberNotificationsFor(club, other.id)[0]?.id, directId);
+  assert.equal(dismissMemberNotification(club, admin.id, directId), false);
+  const eventId = "notice-event-delete";
+  run(admin, "createEvent", { id: eventId, name: "Sinh hoạt chung", points: 1, startDate: today(), endDate: today() });
+  run(minh, "registerEvent", { eventId });
+  run(admin, "reviewActivity", { id: club.activityRegistrations![0].id, confirmed: true });
+  const [eventNotice] = memberNotificationsFor(club, minh.id);
+  assert.equal(eventNotice?.kind, "activity");
+  club.events = [];
+  assert.deepEqual(memberNotificationsFor(club, minh.id), []);
+  removeEventNotices(club, eventId);
+  assert.equal(club.activityNotices?.some(item => item.id === eventNotice.id), false);
+  assert.equal(memberNotificationsFor(club, other.id)[0]?.id, directId);
 });
 
 test("Per-round events deliver one private notice on closure with the actual confirmed rounds and points", () => {

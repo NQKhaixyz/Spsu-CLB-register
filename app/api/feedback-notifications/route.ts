@@ -1,4 +1,4 @@
-import { markMemberNotificationsRead, visibleMemberNotifications, type MemberNotificationInbox, type NotificationFormat } from "../../../lib/feedback-notifications";
+import { dismissMemberNotification, markMemberNotificationsRead, visibleMemberNotifications, type MemberNotificationInbox, type NotificationFormat } from "../../../lib/feedback-notifications";
 import { isNoticeId } from "../../../lib/notification-types";
 import type { Club } from "../../../lib/club";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
@@ -44,9 +44,11 @@ export async function POST(request: Request) {
       return json({ error: "Thông báo không hợp lệ" }, 400);
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) return json({ error: "Thông báo không hợp lệ" }, 400);
-    const { id, ids, all } = data as Record<string, unknown>;
+    const { id, ids, all, dismiss } = data as Record<string, unknown>;
     const format = formatFor(request);
     const single = isNoticeId(id) && ids === undefined && all === undefined;
+    const remove = dismiss === true && single && format === "all";
+    if (dismiss !== undefined && !remove) return json({ error: "Thông báo không hợp lệ" }, 400);
     let selection: Set<string> | "all";
     if (single) selection = new Set([id]);
     else if (format === "all" && all === true && ids === undefined && id === undefined) selection = "all";
@@ -59,7 +61,9 @@ export async function POST(request: Request) {
       if (!current.members.some(member => member.id === user.member.id && member.userId === user.userId && member.active)) {
         throw new AuthError("Vui lòng đăng nhập để xem thông báo", 401);
       }
-      if (!markMemberNotificationsRead(current, user.member.id, selection, format, now) && single) {
+      const changed = remove && isNoticeId(id) ? dismissMemberNotification(current, user.member.id, id, now)
+        : markMemberNotificationsRead(current, user.member.id, selection, format, now);
+      if (!changed && single) {
         throw new AuthError("Thông báo không còn hiển thị", 404);
       }
     });

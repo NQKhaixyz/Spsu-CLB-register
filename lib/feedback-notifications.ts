@@ -21,10 +21,20 @@ export type MemberNotificationInbox = { revision: number; notifications: InboxNo
 export type NotificationFormat = "feedback" | "workspace" | "all";
 
 export function memberNotificationsFor(club: Club, viewerId: string, includeWorkspace = true, now = Date.now()): InboxNotification[] {
+  const dismissed = new Set(club.dismissedNoticeIds?.[viewerId]);
   return [...feedbackNotificationsFor(club, viewerId),
     ...(club.sharing?.notices ?? []).flatMap(({ memberId, ...notice }) => memberId === viewerId ? [notice] : []),
     ...(includeWorkspace ? workspaceNotificationsFor(club, viewerId, now) : []),
-  ].sort((a, b) => b.createdAt - a.createdAt);
+  ].filter(item => !dismissed.has(item.id)).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function dismissMemberNotification(club: Club, viewerId: string, id: string, now = Date.now()) {
+  const hidden = club.dismissedNoticeIds?.[viewerId] ?? [];
+  if (hidden.includes(id)) return true;
+  if (!memberNotificationsFor(club, viewerId, true, now).some(item => item.id === id && item.createdAt <= now)) return false;
+  const dismissed = club.dismissedNoticeIds ??= Object.create(null) as Record<string, string[]>;
+  dismissed[viewerId] = [...hidden, id];
+  return true;
 }
 
 export function visibleMemberNotifications(club: Club, viewerId: string, format: NotificationFormat, now = Date.now()) {

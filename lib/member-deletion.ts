@@ -107,6 +107,7 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   dropMemberFromGames(club, member.id, true);
   removeFromHistory(club, member.id, eventPhotos);
   eraseFeedbackMembers(club, new Set([member.id]));
+  if (club.dismissedNoticeIds) delete club.dismissedNoticeIds[member.id];
   if (club.activityNotices) {
     club.activityNotices = club.activityNotices.filter(item => item.memberId !== member.id).map(item =>
       item.actorId === member.id ? { ...item, actorId: undefined } : item);

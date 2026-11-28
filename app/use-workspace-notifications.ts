@@ -28,6 +28,7 @@ export function useWorkspaceNotifications(memberId?: string) {
   const owner = useRef(memberId);
   const reading = useRef(new Set<string>());
   const markingAll = useRef(false);
+  const dismissing = useRef(new Set<string>());
   const inbox = state?.memberId === memberId ? state?.inbox : undefined;
   const notifications = inbox?.notifications ?? emptyInbox;
 
@@ -35,6 +36,7 @@ export function useWorkspaceNotifications(memberId?: string) {
     owner.current = memberId;
     reading.current = new Set();
     markingAll.current = false;
+    dismissing.current = new Set();
     setLoadError(false);
   }, [memberId]);
 
@@ -113,7 +115,28 @@ export function useWorkspaceNotifications(memberId?: string) {
     }
   }, [memberId, receive, refresh]);
 
-  return { notifications, revision: inbox?.revision, loaded: !!inbox, loadError, refresh, read };
+  const dismiss = useCallback(async (id: string) => {
+    if (!memberId || dismissing.current.has(id)) return;
+    const pending = dismissing.current;
+    pending.add(id);
+    try {
+      const response = await fetch(inboxPath, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, dismiss: true }),
+      });
+      if (response.status === 404 || response.status === 401) {
+        void refresh();
+        return;
+      }
+      if (!response.ok) throw new Error("Chưa xóa được thông báo");
+      receive(memberId, await response.json());
+    } catch {
+      if (owner.current === memberId) setLoadError(true);
+    } finally {
+      pending.delete(id);
+    }
+  }, [memberId, receive, refresh]);
+
+  return { notifications, revision: inbox?.revision, loaded: !!inbox, loadError, refresh, read, dismiss };
 }
 
 export type WorkspaceNotificationState = ReturnType<typeof useWorkspaceNotifications>;

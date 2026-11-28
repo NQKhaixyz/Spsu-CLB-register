@@ -8,7 +8,7 @@ import { captureScoreItems, scoreItemNotices } from "./score-notice-details";
 import { appendActivityNotices } from "./workspace-notifications";
 
 const meetingActions = new Set(["entry", "review", "meeting", "close", "reopen"]);
-const eventActions = new Set(["saveEventRounds", "addEventParticipant", "editEvent", "cancelEvent", "restoreEvent", "deleteEvent"]);
+const eventActions = new Set(["saveEventRounds", "addEventParticipant", "editEvent", "cancelEvent", "restoreEvent"]);
 const individualEventActions = new Set(["reviewActivity", "saveEventContribution", "saveEventRounds", "addEventParticipant"]);
 const dutyActions = new Set(["publish", "withdrawDutyWeek", "addDutyMember", "removeDutyMember", "cancelShift", "restoreShift", "shift"]);
 
@@ -130,11 +130,6 @@ export function captureWorkspaceNotifications(
     if (tracksStatus) {
       for (const item of getActivity()) {
         if (oldActivity.get(item.key)?.fingerprint !== item.fingerprint) notices.push(item.notice);
-      }
-      if (event && action === "deleteEvent") {
-        for (const { notice } of oldActivity.values()) notices.push({
-          ...notice, title: "Sự kiện đã xóa", body: event.event.name, target: { area: "event", eventId: event.event.id, deleted: true },
-        });
       }
     }
     if (oldDuty) {
