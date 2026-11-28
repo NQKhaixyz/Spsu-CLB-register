@@ -31,8 +31,12 @@ export default function Login({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: register ? "register" : "login", data }),
       });
-      const result = (await r.json()) as { error?: string };
+      const result = (await r.json()) as { error?: string; next?: string };
       if (!r.ok) throw new Error(result.error || "Không đăng nhập được");
+      if (result.next === "/cap-credits") {
+        window.location.assign(result.next);
+        return;
+      }
       await onSuccess();
     } catch (e) {
       setError(

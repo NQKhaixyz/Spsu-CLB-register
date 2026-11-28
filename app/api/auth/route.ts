@@ -1,7 +1,9 @@
 import { AuthError } from "../../../lib/password";
 import {
   changeOwnPassword,
+  isCreditIssuerLogin,
   login,
+  loginCreditIssuer,
   logout,
   register,
   sessionCookie,
@@ -36,6 +38,15 @@ export async function POST(request: Request) {
         { ok: true, ...(await setAccountPassword(request, data)) },
         { headers: { "Cache-Control": "no-store" } },
       );
+    if (action === "login" && isCreditIssuerLogin(data.login)) {
+      const token = await loginCreditIssuer(request, data);
+      return Response.json({ ok: true, next: "/cap-credits" }, {
+        headers: {
+          "Set-Cookie": sessionCookie(request, token, undefined, "credit-issuer"),
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
     const token =
       action === "login"
         ? await login(request, data)

@@ -32,6 +32,8 @@ const creditIssuer = {
   name: "Vua Cờ Bạc",
 };
 const reservedLogins = ["admin", "member", creditIssuer.login];
+export const isCreditIssuerLogin = (value: unknown) =>
+  typeof value === "string" && value.trim().toLowerCase() === creditIssuer.login;
 const dummyPasswordHash =
   "100000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000";
 type SessionScope = "workspace" | "credit-issuer";
