@@ -239,6 +239,9 @@
 .bulletin-actions button:hover { background: #eaf2e5; }
 .bulletin-actions button[aria-pressed="true"] { background: #e2efdc; }
 .bulletin-actions button[aria-pressed="true"] svg { fill: #7ca36e; }
+.bulletin-reactions { display: inline-flex; align-items: center; }
+.bulletin-actions .bulletin-like-count { min-width: 28px; justify-content: center; padding-inline: 4px; }
+.bulletin-likers { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .bulletin-post .bulletin-post-actions {
   flex-wrap: nowrap;
   gap: 3px;
@@ -410,7 +413,28 @@
 }
 .bulletin-format-preview small { color: var(--muted); }
 .bulletin-format-preview summary { cursor: pointer; color: var(--muted); font-size: .875rem; }
-.dialog.wide.bulletin-composer-dialog { width: min(60rem, 100%); max-width: none; }
+.dialog.wide.bulletin-composer-dialog { width: min(80rem, 100%); max-width: none; }
+.bulletin-compose-layout { display: grid; gap: 16px; align-items: start; }
+.bulletin-compose-fields, .bulletin-compose-preview { min-width: 0; }
+.bulletin-compose-preview-label { display: none; margin: 0 0 10px; color: var(--muted); font-size: .875rem; }
+.bulletin-compose-preview-body {
+  margin-top: 8px;
+  min-width: 0;
+  min-height: 10rem;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-warm);
+  overflow-wrap: anywhere;
+}
+.bulletin-compose-preview[data-preview-open="false"] .bulletin-compose-preview-body { display: none; }
+@media (min-width: 761px) {
+  .bulletin-compose-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bulletin-compose-preview { padding-inline-start: 16px; border-inline-start: 1px solid var(--line); align-self: stretch; }
+  .bulletin-compose-preview-label,
+  .bulletin-compose-preview[data-preview-open="false"] .bulletin-compose-preview-body { display: block; }
+  .bulletin-compose-preview .bulletin-compose-preview-toggle { display: none; }
+}
 .bulletin-composer-dialog .bulletin-format-tools {
   position: sticky;
   inset-block-start: 0;

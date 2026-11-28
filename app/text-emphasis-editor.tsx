@@ -6,10 +6,11 @@ import { toggleBulletinEmphasis, type BulletinMarker } from "../lib/bulletin-for
 import { BulletinText } from "./bulletin-text";
 import { Button, Field } from "./ui";
 
-export function TextEmphasisEditor({ label, name, formatName, initialText, initialFormat, rows, maxLength, required, busy, autoGrow }: {
+export function TextEmphasisEditor({ label, name, formatName, initialText, initialFormat, rows, maxLength, required, busy, autoGrow, onDraftChange }: {
   label: string; name: string; formatName: string; initialText?: string; initialFormat?: "emphasis";
   rows: number; maxLength: number; required?: boolean; busy: boolean;
   autoGrow?: boolean;
+  onDraftChange?: (content: string, format?: "emphasis") => void;
 }) {
   const [text, setText] = useState(initialText ?? "");
   const [format, setFormat] = useState(initialFormat);
@@ -41,6 +42,7 @@ export function TextEmphasisEditor({ label, name, formatName, initialText, initi
     setError("");
     setText(next.value);
     setFormat("emphasis");
+    onDraftChange?.(next.value, "emphasis");
     requestAnimationFrame(() => {
       if (editor.current !== input) return;
       input.focus();
@@ -61,7 +63,12 @@ export function TextEmphasisEditor({ label, name, formatName, initialText, initi
     <Field label={label}>
       <textarea ref={editor} name={name} rows={rows} required={required} maxLength={maxLength}
         className={autoGrow ? "bulletin-grow-editor" : undefined}
-        value={text} onChange={event => { setText(event.target.value); setError(""); }}
+        value={text} onChange={event => {
+          const value = event.target.value;
+          setText(value);
+          setError("");
+          onDraftChange?.(value, format);
+        }}
         aria-describedby={hint} onKeyDown={event => {
           const key = event.key.toLowerCase();
           if (!(event.ctrlKey || event.metaKey) || (key !== "b" && key !== "i")) return;
@@ -73,7 +80,7 @@ export function TextEmphasisEditor({ label, name, formatName, initialText, initi
     {!autoGrow && toolbar}
     <p className="hint bulletin-format-hint" id={hint}>Chọn đoạn chữ rồi bấm Bôi đậm hoặc In nghiêng</p>
     {error && <p role="alert" className="form-error">{error}</p>}
-    {format && text.trim() && <section className="bulletin-format-preview" aria-label="Xem trước nội dung">
+    {!onDraftChange && format && text.trim() && <section className="bulletin-format-preview" aria-label="Xem trước nội dung">
       {autoGrow ? <details open>
         <summary>Xem trước nội dung</summary>
         <div className="bulletin-fulltext"><BulletinText content={text} contentFormat={format} /></div>

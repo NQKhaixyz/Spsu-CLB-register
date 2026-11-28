@@ -3,9 +3,9 @@
 import { ArrowDownRight, ArrowUpRight, Coins, Dices, Gamepad2, LoaderCircle, Plus, RotateCw, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
-  formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY, WHEEL_REFUND_PERCENT,
+  COIN_SIDES, COIN_WIN_PAYOUT_CENTS, formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY, WHEEL_REFUND_PERCENT,
   xoPrizeCents, xoSize, xoWinLength, XO_BOARD_SIZE,
-  type GameCommand, type GamesResponse, type GamesView, type OpenXoRoom,
+  type CoinFlipCommand, type CoinSide, type GameCommand, type GamesResponse, type GamesView, type OpenXoRoom,
   type WheelFactor, type WheelSpin, type XoRoom,
 } from "../lib/games";
 import { MemberName, useMemberIdentity } from "./member-identity";
@@ -16,6 +16,12 @@ const gamesPath = "/api/games?rules=" + GAME_RULES_VERSION;
 const creditNumber = new Intl.NumberFormat("vi-VN");
 const spinTime = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const wheelDuration = 2_350;
+const coinDuration = 900;
+const gameLabels = { coinflip: "Coinflip", xo: "XO", wheel: "Vòng quay may mắn" } as const;
+const coinFaces = {
+  one: { label: "Mặt 1", src: "/games/coinflip/mat-1.webp" },
+  two: { label: "Mặt 2", src: "/games/coinflip/mat-2.webp" },
+} as const;
 const wheelSectorCount = WHEEL_FACTORS.length;
 const wheelSectorAngle = 360 / wheelSectorCount;
 const wheelProbability = new Intl.NumberFormat("vi-VN", { style: "percent", maximumFractionDigits: 2 }).format(1 / wheelSectorCount);
@@ -32,14 +38,15 @@ function angleFor(factor: WheelFactor | undefined) {
   return factor === undefined ? 0 : (360 - WHEEL_FACTORS.indexOf(factor) * wheelSectorAngle) % 360;
 }
 
-export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memberId: string }) {
+export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLabels; memberId: string }) {
   const [view, setView] = useState<GamesView>();
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
-  const [retry, setRetry] = useState<GameCommand>();
+  const [retry, setRetry] = useState<GameCommand | CoinFlipCommand>();
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
   const [motion, setMotion] = useState<{ spin: WheelSpin; angle: number; moving: boolean }>();
+  const [coinMotion, setCoinMotion] = useState<{ id: string; previousBalance: number }>();
   const receive = useCallback((incoming: GamesView) => {
     setView(current => current && current.revision >= incoming.revision ? current : incoming);
     setLoadError("");
@@ -82,7 +89,13 @@ export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memb
     return () => clearTimeout(timer);
   }, [motion?.spin.id, moving]);
 
-  async function submit(command: GameCommand) {
+  useEffect(() => {
+    if (!coinMotion) return;
+    const timer = window.setTimeout(() => setCoinMotion(undefined), coinDuration);
+    return () => clearTimeout(timer);
+  }, [coinMotion]);
+
+  async function submit(command: GameCommand | CoinFlipCommand) {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
@@ -101,6 +114,11 @@ export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memb
       }
       receive(data);
       setRetry(undefined);
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (data.flip && data.flips[0]?.id === data.flip.id && view?.flips[0]?.id !== data.flip.id && !reduceMotion) {
+        setCoinMotion({ id: data.flip.id,
+          previousBalance: view?.wallet.balanceCents ?? data.flip.balanceCents - data.flip.netCents });
+      }
       if (data.spin && data.spins[0]?.id === data.spin.id) {
         const previous = motion?.spin.id === view?.spins[0]?.id ? motion?.angle : undefined;
         const start = previous ?? angleFor(view?.spins[0]?.factor);
@@ -108,7 +126,7 @@ export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memb
         const distance = (target - start % 360 + 360) % 360;
         setMotion({
           spin: data.spin, angle: start + 360 * 5 + distance,
-          moving: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+          moving: !reduceMotion,
         });
       }
     } catch {
@@ -120,15 +138,17 @@ export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memb
     }
   }
 
+  const coinMoving = tab === "coinflip" && !!coinMotion && view?.flips[0]?.id === coinMotion.id;
+  const visibleBalance = coinMoving ? coinMotion.previousBalance : view?.wallet.balanceCents;
   return <div className="games-page" aria-label="Trò chơi của Đội">
     <div className="games-heading">
       <div>
-        <h1>{tab === "xo" ? "XO" : "Vòng quay may mắn"}</h1>
+        <h1>{gameLabels[tab]}</h1>
         {tab === "xo" && <p>Lập phòng và chơi cùng thành viên trong Đội</p>}
       </div>
-      {view && <div className="games-wallet">
+      {visibleBalance !== undefined && <div className="games-wallet">
         <Coins size={21} aria-hidden="true" />
-        <div><span>Số dư credits</span><strong data-game-balance={view.wallet.balanceCents}>{formatCredits(view.wallet.balanceCents)}</strong></div>
+        <div><span>Số dư credits</span><strong data-game-balance={visibleBalance}>{formatCredits(visibleBalance)}</strong></div>
       </div>}
     </div>
     {actionError && <div className="games-message" role="alert">
@@ -139,9 +159,88 @@ export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memb
       <span>{loadError}</span><Button variant="secondary" onClick={() => void load()}>Tải lại trò chơi</Button>
     </div>}
     {!view && !loadError && <p className="games-loading" role="status"><LoaderCircle size={18} className="spin" aria-hidden="true" /> Đang tải trò chơi</p>}
-    {view && (tab === "xo"
-      ? <XoGame view={view} memberId={memberId} disabled={busy || !!retry} onSubmit={submit} />
-      : <WheelGame view={view} motion={motion} disabled={busy || !!retry} onSubmit={submit} />)}
+    {view && tab === "coinflip" && <CoinFlipGame view={view} moving={coinMoving} disabled={busy || !!retry} onSubmit={submit} />}
+    {view && tab === "xo" && <XoGame view={view} memberId={memberId} disabled={busy || !!retry} onSubmit={submit} />}
+    {view && tab === "wheel" && <WheelGame view={view} motion={motion} disabled={busy || !!retry} onSubmit={submit} />}
+  </div>;
+}
+
+function CoinPortrait({ side }: { side: CoinSide }) {
+  // The player supplied the artwork for both sides of the coin.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img data-side={side} src={coinFaces[side].src} alt="" width="128" height="128" />;
+}
+
+function CoinFlipGame({ view, moving, disabled, onSubmit }: {
+  view: GamesView;
+  moving: boolean;
+  disabled: boolean;
+  onSubmit: (command: CoinFlipCommand) => Promise<void>;
+}) {
+  const [pick, setPick] = useState<CoinSide>();
+  const [wager, setWager] = useState("1");
+  const { maxCoinflipStake, version } = view.wallet;
+  const stake = checkedStake(wager, maxCoinflipStake);
+  const result = view.flips[0];
+  const blocked = disabled || moving || maxCoinflipStake < 1;
+  const history = moving ? view.flips.slice(1) : view.flips;
+
+  function flip(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!blocked && pick && stake !== undefined)
+      void onSubmit({ kind: "flip", id: crypto.randomUUID(), stake, pick, walletVersion: version });
+  }
+
+  return <div className="coinflip-layout">
+    <section className="games-card coinflip-stage" aria-label="Kết quả tung xu">
+      <div className="coinflip-scene" aria-hidden="true">
+        <div key={result?.id ?? "ready"} className="coinflip-coin" data-side={result?.side ?? pick ?? "one"}
+          data-moving={moving} style={{ "--coin-duration": coinDuration + "ms" } as CSSProperties}>
+          {COIN_SIDES.map(side => <span key={side} className="coinflip-face" data-side={side}><CoinPortrait side={side} /></span>)}
+        </div>
+      </div>
+      <div className="coinflip-outcome" role="status" data-net={!moving ? result?.netCents : undefined}>
+        {moving ? "Đang tung xu…" : result ? <>
+          <strong>{coinFaces[result.side].label}</strong>
+          <span data-result={Math.sign(result.netCents)}>
+            {result.pick === result.side ? "Đoán đúng" : "Đoán sai"} · {signedCredits(result.netCents)} credits
+          </span>
+        </> : "Chọn một mặt để bắt đầu"}
+      </div>
+    </section>
+    <section className="games-card coinflip-controls" aria-labelledby="coinflip-choose">
+      <h2 id="coinflip-choose">Chọn mặt và đặt cược</h2>
+      <form className="coinflip-form" onSubmit={flip}>
+        <fieldset className="coinflip-picks" aria-label="Mặt xu" disabled={blocked}>
+          {COIN_SIDES.map(side => <label key={side} data-picked={pick === side}>
+            <input type="radio" name="coin-side" value={side} required checked={pick === side}
+              onChange={() => setPick(side)} />
+            <CoinPortrait side={side} />
+            <span>{coinFaces[side].label}</span>
+          </label>)}
+        </fieldset>
+        <div className="games-form">
+          <Field label="Mức cược Coinflip (credits)">
+            <input name="stake" type="number" min="1" max={maxCoinflipStake} step="1" inputMode="numeric" value={wager}
+              onChange={event => setWager(event.target.value)} required disabled={blocked} />
+          </Field>
+          <Button type="submit" disabled={blocked || !pick || stake === undefined}>
+            <Coins size={17} aria-hidden="true" /> {moving ? "Đang tung" : "Tung xu"}
+          </Button>
+          <small className="games-wager-hint">{maxCoinflipStake > 0
+            ? "Tối đa " + creditNumber.format(maxCoinflipStake) + " credits"
+            : "Bạn cần ít nhất 1 credit khả dụng để chơi"}</small>
+        </div>
+      </form>
+      <p className="games-note">Mỗi mặt có xác suất 50%. Đoán đúng nhận ×{formatCredits(COIN_WIN_PAYOUT_CENTS)} tiền cược, đoán sai mất cược</p>
+    </section>
+    {history.length > 0 && <details className="games-card games-history coinflip-history">
+      <summary>Lượt tung xu gần đây</summary>
+      <ul>{history.map(item => <li key={item.id}>
+        <span>{coinFaces[item.side].label} · cược {creditNumber.format(item.stake)}</span>
+        <strong data-result={Math.sign(item.netCents)}>{signedCredits(item.netCents)}</strong>
+      </li>)}</ul>
+    </details>}
   </div>;
 }
 

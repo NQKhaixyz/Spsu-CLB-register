@@ -10,6 +10,7 @@ import {
 } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 import { BulletinAttachmentView } from "./bulletin-attachments";
+import { BulletinText } from "./bulletin-text";
 import { preparePhoto } from "./prepare-photo";
 import { TextEmphasisEditor } from "./text-emphasis-editor";
 import { Button, Dialog, Field, FormFooter } from "./ui";
@@ -87,6 +88,9 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
     label: file.name ?? `${file.type === "image/jpeg" ? "Ảnh" : "Video"} ${index + 1}`,
   })));
   const [status, setStatus] = useState("");
+  const [title, setTitle] = useState(original?.title ?? "");
+  const [draft, setDraft] = useState({ content: original?.content ?? "", contentFormat: original?.contentFormat });
+  const [previewOpen, setPreviewOpen] = useState(true);
   const [error, setError] = useState("");
   const [selection, setSelection] = useState(initialSelection);
   const photos = useRef<HTMLInputElement>(null);
@@ -177,48 +181,72 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
 
   return <Dialog title={original ? "Sửa tin" : "Đăng tin"} onClose={onClose} wide className="bulletin-composer-dialog" busy={waiting}>
     <form onSubmit={save}>
-      <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit} defaultValue={original?.title} /></Field>
-      <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={9} maxLength={bulletinContentLimit} autoGrow
-        initialText={original?.content} initialFormat={original?.contentFormat} required={!files.length} busy={waiting} />
-      <div className="bulletin-picker">
-        <div className="bulletin-picker-actions">
-          <input ref={photos} type="file" accept="image/*" multiple hidden onChange={event => choose(event, "image")} />
-          <input ref={videos} type="file" accept={bulletinVideoAccept} multiple hidden onChange={event => choose(event, "video")} />
-          <input ref={documents} type="file" accept={bulletinDocumentAccept} multiple hidden onChange={event => choose(event, "document")} />
-          <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => photos.current?.click()}>
-            <ImagePlus size={16} aria-hidden="true" /> Thêm ảnh
-          </Button>
-          <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => videos.current?.click()}>
-            <Video size={16} aria-hidden="true" /> Thêm video
-          </Button>
-          <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => documents.current?.click()}>
-            <FileText size={16} aria-hidden="true" /> Thêm tài liệu
-          </Button>
-          <small>{files.length}/{bulletinMediaLimit} tệp</small>
-        </div>
-        <p className="hint">Video MP4, WebM hoặc MOV tối đa {bulletinVideoLimitMb} MB mỗi tệp</p>
-        <p className="hint">PDF, Word, Excel và PowerPoint tối đa {bulletinDocumentLimitMb} MB mỗi tệp</p>
-        {files.length > 0 && <ul className="bulletin-drafts">
-          {files.map(file => <li key={file.key}>
-            {!isBulletinDocument(file.type) && <BulletinAttachmentView type={file.type} url={file.url} label={file.label} />}
-            <div>
-              <span title={file.label}>{file.label}</span>
-              <button type="button" className="icon-button" disabled={waiting} aria-label={`Gỡ ${file.label}`}
-                onClick={() => remove(file)}><X size={17} aria-hidden="true" /></button>
+      <div className="bulletin-compose-layout">
+        <div className="bulletin-compose-fields">
+          <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit}
+            value={title} onChange={event => setTitle(event.target.value)} /></Field>
+          <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={9} maxLength={bulletinContentLimit} autoGrow
+            initialText={original?.content} initialFormat={original?.contentFormat} required={!files.length} busy={waiting}
+            onDraftChange={(content, contentFormat) => setDraft({ content, contentFormat })} />
+          <div className="bulletin-picker">
+            <div className="bulletin-picker-actions">
+              <input ref={photos} type="file" accept="image/*" multiple hidden onChange={event => choose(event, "image")} />
+              <input ref={videos} type="file" accept={bulletinVideoAccept} multiple hidden onChange={event => choose(event, "video")} />
+              <input ref={documents} type="file" accept={bulletinDocumentAccept} multiple hidden onChange={event => choose(event, "document")} />
+              <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => photos.current?.click()}>
+                <ImagePlus size={16} aria-hidden="true" /> Thêm ảnh
+              </Button>
+              <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => videos.current?.click()}>
+                <Video size={16} aria-hidden="true" /> Thêm video
+              </Button>
+              <Button variant="secondary" disabled={waiting || files.length >= bulletinMediaLimit} onClick={() => documents.current?.click()}>
+                <FileText size={16} aria-hidden="true" /> Thêm tài liệu
+              </Button>
+              <small>{files.length}/{bulletinMediaLimit} tệp</small>
             </div>
-          </li>)}
-        </ul>}
+            <p className="hint">Video MP4, WebM hoặc MOV tối đa {bulletinVideoLimitMb} MB mỗi tệp</p>
+            <p className="hint">PDF, Word, Excel và PowerPoint tối đa {bulletinDocumentLimitMb} MB mỗi tệp</p>
+            {files.length > 0 && <ul className="bulletin-drafts">
+              {files.map(file => <li key={file.key}>
+                <div>
+                  <span title={file.label}>{file.label}</span>
+                  <button type="button" className="icon-button" disabled={waiting} aria-label={`Gỡ ${file.label}`}
+                    onClick={() => remove(file)}><X size={17} aria-hidden="true" /></button>
+                </div>
+              </li>)}
+            </ul>}
+          </div>
+          {isAdmin && <div className="form-grid">
+            <Field label="Hẹn đăng" hint="Giờ Việt Nam · Để trống để đăng ngay">
+              <input name="publishAt" type="datetime-local" defaultValue={bulletinDateInput(original?.publishAt)} />
+            </Field>
+            <Field label="Hẹn tự xóa" hint="Giờ Việt Nam · Để trống để giữ tin">
+              <input name="deleteAt" type="datetime-local" defaultValue={bulletinDateInput(original?.deleteAt)} />
+            </Field>
+          </div>}
+          {(selection || status) && <p className="hint" role="status">{selection ? "Đang chuẩn bị tệp…" : status}</p>}
+          {error && <p className="bulletin-picker-error" role="alert">{error}</p>}
+        </div>
+        <section className="bulletin-compose-preview" aria-label="Xem trước bài đăng" data-preview-open={previewOpen}>
+          <h3 className="bulletin-compose-preview-label">Xem trước bài đăng</h3>
+          <button type="button" className="btn secondary bulletin-compose-preview-toggle" aria-expanded={previewOpen}
+            aria-controls="bulletin-draft-preview" onClick={() => setPreviewOpen(open => !open)}>
+            {previewOpen ? "Ẩn bản xem trước" : "Xem trước bài đăng"}
+          </button>
+          <article className="bulletin-compose-preview-body" id="bulletin-draft-preview">
+            <h4 className="bulletin-post-title">{title.trim() || "Tiêu đề bài đăng"}</h4>
+            <div className="bulletin-fulltext">
+              {draft.content.trim() ? <BulletinText {...draft} /> : <span className="hint">Nội dung sẽ hiện ở đây</span>}
+            </div>
+            {files.length > 0 && <ul className="bulletin-media-gallery">
+              {files.map(file => <li key={file.key} className={isBulletinDocument(file.type) ? "bulletin-media-document" :
+                file.type === "image/jpeg" ? "bulletin-media-image" : "bulletin-media-video"}>
+                <BulletinAttachmentView type={file.type} url={file.url} label={file.label} />
+              </li>)}
+            </ul>}
+          </article>
+        </section>
       </div>
-      {isAdmin && <div className="form-grid">
-        <Field label="Hẹn đăng" hint="Giờ Việt Nam · Để trống để đăng ngay">
-          <input name="publishAt" type="datetime-local" defaultValue={bulletinDateInput(original?.publishAt)} />
-        </Field>
-        <Field label="Hẹn tự xóa" hint="Giờ Việt Nam · Để trống để giữ tin">
-          <input name="deleteAt" type="datetime-local" defaultValue={bulletinDateInput(original?.deleteAt)} />
-        </Field>
-      </div>}
-      {(selection || status) && <p className="hint" role="status">{selection ? "Đang chuẩn bị tệp…" : status}</p>}
-      {error && <p className="bulletin-picker-error" role="alert">{error}</p>}
       <FormFooter label={original ? "Lưu thay đổi" : "Đăng tin"} busy={waiting} onCancel={onClose} />
     </form>
   </Dialog>;

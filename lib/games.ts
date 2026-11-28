@@ -2,6 +2,9 @@ import type { Club } from "./club";
 
 export const WHEEL_FACTORS = [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6] as const;
 export type WheelFactor = typeof WHEEL_FACTORS[number];
+export const COIN_SIDES = ["one", "two"] as const;
+export type CoinSide = typeof COIN_SIDES[number];
+export const COIN_WIN_PAYOUT_CENTS = 190;
 export type Mark = "X" | "O";
 export type XoSize = 3 | 20;
 export const XO_BOARD_SIZE = 20;
@@ -12,9 +15,10 @@ export const WHEEL_REFUND_PERCENT = 70;
 const startingBalance = 1_000_000;
 const creditCents = 100;
 const winnerCentsPerCredit = 195;
+const coinWinCentsPerCredit = COIN_WIN_PAYOUT_CENTS - creditCents;
 const maxBalance = Number.MAX_SAFE_INTEGER;
 const recentCount = 5;
-const wheelHistoryLimit = 10;
+const gameResultHistoryLimit = 10;
 const previousWheelRefund = { rounds: 10, percent: 50 };
 const currentWheelRefund = { rounds: WHEEL_REFUND_EVERY, percent: WHEEL_REFUND_PERCENT };
 const requestIdFormat = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -27,6 +31,7 @@ type Wallet = {
   balanceCents: number;
   version: number;
   spins: WheelSpin[];
+  flips?: CoinFlip[];
   wheelProgress?: WheelProgress;
   operatorGrants?: CreditAdjustmentReceipt[];
 };
@@ -61,6 +66,17 @@ export type WheelSpin = {
   refundCents?: number;
 };
 
+export type CoinFlip = {
+  id: string;
+  at: number;
+  stake: number;
+  pick: CoinSide;
+  side: CoinSide;
+  netCents: number;
+  balanceCents: number;
+};
+export type CoinFlipCommand = { kind: "flip"; id: string; stake: number; pick: CoinSide; walletVersion: number };
+
 export type XoRoom = {
   id: string;
   size?: XoSize;
@@ -78,13 +94,14 @@ export type OpenXoRoom = Pick<XoRoom, "id" | "hostId" | "stake"> & { size: XoSiz
 export type GamesState = { wallets: Record<string, Wallet>; rooms: XoRoom[] };
 export type GamesView = {
   revision: number;
-  wallet: Pick<Wallet, "balanceCents" | "version"> & { maxWheelStake: number };
+  wallet: Pick<Wallet, "balanceCents" | "version"> & { maxWheelStake: number; maxCoinflipStake: number };
   openRooms: OpenXoRoom[];
   ownRooms: XoRoom[];
   spins: WheelSpin[];
+  flips: CoinFlip[];
   wheelProgress: { spins: number; pendingRefundCents: number; legacyRefund?: typeof previousWheelRefund };
 };
-export type GamesResponse = GamesView & { spin?: WheelSpin };
+export type GamesResponse = GamesView & { spin?: WheelSpin; flip?: CoinFlip };
 export type CreditsRanking = {
   revision: number;
   rows: { memberId: string; name: string; balanceCents: number; rank: number }[];
@@ -119,15 +136,19 @@ export function parseCreditAdjustment(data: Record<string, unknown>): CreditAdju
   return { operationId, memberId, mode, amountCents, walletVersion };
 }
 
-export function parseGameCommand(body: unknown): GameCommand {
+export function parseGameCommand(body: unknown): GameCommand | CoinFlipCommand {
   const invalid = () => new GameRuleError("Thao tác trò chơi không hợp lệ");
   if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
-  const { kind, id, stake, walletVersion, cell, turn } = body as Record<string, unknown>;
+  const { kind, id, stake, walletVersion, cell, turn, pick } = body as Record<string, unknown>;
   if (typeof id !== "string" || !requestIdFormat.test(id)) throw invalid();
-  if (kind === "create" || kind === "join" || kind === "spin") {
+  if (kind === "create" || kind === "join" || kind === "spin" || kind === "flip") {
     if (!integerBetween(stake, 1, Math.floor(maxBalance / (5 * creditCents))))
       throw new GameRuleError("Mức cược phải là số nguyên dương");
     if (!integerBetween(walletVersion, 0, maxBalance)) throw invalid();
+    if (kind === "flip") {
+      if (pick !== "one" && pick !== "two") throw new GameRuleError("Chọn một mặt đồng xu");
+      return { kind, id, stake, walletVersion, pick };
+    }
     return { kind, id, stake, walletVersion };
   }
   const lastCell = XO_BOARD_SIZE ** 2 - 1;
@@ -314,6 +335,44 @@ function maxWheelStake(games: GamesState | undefined, memberId: string) {
   );
 }
 
+function maxCoinflipStake(games: GamesState | undefined, memberId: string) {
+  const wallet = walletFor(games, memberId);
+  const room = liveRoomFor(games, memberId);
+  const reservedPrize = room ? xoPrizeCents(room.stake) : 0;
+  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits, wheelRefundTerms(wallet, reservedPrize).percent);
+  return Math.max(0, Math.min(
+    Math.floor(wallet.balanceCents / creditCents),
+    Math.floor((maxBalance - wallet.balanceCents - reservedPrize - reservedRefund) / coinWinCentsPerCredit),
+    Math.floor(maxBalance / (5 * creditCents)),
+  ));
+}
+
+export function drawCoinSide(): CoinSide {
+  return COIN_SIDES[crypto.getRandomValues(new Uint8Array(1))[0] % COIN_SIDES.length];
+}
+
+export function applyCoinFlip(club: Club, memberId: string, command: CoinFlipCommand, side: CoinSide, at: number): CoinFlip {
+  if (!club.members.some(member => member.id === memberId && member.active))
+    throw new GameRuleError("Tài khoản đang tạm nghỉ", 403);
+  const games = club.games ??= { rooms: [], wallets: Object.create(null) as GamesState["wallets"] };
+  const wallet = walletFor(games, memberId);
+  const previous = wallet.flips?.find(flip => flip.id === command.id);
+  if (previous) {
+    if (previous.stake !== command.stake || previous.pick !== command.pick)
+      throw new GameRuleError("Lượt tung xu đã dùng lựa chọn khác", 409);
+    return previous;
+  }
+  if (wallet.version !== command.walletVersion)
+    throw new GameRuleError("Số dư đã thay đổi, kiểm tra lại mức cược", 409);
+  if (!integerBetween(command.stake, 1, maxCoinflipStake(games, memberId)))
+    throw new GameRuleError("Mức cược vượt số credits có thể dùng");
+  const netCents = command.stake * (command.pick === side ? coinWinCentsPerCredit : -creditCents);
+  const next = updateBalance(games, memberId, netCents);
+  const flip = { id: command.id, at, stake: command.stake, pick: command.pick, side, netCents, balanceCents: next.balanceCents };
+  next.flips = [flip, ...(wallet.flips ?? [])].slice(0, gameResultHistoryLimit);
+  return flip;
+}
+
 export function wheelNetCents(stake: number, factor: WheelFactor) {
   return (factor - 1) * stake * creditCents;
 }
@@ -389,7 +448,8 @@ export function gamesView(club: Club, memberId: string, revision: number, legacy
   const rooms = legacyOnly ? (games?.rooms ?? []).filter(room => xoSize(room) === 3) : games?.rooms ?? [];
   return {
     revision,
-    wallet: { balanceCents, version, maxWheelStake: maxWheelStake(games, memberId) },
+    wallet: { balanceCents, version, maxWheelStake: maxWheelStake(games, memberId),
+      maxCoinflipStake: maxCoinflipStake(games, memberId) },
     openRooms: rooms.filter(room => room.status === "waiting" && activeMembers.has(room.hostId))
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map(room => ({ id: room.id, hostId: room.hostId, stake: room.stake, size: xoSize(room) })),
@@ -397,6 +457,7 @@ export function gamesView(club: Club, memberId: string, revision: number, legacy
       .sort((a, b) => Number(isLiveRoom(b)) - Number(isLiveRoom(a)) || b.updatedAt - a.updatedAt)
       .slice(0, recentCount),
     spins,
+    flips: wallet.flips ?? [],
     wheelProgress: { spins: wheelProgress?.spins ?? 0, pendingRefundCents: wheelRefundCents(wheelProgress?.netCredits, terms.percent),
       ...(terms === previousWheelRefund ? { legacyRefund: terms } : {}) },
   };
@@ -446,7 +507,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
       id: command.id, at, stake: command.stake, factor: wheelFactor, netCents, balanceCents: next.balanceCents,
       ...(refundCents ? { refundCents } : {}),
     };
-    next.spins = [spin, ...next.spins].slice(0, wheelHistoryLimit);
+    next.spins = [spin, ...next.spins].slice(0, gameResultHistoryLimit);
     return spin;
   }
   const room = games.rooms.find(room => room.id === command.id);

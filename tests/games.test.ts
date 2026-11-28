@@ -3,10 +3,10 @@ import test from "node:test";
 import { applyAction, type Identity } from "../lib/actions";
 import { createClub, syncWeeks, type Member } from "../lib/club";
 import {
-  adjustGameCredits, applyGameCommand, creditRecipients, creditsRanking, drawWheelFactor, formatCredits, gamesView, parseCreditAdjustment,
+  adjustGameCredits, applyCoinFlip, applyGameCommand, creditRecipients, creditsRanking, drawWheelFactor, formatCredits, gamesView, parseCreditAdjustment,
   parseCreditAmount, parseGameCommand,
   wheelFactorForRoll, WHEEL_FACTORS, WHEEL_REFUND_EVERY, wheelNetCents, xoBoard, xoWinningLine, XO_BOARD_SIZE,
-  type GameCommand, type Mark, type WheelFactor,
+  type CoinFlipCommand, type GameCommand, type Mark, type WheelFactor,
 } from "../lib/games";
 import { eraseMemberData } from "../lib/member-deletion";
 import { workspaceView } from "../lib/workspace-view";
@@ -45,6 +45,32 @@ test("Both account roles start with 10,000 game credits and wallets stay out of 
   assert.equal(view(host.id).spins.length, 0);
   assert.equal(view(guest.id).wallet.balanceCents, 999_500);
   for (const member of [owner, host, guest]) assert.equal("games" in workspaceView(club, identity(member), 1).club, false);
+});
+
+test("Coinflip uses the game wallet, returns 1.9 times the stake on wins and settles each round once", () => {
+  const { club, host, guest, view, run } = fixture();
+  const command: CoinFlipCommand = { kind: "flip", id: crypto.randomUUID(), stake: 7, pick: "one", walletVersion: 0 };
+  assert.deepEqual(parseGameCommand(command), command);
+  assert.throws(() => parseGameCommand({ ...command, pick: "other" }), /Chọn một mặt/);
+  for (const stake of [0, -1, 2.5, "1", Infinity])
+    assert.throws(() => parseGameCommand({ ...command, stake }), /số nguyên dương/);
+  assert.equal(view(host.id).wallet.maxCoinflipStake, 10_000);
+  const won = applyCoinFlip(club, host.id, command, "one", 11);
+  assert.equal(won.netCents, 630);
+  assert.equal(won.balanceCents, 1_000_630);
+  assert.deepEqual(applyCoinFlip(club, host.id, command, "two", 12), won);
+  assert.throws(() => applyCoinFlip(club, host.id, { ...command, pick: "two" }, "two", 13), /lựa chọn khác/);
+  const next = { ...command, id: crypto.randomUUID(), walletVersion: 1 };
+  const lost = applyCoinFlip(club, host.id, next, "two", 14);
+  assert.equal(lost.netCents, -700);
+  assert.equal(lost.balanceCents, 999_930);
+  assert.deepEqual(view(host.id).flips, [lost, won]);
+  assert.deepEqual(view(guest.id).flips, []);
+  assert.equal(view(guest.id).wallet.balanceCents, 1_000_000);
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
+  run(host.id, { kind: "spin", id: spinId, stake: 1, walletVersion: 2 }, 1);
+  assert.throws(() => applyCoinFlip(club, host.id, { ...next, id: crypto.randomUUID(), walletVersion: 2 }, "two", 15), /Số dư đã thay đổi/);
+  assert.throws(() => applyCoinFlip(club, host.id, { ...next, id: crypto.randomUUID(), walletVersion: 3, stake: 10_000 }, "two", 16), /vượt số credits/);
 });
 
 test("Credits ranking includes active accounts, shares ranks for equal balances, and reflects game settlements", () => {

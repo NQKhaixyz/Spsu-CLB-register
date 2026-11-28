@@ -136,3 +136,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+.team-sidebar-order {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+.team-sidebar-order li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding-block: 3px;
+  border-bottom: 1px solid var(--line);
+}
+.team-sidebar-order .btn {
+  min-inline-size: 40px;
+  padding-inline: 8px;
+}

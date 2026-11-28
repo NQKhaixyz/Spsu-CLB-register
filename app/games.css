@@ -352,6 +352,99 @@
 .game-wheel-rules p { margin: 3px 0 8px; }
 .game-wheel-rules li { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
 .game-wheel-rules li svg { flex: none; }
+
+.coinflip-layout {
+  display: grid;
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+}
+.coinflip-stage {
+  justify-items: center;
+  background: radial-gradient(ellipse at 50% 28%, #eef2e5, var(--surface-warm) 72%);
+}
+.coinflip-scene {
+  width: clamp(120px, 25vw, 220px);
+  aspect-ratio: 1;
+  margin-block: 10px;
+  perspective: 850px;
+}
+.coinflip-coin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  --coin-angle: 0deg;
+  transform: rotateY(var(--coin-angle));
+  transform-style: preserve-3d;
+}
+.coinflip-coin[data-side="two"] { --coin-angle: 180deg; }
+.coinflip-coin[data-moving="true"] {
+  animation: coinflip-toss var(--coin-duration) cubic-bezier(.16, .44, .28, 1);
+}
+@keyframes coinflip-toss {
+  from { transform: rotateY(calc(var(--coin-angle) - 1080deg)); }
+  45% { transform: translateY(-12px) rotateY(calc(var(--coin-angle) - 540deg)); }
+  to { transform: rotateY(var(--coin-angle)); }
+}
+.coinflip-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 6px solid #ad8e56;
+  background: #e1cc96;
+  box-shadow: 0 0 0 1px #fff7d7, 0 0 0 3px #b19256, 0 10px 30px #4b4c3338;
+  backface-visibility: hidden;
+}
+.coinflip-face[data-side="one"] { transform: translateZ(1px); }
+.coinflip-face[data-side="two"] {
+  transform: rotateY(180deg) translateZ(1px);
+  border-color: #9dada0;
+  box-shadow: 0 0 0 1px #f1f6ef, 0 0 0 3px #8a9f91, 0 10px 30px #4b4c3338;
+}
+.coinflip-face img, .coinflip-picks img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 48% 35%;
+}
+.coinflip-outcome { display: grid; gap: 3px; min-height: 3rem; text-align: center; color: var(--muted); }
+.coinflip-outcome strong { font-size: 1.2rem; color: var(--ink); }
+.coinflip-outcome [data-result] { font-weight: 720; }
+.coinflip-form { display: grid; min-width: 0; gap: 12px; }
+.coinflip-picks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.coinflip-picks label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.coinflip-picks label[data-picked="true"] { background: #e8f0e3; border-color: var(--green); }
+.coinflip-picks label:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; }
+.coinflip-picks label img { width: 32px; height: 32px; border-radius: 50%; }
+.coinflip-picks input { width: 14px; height: 14px; margin: 0; accent-color: var(--green); }
+.coinflip-picks label span { font-size: .86rem; font-weight: 680; }
+.coinflip-history { grid-column: 1 / -1; }
+@media (min-width: 900px) {
+  .coinflip-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coinflip-coin[data-moving="true"] { animation: none; }
+}
 .games-loading, .games-message {
   display: flex;
   align-items: center;

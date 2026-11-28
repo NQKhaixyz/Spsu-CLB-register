@@ -5,7 +5,7 @@ import { createClub, createDutyShiftSlots, type AvailabilityDataset } from "../l
 import { academicWeekForClub } from "../lib/availability";
 import { workspaceView } from "../lib/workspace-view";
 import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
-import { sidebarTabLabels, sidebarTabs } from "../lib/workspace-navigation";
+import { sidebarTabLabels, sidebarTabs, teamSidebarOrder } from "../lib/workspace-navigation";
 import { memberPositions, memberRoleLabel } from "../lib/member-positions";
 import { bulletinDateInput, bulletinView, parseBulletinDate, pruneBulletinState, pruneExpiredBulletinPosts } from "../lib/bulletin";
 import { bulletinInline, toggleBulletinEmphasis } from "../lib/bulletin-format";
@@ -58,7 +58,7 @@ function fixture() {
   c.activeAvailabilityDataset=structuredClone(dataset);
   return {c,pending};
 }
-test("The sidebar uses one fixed order and member positions do not grant BĐH permissions", () => {
+test("One BĐH sidebar order applies to both roles, and member positions cannot change it", () => {
   const { c, pending } = fixture();
   pending.userId = "sidebar-order-reader";
   const member = { userId: pending.userId, displayName: pending.name, email: "" };
@@ -66,8 +66,14 @@ test("The sidebar uses one fixed order and member positions do not grant BĐH pe
   pending.sidebarOrder = ["members", "personal"];
   admin.sidebarOrder = ["overview", "scoreboard"];
   assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Feedback", "Trò chơi", "Góc của tôi", "Thành viên"]);
+  assert.deepEqual(teamSidebarOrder(c.sidebarOrder), sidebarTabs);
+  const order = [...sidebarTabs].reverse();
+  assert.throws(() => applyAction(c, member, "setTeamSidebarOrder", { order }), /Chỉ BĐH/);
+  assert.throws(() => applyAction(c, owner, "setTeamSidebarOrder", { order: order.map(() => "feedback") }), /Thứ tự tab/);
+  applyAction(c, owner, "setTeamSidebarOrder", { order });
   for (const identity of [owner, member]) {
     const view = workspaceView(c, identity, 1);
+    assert.deepEqual(view.club.sidebarOrder, order);
     assert.equal(view.me?.sidebarOrder, undefined);
     assert.ok(view.club.members.every(profile => profile.sidebarOrder === undefined));
   }
@@ -157,6 +163,12 @@ test("Publication and expiry use Vietnam time, with private drafts and idempoten
   applyAction(c, owner, "saveBulletinPost", { ...future, revision: 1, publishAt: "" });
   applyAction(c, reader, "setBulletinLike", like);
   applyAction(c, reader, "setBulletinLike", like);
+  const liker = { memberId: pending.id, name: pending.name, avatarId: pending.avatarId };
+  for (const viewer of [pending, c.members[0]]) {
+    const likedPost = bulletinView(c, viewer).posts.find(post => post.id === future.id);
+    assert.deepEqual(likedPost?.likers, [liker]);
+    assert.equal(likedPost?.likeCount, 1);
+  }
   const comment = { id: "comment-same-attempt", postId: future.id, content: "Đã rõ giờ họp" };
   applyAction(c, reader, "commentOnBulletin", comment);
   applyAction(c, reader, "commentOnBulletin", comment);
@@ -181,6 +193,7 @@ test("Publication and expiry use Vietnam time, with private drafts and idempoten
   assert.equal(replies[1].liked, true);
   assert.ok(!("likedBy" in replies[1]));
   applyAction(c, reader, "setBulletinLike", { ...like, liked: false });
+  assert.deepEqual(bulletinView(c, pending).posts.find(post => post.id === future.id)?.likers, []);
   assert.equal(bulletinView(c, pending).posts[0].likeCount, 0);
   assert.throws(() => applyAction(c, reader, "deleteBulletinPost", { id: future.id, revision: 2 }), /bản tin của mình/);
   assert.throws(() => applyAction(c, owner, "deleteBulletinPost", { id: future.id, revision: 1 }), /vừa được cập nhật/);

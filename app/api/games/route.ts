@@ -1,4 +1,4 @@
-import { applyGameCommand, creditsRanking, drawWheelFactor, GAME_RULES_VERSION, GameRuleError, gamesView, parseGameCommand, xoSize } from "../../../lib/games";
+import { applyCoinFlip, applyGameCommand, creditsRanking, drawCoinSide, drawWheelFactor, GAME_RULES_VERSION, GameRuleError, gamesView, parseGameCommand, xoSize } from "../../../lib/games";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
 import { readBody, verifyOrigin } from "../../../lib/photo-upload";
@@ -42,18 +42,23 @@ export async function POST(request: Request) {
     const largeBoard = supportsLargeBoard(rules);
     if (command.kind === "spin" && rules !== GAME_RULES_VERSION)
       throw new GameRuleError("Tải lại trang để áp dụng cách hoàn cược mới", 409);
+    if (command.kind === "flip" && rules !== GAME_RULES_VERSION)
+      throw new GameRuleError("Tải lại trang để chơi Coinflip", 409);
     if (command.kind === "create" && !largeBoard)
       throw new GameRuleError("Tải bản mới của Nhịp Đội để tạo phòng XO 20 × 20", 409);
     const factor = command.kind === "spin" ? drawWheelFactor() : undefined;
+    const side = command.kind === "flip" ? drawCoinSide() : undefined;
     const at = Date.now();
-    const { club, revision, result: spin } = await mutate(user.userId, current => {
+    const { club, revision, result } = await mutate(user.userId, current => {
       if (!current.members.some(member => member.id === user.member.id && member.userId === user.userId && member.active))
         throw new AuthError("Vui lòng đăng nhập để chơi", 401);
       if (!largeBoard && command.kind !== "spin" && current.games?.rooms.some(room => room.id === command.id && xoSize(room) !== 3))
         throw new GameRuleError("Tải bản mới của Nhịp Đội để chơi trên bàn 20 × 20", 409);
-      return applyGameCommand(current, user.member.id, command, at, factor);
+      return command.kind === "flip"
+        ? { flip: applyCoinFlip(current, user.member.id, command, side!, at) }
+        : { spin: applyGameCommand(current, user.member.id, command, at, factor) };
     });
-    return json({ ...gamesView(club, user.member.id, revision, !largeBoard), spin });
+    return json({ ...gamesView(club, user.member.id, revision, !largeBoard), ...result });
   } catch (error) {
     if (error instanceof GameRuleError || error instanceof AuthError) return json({ error: error.message }, error.status);
     console.error("games:post", error);

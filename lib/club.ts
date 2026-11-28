@@ -142,6 +142,7 @@ export type AvailabilitySettings = AcademicWeekAnchor & {
 };
 export type Club = {
   ownerId: string;
+  sidebarOrder?: SidebarTab[];
   semesterScoreRange?: SemesterScoreRange;
   semesterScoreDraft?: SemesterScoreRange;
   academicWeekAnchors?: AcademicWeekAnchor[];

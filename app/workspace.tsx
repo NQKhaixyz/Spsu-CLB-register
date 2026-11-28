@@ -9,7 +9,7 @@ import { MemberIdentityContext, MemberName, MemberNames, MemberOption } from "./
 import { rankScoreRows } from "../lib/score-ranks";
 import { displayMessage } from "../lib/display-message";
 import { resolveFont } from "../lib/interface-fonts";
-import { sidebarTabs, sidebarTabLabels, type SidebarTab } from "../lib/workspace-navigation";
+import { sidebarTabs, sidebarTabLabels, teamSidebarOrder, type SidebarTab } from "../lib/workspace-navigation";
 import { isMemberPosition, memberPositions, memberPositionLabels, memberRoleLabel } from "../lib/member-positions";
 import { FontSettings } from "./font-settings";
 import { AvatarEditor } from "./avatar-editor";
@@ -31,6 +31,7 @@ import GamesPage from "./games";
 import { sidebarNoticeCounts, useWorkspaceNotifications } from "./use-workspace-notifications";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
+import { TeamSidebarSettings } from "./team-sidebar-settings";
 import SharingPanel from "./sharing-panel";
 import { indexSharingAdjustments } from "../lib/sharing-scores";
 import type { PublicSharingGroup } from "../lib/sharing-types";
@@ -141,6 +142,7 @@ type Tab =
   | "bulletin"
   | "links"
   | "feedback"
+  | "coinflip"
   | "xo"
   | "wheel"
   | "members"
@@ -157,11 +159,11 @@ type Modal = {
   content: ReactNode;
 };
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
-  scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores", "creditsRank"] },
+  scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
   feedback: { icon: MessageSquare, sections: ["feedback"] },
-  games: { icon: Gamepad2, sections: ["xo", "wheel"] },
+  games: { icon: Gamepad2, sections: ["coinflip", "xo", "wheel", "creditsRank"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
@@ -673,6 +675,7 @@ export default function Workspace() {
     );
   const activeTab = !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
   const activeSidebarTab = sidebarTabs.find(id => sidebarGroups[id].sections.includes(activeTab));
+  const navigationOrder = teamSidebarOrder(club.sidebarOrder);
   const headerTitle = activeSidebarTab ? sidebarTabLabels[activeSidebarTab]
     : activeTab === "overview" ? "Tổng quan" : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
   const week =
@@ -705,14 +708,15 @@ export default function Workspace() {
     { id: "weeklyScores", label: "Điểm tuần" },
     { id: "reports", label: "Điểm tháng" },
     { id: "semesterScores", label: "Học kỳ" },
-    { id: "creditsRank", label: "Hạng credits" },
   ] : activeSidebarTab === "activity" ? [
     { id: "meetings", label: isAdmin ? "Họp hằng tuần" : "Đăng ký họp", pending: pending.length },
     { id: "duties", label: "Lịch trực C1" },
     { id: "requests", label: isAdmin ? "Tạo sự kiện" : "Sự kiện", pending: activityPending },
   ] : activeSidebarTab === "games" ? [
+    { id: "coinflip", label: "Coinflip" },
     { id: "xo", label: "XO" },
     { id: "wheel", label: "Vòng quay may mắn" },
+    { id: "creditsRank", label: "Hạng credits" },
   ] : [];
   const count = (s: Registration) =>
     week.entries.filter((e) => e.status === s).length;
@@ -2858,6 +2862,8 @@ export default function Workspace() {
           </div>
         </div>
         <div className="settings-layout">
+          <TeamSidebarSettings key={navigationOrder.join(":")} order={navigationOrder} busy={busy}
+            onSave={order => act("setTeamSidebarOrder", { order }, "Đã lưu thứ tự các tab", false)} />
           <AcademicWeekSettings club={club} busy={busy}
             onSave={(date, weekNumber) => act("setAcademicWeekAnchor", { date, weekNumber }, "Đã lưu mốc tuần học", false)} />
           <section className="panel settings-card">
@@ -3359,7 +3365,7 @@ export default function Workspace() {
         </div>
         <span className="nav-label">KHÔNG GIAN LÀM VIỆC</span>
         <nav aria-label="Điều hướng chính">
-          {sidebarTabs.map(id => {
+          {navigationOrder.map(id => {
             const { icon: Icon, sections } = sidebarGroups[id];
             const active = id === activeSidebarTab;
             const count = id in noticeCounts ? noticeCounts[id as keyof typeof noticeCounts] : 0;
@@ -3559,7 +3565,7 @@ export default function Workspace() {
               onSubmit={submitFeedback} onEdit={editFeedback} onRecall={recallFeedback} conversationActions={feedbackConversationActions}
               focusId={feedbackTarget?.id} focusPending={feedbackTarget !== loadedFeedbackTarget} focusError={loadError}
               onBack={() => go("feedback")} />
-          ) : activeTab === "xo" || activeTab === "wheel" ? (
+          ) : activeTab === "coinflip" || activeTab === "xo" || activeTab === "wheel" ? (
             <GamesPage key={me.id} tab={activeTab} memberId={me.id} />
           ) : activeTab === "members" ? (
             members()

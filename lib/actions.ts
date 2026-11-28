@@ -51,6 +51,7 @@ import { bulletinMediaLimit, isBulletinMediaId, type BulletinMedia } from "./bul
 import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees";
 import { isFontId } from "./interface-fonts";
 import { isMemberPosition } from "./member-positions";
+import { sidebarTabs, teamSidebarOrder } from "./workspace-navigation";
 import { planDutyWeek } from "./duty-week-plan";
 import { captureWorkspaceNotifications } from "./activity-notifications";
 import { confirmBulletinNotice, sendDirectNotice } from "./workspace-notifications";
@@ -359,6 +360,16 @@ function applyClubAction(
   }
   if (applyActivityAction(club, me, action, data, note)) return;
   check(admin, "Chỉ BĐH được thực hiện thao tác này.");
+  if (action === "setTeamSidebarOrder") {
+    check(Array.isArray(data.order) && data.order.length === sidebarTabs.length &&
+      new Set(data.order).size === sidebarTabs.length && data.order.every((tab: unknown) => sidebarTabs.includes(tab as typeof sidebarTabs[number])),
+      "Thứ tự tab chưa hợp lệ. Hãy tải lại trang.");
+    const current = teamSidebarOrder(club.sidebarOrder);
+    if (data.order.every((tab: string, index: number) => tab === current[index])) return;
+    club.sidebarOrder = [...data.order];
+    note("Đổi thứ tự các tab của Đội");
+    return;
+  }
   if (action === "setSemesterScoreRange") {
     const from = typeof data.from === "string" ? data.from : "";
     const through = typeof data.through === "string" ? data.through : "";

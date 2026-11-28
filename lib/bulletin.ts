@@ -46,6 +46,7 @@ export type BulletinPostView = Omit<BulletinPost, "createdBy" | "likedBy" | "sav
   published: boolean;
   liked: boolean;
   likeCount: number;
+  likers: BulletinAuthor[];
   saved: boolean;
   comments: BulletinCommentView[];
 };
@@ -112,13 +113,18 @@ export function bulletinView(club: Club, viewer: Member, now = Date.now()) {
     .sort((a, b) => (b.publishAt ?? b.createdAt ?? 0) - (a.publishAt ?? a.createdAt ?? 0))
     .map(post => {
       const { createdBy: _createdBy, notice: _notice, likedBy, savedBy, comments, ...publicPost } = post;
+      const likers = [...new Set(likedBy)].flatMap(id => {
+        const person = people.get(id);
+        return person ? [person] : [];
+      });
       return {
         ...publicPost,
         author: people.get(bulletinAuthorId(club, post) ?? "") ?? { name: "Ban điều hành" },
         canManage: canManageBulletin(club, post, viewer),
         published: isBulletinPublished(post, now),
         liked: likedBy?.includes(viewer.id) ?? false,
-        likeCount: likedBy?.length ?? 0,
+        likeCount: likers.length,
+        likers,
         saved: savedBy?.includes(viewer.id) ?? false,
         comments: (comments ?? []).filter(comment => comment.deletedAt === undefined).map(({ memberId, likedBy, deletedAt: _deletedAt, ...comment }) => ({
           ...comment,

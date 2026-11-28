@@ -14,6 +14,7 @@ import { MemberName } from "./member-identity";
 type BulletinViewer = Pick<Member, "id" | "name" | "avatarId">;
 type Overlay =
   | { mode: "edit"; id: string; original?: BulletinPostView; selection?: BulletinMediaSelection }
+  | { mode: "likes"; id: string }
   | { mode: "delete" | "share"; original: BulletinPostView };
 type BulletinAction = "saveBulletinPost" | "deleteBulletinPost" | "setBulletinLike" | "setBulletinSaved"
   | "commentOnBulletin" | "setBulletinCommentLike" | "editBulletinComment" | "deleteBulletinComment";
@@ -30,11 +31,11 @@ const bulletinClock = new Intl.DateTimeFormat("vi-VN", {
 });
 const compactCount = new Intl.NumberFormat("vi-VN", { notation: "compact" });
 
-function Byline({ author, time, editedAt, scheduled = false, small = false }: {
-  author: BulletinAuthor; time?: number; editedAt?: number; scheduled?: boolean; small?: boolean;
+function Byline({ author, time, editedAt, scheduled = false, small = false, profileLink = true }: {
+  author: BulletinAuthor; time?: number; editedAt?: number; scheduled?: boolean; small?: boolean; profileLink?: boolean;
 }) {
   return <div className="bulletin-byline">
-    <Avatar memberId={author.memberId} name={author.name} photoId={author.avatarId} size={small ? "small" : ""} />
+    <Avatar memberId={author.memberId} name={author.name} photoId={author.avatarId} size={small ? "small" : ""} profileLink={profileLink} />
     <div>
       <MemberName as="strong" memberId={author.memberId} name={author.name} />
       {time !== undefined && <time dateTime={new Date(time).toISOString()}>
@@ -66,15 +67,20 @@ function PostHeader({ post, onEdit, onDelete }: {
   </header>;
 }
 
-function PostActions({ post, busy, act, onDiscuss, onShare }: {
-  post: BulletinPostView; busy: boolean; act: Act; onDiscuss: () => void; onShare: () => void;
+function PostActions({ post, busy, act, onDiscuss, onShare, onLikes }: {
+  post: BulletinPostView; busy: boolean; act: Act; onDiscuss: () => void; onShare: () => void; onLikes: () => void;
 }) {
   return <div className="bulletin-actions bulletin-post-actions" aria-label="Tương tác với bản tin" role="group">
-    <button type="button" aria-pressed={post.liked} disabled={busy}
-      aria-label={post.likeCount > 0 ? `${post.likeCount} lượt thích` : "Thích"} title={post.liked ? "Bỏ thích" : "Thích"}
-      onClick={() => void act("setBulletinLike", { postId: post.id, liked: !post.liked }, post.liked ? "Đã bỏ thích" : "Đã thích bản tin")}>
-      <Heart size={19} aria-hidden="true" /> <span aria-hidden="true">{compactCount.format(post.likeCount)}</span>
-    </button>
+    <div className="bulletin-reactions">
+      <button type="button" aria-pressed={post.liked} disabled={busy} aria-label="Thích" title={post.liked ? "Bỏ thích" : "Thích"}
+        onClick={() => void act("setBulletinLike", { postId: post.id, liked: !post.liked }, post.liked ? "Đã bỏ thích" : "Đã thích bản tin")}>
+        <Heart size={19} aria-hidden="true" />
+      </button>
+      {post.likeCount > 0 && <button type="button" className="bulletin-like-count" onClick={onLikes}
+        aria-label={`Xem ${post.likeCount} lượt thích`} title="Xem người đã thích">
+        {compactCount.format(post.likeCount)}
+      </button>}
+    </div>
     <button type="button" onClick={onDiscuss} aria-label={`${post.comments.length} bình luận`} title="Bình luận">
       <MessageCircle size={19} aria-hidden="true" /> <span aria-hidden="true">{compactCount.format(post.comments.length)}</span>
     </button>
@@ -237,6 +243,7 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
   const quickDocument = useRef<HTMLInputElement>(null);
   const closeOverlay = useCallback(() => setOverlay(null), []);
   const selected = posts.find(post => post.id === readingId);
+  const likedPost = overlay?.mode === "likes" ? posts.find(post => post.id === overlay.id) : undefined;
   const original = overlay?.mode === "edit" ? overlay.original : undefined;
   const scheduled = posts.filter(post => !post.published);
   const visible = posts.filter(post => feed === "scheduled" ? !post.published :
@@ -312,6 +319,7 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
 
   function postActions(post: BulletinPostView, onDiscuss: () => void) {
     return <PostActions post={post} busy={busy} act={onAction}
+      onLikes={() => setOverlay({ mode: "likes", id: post.id })}
       onDiscuss={onDiscuss} onShare={() => setOverlay({ mode: "share", original: post })} />;
   }
 
@@ -378,6 +386,11 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
       </>
     )}
     {overlay?.mode === "share" && <SharePost post={overlay.original} onClose={closeOverlay} />}
+    {overlay?.mode === "likes" && <Dialog title="Người đã thích" description={likedPost?.title} onClose={closeOverlay}>
+      {likedPost?.likers?.length ? <ul className="bulletin-likers">
+        {likedPost.likers.map(author => <li key={author.memberId}><Byline author={author} profileLink={false} /></li>)}
+      </ul> : <p>{likedPost ? "Chưa có lượt thích" : "Bản tin không còn khả dụng"}</p>}
+    </Dialog>}
     {overlay?.mode === "edit" && <BulletinComposer key={overlay.id} postId={overlay.id} original={original}
       initialSelection={overlay.selection} isAdmin={isAdmin} busy={busy} onSave={save} onClose={closeOverlay} />}
     {overlay?.mode === "delete" && (
