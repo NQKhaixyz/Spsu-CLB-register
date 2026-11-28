@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import ExcelJS from "exceljs";
 import { createClub, scoreFor, today, weekId, weeklyScoreFor, type Member } from "../lib/club";
-import { CREDITS_TO_POINTS, CREDIT_EXCHANGE_RATE, creditExchangeView, exchangeMonthlyCredits, parseCreditExchange } from "../lib/credit-exchange";
+import { CREDITS_TO_POINTS, CREDIT_EXCHANGE_RATE, CREDIT_EXCHANGE_START_AT, POINTS_TO_CREDITS,
+  creditExchangeView, exchangeMonthlyCredits, parseCreditExchange } from "../lib/credit-exchange";
 import { pendingCreditEntries } from "../lib/credit-history";
 import { makeReport } from "../lib/excel";
 import { adjustGameCredits, applyCoinFlip, creditWalletBalance, gamesView } from "../lib/games";
@@ -10,17 +11,16 @@ import { semesterScores } from "../lib/semester-scores";
 import { activateCreditSharing, applySharingAction } from "../lib/sharing";
 import { activeSharingPeriod, sharingConsentVersion } from "../lib/sharing-types";
 
-function fixture() {
+function fixture(at = Date.now()) {
   const [admin, a, b] = ["admin", "a", "b"].map((id, index): Member => ({
     id, name: id, userId: "account-" + id, studentId: "EXCHANGE-" + id, role: index ? "member" : "admin",
     joined: "2020-01-01", active: true, availability: [], extraDuties: false,
   }));
   const club = createClub(admin.userId!);
   club.members = [admin, a, b];
-  const date = today();
+  const date = today(new Date(at));
   const week = weekId(date);
   const month = date.slice(0, 7);
-  const at = Date.now();
   const addPoint = (kind: "special" | "committee", points: number, memberId = a.id) => {
     (club.manualActivities ??= []).push({ id: crypto.randomUUID(), kind, memberId, week, date, time: "00:00",
       quantity: 1, points, note: "", updatedAt: "", updatedBy: admin.id });
@@ -76,12 +76,12 @@ test("Cupid consent shares all credits, keeps both views equal and conserves the
 });
 
 test("A monthly exchange debits once and reconciles the monthly, semester and Excel official totals", async () => {
-  const { club, admin, a, b, week, month, at, addPoint } = fixture();
+  const { club, admin, a, b, date, week, month, at, addPoint } = fixture(CREDIT_EXCHANGE_START_AT);
   addPoint("special", 0.11);
   const draft = { month, units: 2, operationId: crypto.randomUUID() };
   assert.throws(() => exchangeMonthlyCredits(club, a, parseCreditExchange(draft), at), /Tỷ lệ đổi đã thay đổi/);
   const command = parseCreditExchange({ ...draft, rate: CREDIT_EXCHANGE_RATE });
-  assert.equal(creditExchangeView(club, a).months.find(row => row.month === month)?.units, 2);
+  assert.equal(creditExchangeView(club, a, date).months.find(row => row.month === month)?.units, 2);
   assert.throws(() => exchangeMonthlyCredits(club, admin, command, at), /thành viên/);
   const receipt = exchangeMonthlyCredits(club, a, command, at);
   assert.ok("earnedCents" in receipt);
@@ -105,7 +105,7 @@ test("A monthly exchange debits once and reconciles the monthly, semester and Ex
 });
 
 test("5000-credit exchanges award exact 0.225 points after fees beyond the former two-exchange limit", async () => {
-  const { club, admin, a, b, week, month, at, addPoint } = fixture();
+  const { club, admin, a, b, week, month, at, addPoint } = fixture(CREDIT_EXCHANGE_START_AT);
   addPoint("special", 0.3);
   // Archived redemptions keep their original deduction in the same month.
   club.monthlyCreditUses = [{ memberId: a.id, month, units: 1 }];
@@ -144,7 +144,7 @@ test("5000-credit exchanges award exact 0.225 points after fees beyond the forme
 });
 
 test("Buying points from a Cupid wallet charges the shared balance once and awards points to the purchaser", () => {
-  const { club, a, b, at, month } = fixture();
+  const { club, a, b, at, month } = fixture(CREDIT_EXCHANGE_START_AT);
   activateCreditSharing(club, at);
   const consent = { consentVersion: sharingConsentVersion, acceptedGuide: true };
   applySharingAction(club, a, "inviteCupid", { ...consent, memberId: b.id, cupidTag: "CungChoi" }, at);
@@ -157,4 +157,28 @@ test("Buying points from a Cupid wallet charges the shared balance once and awar
   assert.equal(scoreFor(club, b.id, month).activityPoints.special, 0);
   assert.deepEqual(exchangeMonthlyCredits(club, a, command, at + 3), receipt);
   assert.equal(creditWalletBalance(club, a.id), 750_000);
+});
+
+test("Both directions open exactly at midnight on December 1 in Vietnam", () => {
+  const { club, a, date, month, at, addPoint } = fixture(CREDIT_EXCHANGE_START_AT);
+  const previousDate = today(new Date(at - 1));
+  assert.equal(previousDate, "2026-11-30");
+  assert.equal(date, "2026-12-01");
+  addPoint("special", 0.25);
+  const base = { month, rate: CREDIT_EXCHANGE_RATE };
+  const forward = parseCreditExchange({ ...base, direction: POINTS_TO_CREDITS, units: 5, operationId: crypto.randomUUID() });
+  const reverse = parseCreditExchange({ ...base, direction: CREDITS_TO_POINTS, operationId: crypto.randomUUID() });
+  assert.equal(creditExchangeView(club, a, previousDate).open, false);
+  for (const command of [forward, reverse]) {
+    assert.throws(() => exchangeMonthlyCredits(club, a, command, at - 1), /00:00 ngày 01\/12\/2026/);
+  }
+  assert.equal(club.games, undefined);
+  assert.equal(creditWalletBalance(club, a.id), 1_000_000);
+  assert.equal(scoreFor(club, a.id, month).points, 0.25);
+
+  assert.equal(creditExchangeView(club, a, date).open, true);
+  exchangeMonthlyCredits(club, a, forward, at);
+  exchangeMonthlyCredits(club, a, reverse, at);
+  assert.equal(creditWalletBalance(club, a.id), 950_000);
+  assert.equal(scoreFor(club, a.id, month).points, 0.225);
 });

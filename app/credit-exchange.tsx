@@ -3,8 +3,8 @@
 import { Coins } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CREDITS_PER_POINT_UNIT_CENTS, CREDITS_TO_POINTS, CREDIT_EXCHANGE_AWARD_CENTS, CREDIT_EXCHANGE_BASE_POINT_CENTS,
-  CREDIT_EXCHANGE_COST_CENTS, CREDIT_EXCHANGE_FEE_PERCENT, CREDIT_EXCHANGE_RATE,
-  POINT_EXCHANGE_UNIT_CENTS, POINTS_TO_CREDITS,
+  CREDIT_EXCHANGE_COST_CENTS, CREDIT_EXCHANGE_FEE_PERCENT, CREDIT_EXCHANGE_RATE, CREDIT_EXCHANGE_START_AT,
+  POINT_EXCHANGE_UNIT_CENTS, POINTS_TO_CREDITS, creditExchangeOpeningMessage,
   type creditExchangeView, type CreditExchangeCommand, type CreditExchangeReceipt } from "../lib/credit-exchange";
 import { monthLabel } from "../lib/club";
 import { formatCredits, parseCreditAmount } from "../lib/games";
@@ -29,19 +29,31 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
   const selected = view?.months.find(row => row.month === month) ?? view?.months[0];
   const cents = parseCreditAmount(amount);
   const units = cents && cents % POINT_EXCHANGE_UNIT_CENTS === 0 ? cents / POINT_EXCHANGE_UNIT_CENTS : 0;
-  const canBuyCredits = !!selected && units > 0 && units <= selected.units;
-  const canBuyPoints = !!view && view.balanceCents >= CREDIT_EXCHANGE_COST_CENTS;
+  const canBuyCredits = !!view?.open && !!selected && units > 0 && units <= selected.units;
+  const canBuyPoints = !!view?.open && view.balanceCents >= CREDIT_EXCHANGE_COST_CENTS;
 
   useEffect(() => {
     const control = new AbortController();
-    void fetch(path, { signal: control.signal, cache: "no-store" }).then(async response => {
-      const data = await response.json() as ExchangeView & { error?: string };
-      if (!response.ok) throw new Error(data.error || "Chưa tải được điểm tháng");
-      if (!control.signal.aborted) setView(data);
-    }).catch(problem => {
-      if (!control.signal.aborted) setError(problem instanceof Error ? problem.message : "Chưa tải được điểm tháng");
-    });
-    return () => control.abort();
+    let timer: number | undefined;
+    function load() {
+      void fetch(path, { signal: control.signal, cache: "no-store" }).then(async response => {
+        const data = await response.json() as ExchangeView & { error?: string };
+        if (!response.ok) throw new Error(data.error || "Chưa tải được điểm tháng");
+        if (control.signal.aborted) return;
+        setView(data);
+        if (!data.open) {
+          const untilOpening = CREDIT_EXCHANGE_START_AT - Date.now();
+          timer = window.setTimeout(load, untilOpening > 0 ? Math.min(untilOpening, 86_400_000) : 60_000);
+        }
+      }).catch(problem => {
+        if (!control.signal.aborted) setError(problem instanceof Error ? problem.message : "Chưa tải được điểm tháng");
+      });
+    }
+    load();
+    return () => {
+      control.abort();
+      window.clearTimeout(timer);
+    };
   }, []);
 
   async function exchange(command: CreditExchangeCommand) {
@@ -98,7 +110,8 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
     {receipt && <p className="games-note credit-exchange-receipt" role="status">{"spentCents" in receipt
       ? `Đã cộng ${formatScore(receipt.pointCents / 100)} Điểm riêng · Số dư giảm ${formatCredits(-receipt.balanceChangeCents)} credits`
       : `Đã ghi ${formatScore(receipt.units * POINT_EXCHANGE_UNIT_CENTS / 100)} Điểm trừ · Số dư tăng ${formatCredits(receipt.balanceChangeCents)} credits`}</p>}
-    {view && <div className="credit-exchange-grid">
+    {view && !view.open && <p className="games-note" role="status">{creditExchangeOpeningMessage}</p>}
+    {view?.open && <div className="credit-exchange-grid">
       {selected && <form className="games-card" onSubmit={submitCredits} aria-label="Điểm tháng sang credits">
         <h2>Điểm tháng sang credits</h2>
         <p className="games-caption">Điểm dùng để đổi được ghi vào Điểm trừ</p>

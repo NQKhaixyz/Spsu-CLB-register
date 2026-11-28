@@ -1,4 +1,4 @@
-import { monthLabel, reportMembers, scoreFor, today, type Club, type Member } from "./club";
+import { dateLabel, monthLabel, reportMembers, scoreFor, today, type Club, type Member } from "./club";
 import { awardGameCredits, creditWalletBalance, cupidCreditPartnerId, GameRuleError, spendGameCredits } from "./games";
 import { isNoticeId } from "./notification-types";
 import { sharingScoreBook } from "./sharing-scores";
@@ -9,6 +9,10 @@ export const POINT_EXCHANGE_UNIT_CENTS = 5;
 export const CREDIT_EXCHANGE_COST_CENTS = 500_000;
 export const CREDIT_EXCHANGE_BASE_POINT_CENTS = 25;
 export const CREDIT_EXCHANGE_FEE_PERCENT = 10;
+export const CREDIT_EXCHANGE_START_DATE = "2026-12-01";
+export const CREDIT_EXCHANGE_START_AT = Date.parse(CREDIT_EXCHANGE_START_DATE + "T00:00:00+07:00");
+export const creditExchangeOpeningMessage =
+  `Đổi điểm và credits mở lúc 00:00 ngày ${dateLabel(CREDIT_EXCHANGE_START_DATE, true)} theo giờ Việt Nam`;
 export const CREDIT_EXCHANGE_RATE = [CREDIT_EXCHANGE_COST_CENTS, CREDIT_EXCHANGE_BASE_POINT_CENTS, CREDIT_EXCHANGE_FEE_PERCENT].join("-");
 const exchangeNetRate = (100 - CREDIT_EXCHANGE_FEE_PERCENT) / 100;
 export const CREDIT_EXCHANGE_AWARD_CENTS = CREDIT_EXCHANGE_BASE_POINT_CENTS * exchangeNetRate;
@@ -63,6 +67,7 @@ export function creditExchangeView(club: Club, member: Member, date = today()) {
     return [{ month: candidate, points, units: exchangeUnits(points) }];
   }) : [];
   return {
+    open: date >= CREDIT_EXCHANGE_START_DATE,
     month, points: availableMonths.find(row => row.month === month)?.points ?? 0,
     balanceCents: creditWalletBalance(club, member.id),
     cupid: !!cupidCreditPartnerId(club, member.id),
@@ -83,6 +88,7 @@ export function exchangeMonthlyCredits(club: Club, member: Member, command: Cred
   }
   if (command.rate !== CREDIT_EXCHANGE_RATE) throw new GameRuleError("Tỷ lệ đổi đã thay đổi. Tải lại trang để tiếp tục", 409);
   const date = today(new Date(at));
+  if (date < CREDIT_EXCHANGE_START_DATE) throw new GameRuleError(creditExchangeOpeningMessage, 409);
   const before = creditWalletBalance(club, member.id);
   const label = monthLabel(month).toLocaleLowerCase("vi");
   let receipt: CreditExchangeReceipt;
