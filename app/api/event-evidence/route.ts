@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { eventContributionError, isEventRoundQuantity, isPointAmount, memberEventRegistrations, recordedEventQuantity, reviewEventRegistration, type ActivityRegistration, type ClubEvent } from "../../../lib/activity";
-import { captureWorkspaceNotifications } from "../../../lib/workspace-notifications";
+import { captureWorkspaceNotifications } from "../../../lib/activity-notifications";
 import type { Club, Member } from "../../../lib/club";
 import { eventEvidenceLink, eventEvidenceTarget, eventEvidenceView, eventPhotoId } from "../../../lib/event-evidence";
 import { eventPhotoKey, eventPhotoStagingMs, removeEventPhoto } from "../../../lib/event-photo-storage";

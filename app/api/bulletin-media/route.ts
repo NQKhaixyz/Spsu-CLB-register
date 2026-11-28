@@ -3,7 +3,7 @@ import { canManageBulletin, canReadBulletin, isBulletinId } from "../../../lib/b
 import {
   bulletinByteRange, bulletinDocumentLimitMb, bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit,
   bulletinMediaKey, bulletinMediaLimit, bulletinStageMs, bulletinVideoLimitMb,
-  isBulletinDocument, isBulletinMediaId, isBulletinMediaType, type BulletinMedia, type BulletinVideoType,
+  isBulletinDocument, isBulletinMediaId, isBulletinMediaType, validBulletinDocumentPrefix, type BulletinMedia, type BulletinVideoType,
 } from "../../../lib/bulletin-media";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
@@ -50,7 +50,8 @@ async function serve(request: Request, head = false) {
     if (isBulletinDocument(file.type)) {
       const filename = encodeURIComponent(file.name ?? "Tai-lieu").replace(/['()*]/g, character =>
         "%" + character.charCodeAt(0).toString(16).toUpperCase());
-      headers.set("Content-Disposition", "attachment; filename*=UTF-8''" + filename);
+      const disposition = file.type === "application/pdf" && search.get("preview") === "1" ? "inline" : "attachment";
+      headers.set("Content-Disposition", disposition + "; filename*=UTF-8''" + filename);
     }
     if (head) {
       if (!await bucket.head(key)) throw notFound();
@@ -112,15 +113,8 @@ function documentName(request: Request, type: string) {
     throw new AuthError("Tên tài liệu không hợp lệ", 400);
   }
   if (!name || name.length > 255 || bulletinDocumentType(name) !== type)
-    throw new AuthError("Chọn tệp PDF, DOCX, XLSX hoặc PPTX đúng định dạng", 415);
+    throw new AuthError("Chọn tài liệu PDF, Word, Excel hoặc PowerPoint đúng định dạng", 415);
   return name;
-}
-
-function validateDocument(prefix: Uint8Array, type: string) {
-  const valid = type === "application/pdf"
-    ? new TextDecoder().decode(prefix.subarray(0, 5)) === "%PDF-"
-    : prefix[0] === 0x50 && prefix[1] === 0x4b && prefix[2] === 0x03 && prefix[3] === 0x04;
-  if (prefix.length < 8 || !valid) throw new AuthError("Nội dung tệp không đúng định dạng tài liệu", 415);
 }
 
 export async function POST(request: Request) {
@@ -130,7 +124,7 @@ export async function POST(request: Request) {
     const existing = user.club.bulletinPosts?.find(post => post.id === postId);
     if (existing && !canManageBulletin(user.club, existing, user.member)) throw new AuthError("Bạn chỉ có thể sửa bản tin của mình", 403);
     const type = request.headers.get("content-type")?.split(";")[0];
-    if (!isBulletinMediaType(type) || !request.body) throw new AuthError("Chọn ảnh, video MP4, WebM, MOV hoặc tài liệu PDF, DOCX, XLSX, PPTX", 415);
+    if (!isBulletinMediaType(type) || !request.body) throw new AuthError("Chọn ảnh, video MP4, WebM, MOV hoặc tài liệu PDF, Word, Excel hay PowerPoint", 415);
     const bytes = Number(request.headers.get("x-upload-size"));
     const declared = request.headers.get("content-length");
     if (!Number.isSafeInteger(bytes) || bytes < 1 || (declared !== null && Number(declared) !== bytes))
@@ -145,8 +139,9 @@ export async function POST(request: Request) {
     const photo = type === "image/jpeg" ? await readPhoto(request) : undefined;
     if (type !== "image/jpeg") {
       const prefix = await uploadPrefix(request);
-      if (document) validateDocument(prefix, type);
-      else validateVideo(prefix, type);
+      if (document) {
+        if (!validBulletinDocumentPrefix(prefix, type)) throw new AuthError("Nội dung tệp không đúng định dạng tài liệu", 415);
+      } else validateVideo(prefix, type);
     }
     if (photo && photo.length !== bytes) throw new AuthError("Tệp ảnh bị thiếu dữ liệu", 400);
 

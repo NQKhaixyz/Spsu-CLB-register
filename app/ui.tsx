@@ -248,6 +248,7 @@ export function Dialog({
   wide = false,
   busy = false,
   focusDialog = false,
+  className,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -256,6 +257,7 @@ export function Dialog({
   wide?: boolean;
   busy?: boolean;
   focusDialog?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -305,7 +307,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className={`dialog ${wide ? "wide" : ""}`}
+        className={["dialog", wide && "wide", className].filter(Boolean).join(" ")}
       >
         <div className="dialog-heading">
           <div>

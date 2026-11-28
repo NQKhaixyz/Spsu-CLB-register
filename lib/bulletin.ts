@@ -30,7 +30,7 @@ export type BulletinPost = {
   savedBy?: string[];
   comments?: BulletinComment[];
   media?: BulletinMedia[];
-  notice?: { id: string; appearsAt: number; readBy?: string[] };
+  notice?: { id: string; appearsAt: number; readBy?: string[]; confirmedBy?: string[] };
 };
 
 export type BulletinAuthor = { memberId?: string; name: string; avatarId?: string };

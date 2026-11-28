@@ -24,7 +24,10 @@ import DutyWeekActions from "./duty-week-actions";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
 import { FeedbackPage, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
-import WorkspaceNotifications from "./feedback-notifications";
+import WorkspaceNotifications, { notificationClock, notificationCopy } from "./feedback-notifications";
+import { DirectNoticeComposer } from "./direct-notice-composer";
+import { sidebarNoticeCounts, useWorkspaceNotifications } from "./use-workspace-notifications";
+import type { InboxNotification } from "../lib/feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
 import SharingPanel from "./sharing-panel";
 import { indexSharingAdjustments } from "../lib/sharing-scores";
@@ -188,6 +191,10 @@ export default function Workspace() {
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [linkedBulletin, setLinkedBulletin] = useState<string>();
+  const [eventFocus, setEventFocus] = useState<{ id: string }>();
+  const [dutyFocus, setDutyFocus] = useState<{ id: string }>();
+  const [meetingFocusWeek, setMeetingFocusWeek] = useState<string>();
+  const [composingNotice, setComposingNotice] = useState(false);
   const [feedbackTarget, setFeedbackTarget] = useState<{ id: string }>();
   const [sharingTarget, setSharingTarget] = useState<{ id: string }>();
   const [loadedFeedbackTarget, setLoadedFeedbackTarget] = useState<{ id: string }>();
@@ -210,6 +217,9 @@ export default function Workspace() {
   const currentDate = today();
   const currentMonday = weekId(currentDate);
   const currentMonth = currentDate.slice(0, 7);
+  const notificationState = useWorkspaceNotifications(view?.me?.active ? view.me.id : undefined);
+  const { notifications, read: readNotices, refresh: refreshNotices } = notificationState;
+  const noticeCounts = useMemo(() => sidebarNoticeCounts(notifications), [notifications]);
   const sharingIndex = useMemo(() => indexSharingAdjustments(view?.sharingReport?.adjustments), [view?.sharingReport?.adjustments]);
   const memberIdentity = useMemo(() => {
     const members = new Map((view?.club.members ?? []).map(member => [member.id, member]));
@@ -257,6 +267,24 @@ export default function Workspace() {
     }
   }, []);
   const activeSession = Boolean(view?.me?.active);
+  const visibleActivityWeek = tab === "weeklyScores" ? selectedWeek
+    : tab === "duties" ? dutyWeek : tab === "meetings" ? meetingFocusWeek : undefined;
+  const workspaceRevision = view?.revision;
+  const noticeRevision = notificationState.revision;
+  useEffect(() => {
+    if (view?.me?.role !== "member" || workspaceRevision === undefined ||
+      noticeRevision === undefined || workspaceRevision < noticeRevision) return;
+    const ids = notifications.flatMap(notice => {
+      if (notice.read) return [];
+      if (tab === "weeklyScores" && notice.kind === "score" && notice.week === selectedWeek) return [notice.id];
+      if (tab === "duties" && (notice.kind === "duty" && notice.week === dutyWeek ||
+        notice.kind === "activity" && notice.target.area === "duty" && notice.target.week === dutyWeek)) return [notice.id];
+      if (tab === "meetings" && notice.kind === "activity" && notice.target.area === "meeting" &&
+        notice.target.week === (meetingFocusWeek ?? currentMonday)) return [notice.id];
+      return [];
+    });
+    void readNotices(ids);
+  }, [view?.me?.role, workspaceRevision, noticeRevision, notifications, tab, selectedWeek, dutyWeek, meetingFocusWeek, currentMonday, readNotices]);
   useEffect(() => {
     if (!activeSession) return;
     const nextMonday = Date.parse(`${addDays(currentMonday, 7)}T00:00:00+07:00`);
@@ -280,7 +308,7 @@ export default function Workspace() {
       if (feedbackTarget && !controller.signal.aborted) setLoadedFeedbackTarget(feedbackTarget);
     });
     return () => controller.abort();
-  }, [load, tab, profileId, feedbackTarget, activeSession]);
+  }, [load, tab, profileId, feedbackTarget, activeSession, visibleActivityWeek]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), toast.error ? 7500 : 4000);
@@ -300,6 +328,7 @@ export default function Workspace() {
       closeAvatar();
       closeProfile();
       setFeedbackTarget(undefined);
+      setComposingNotice(false);
     }
   }
   async function savePassword(
@@ -430,6 +459,8 @@ export default function Workspace() {
       const result = (await r.json()) as View & { error?: string; notice?: string };
       if (!r.ok) throw new Error(result.error || "Không lưu được dữ liệu");
       setView(current => current && current.me?.id === result.me?.id && current.revision > result.revision ? current : result);
+      if (action === "setBulletinLike" || action === "recallFeedback" || action === "replyToFeedback" ||
+        action === "setFeedbackConsent" || action === "deleteBulletinPost") void refreshNotices();
       if (close) closeModal();
       notify(result.notice ?? message);
       return true;
@@ -447,10 +478,29 @@ export default function Workspace() {
   const editFeedback: EditFeedback = (draft, onError) => act("editFeedback", draft, "Đã chỉnh sửa feedback", false, onError);
   const recallFeedback: RecallFeedback = (id, onError) => act("recallFeedback", { id }, "Đã xóa feedback", false, onError);
   const feedbackConversationActions: FeedbackConversationActions = {
-    onReply: (draft, onError) => act("replyToFeedback", draft, "Đã gửi phản hồi", false, onError),
-    onConsent: (draft, onError) => act("setFeedbackConsent", draft,
-      draft.approved ? "Đã ghi nhận đồng ý công khai" : "Đã rút đồng ý công khai", false, onError),
+    onReply: async (draft, onError) => {
+      const saved = await act("replyToFeedback", draft, "Đã gửi phản hồi", false, onError);
+      if (saved) readFeedbackNotices(draft.feedbackId);
+      return saved;
+    },
+    onConsent: async (draft, onError) => {
+      const saved = await act("setFeedbackConsent", draft,
+        draft.approved ? "Đã ghi nhận đồng ý công khai" : "Đã rút đồng ý công khai", false, onError);
+      if (saved) readFeedbackNotices(draft.feedbackId);
+      return saved;
+    },
+    onOpen: readFeedbackNotices,
   };
+  function readFeedbackNotices(id: string) {
+    readMatchingNotices(notice => "feedbackId" in notice && notice.feedbackId === id);
+  }
+  function readMatchingNotices(matches: (notice: InboxNotification) => boolean) {
+    const ids = notifications.filter(notice => !notice.read && matches(notice)).map(notice => notice.id);
+    if (!ids.length) return;
+    if (workspaceRevision !== undefined && noticeRevision !== undefined && workspaceRevision < noticeRevision)
+      void load().then(() => readNotices(ids));
+    else void readNotices(ids);
+  }
   function dismissBulletinLink() {
     const url = new URL(window.location.href);
     if (!url.searchParams.has("tin")) return;
@@ -460,9 +510,12 @@ export default function Workspace() {
   }
   const go = (next: Tab) => {
     if (next !== "bulletin") dismissBulletinLink();
-    if (next === tab && sidebarGroups.scoreboard.sections.includes(next)) void load();
+    if (next === tab && (sidebarGroups.scoreboard.sections.includes(next) || sidebarGroups.activity.sections.includes(next))) void load();
     setFeedbackTarget(undefined);
     setSharingTarget(undefined);
+    setEventFocus(undefined);
+    setDutyFocus(undefined);
+    setMeetingFocusWeek(undefined);
     setTab(next);
     setEditingWeeklyPoints(false);
     setFilter("all");
@@ -496,11 +549,41 @@ export default function Workspace() {
     setSelectedWeek(week);
     setScoreScope("mine");
   }
-  function openDutyFromNotification(week: string) {
+  function openDutyFromNotification(week: string, shiftId: string) {
     closeProfile();
     go("duties");
     setDutyWeek(week);
-    if (tab === "duties") void load();
+    setDutyFocus({ id: shiftId });
+  }
+  function openWorkspaceNotification(notice: InboxNotification) {
+    if ("sharingId" in notice) return openSharingFromNotification(notice.sharingId);
+    if ("feedbackId" in notice) return openFeedbackFromNotification(notice.feedbackId);
+    if (notice.kind === "bulletin") return openBulletinFromNotification(notice.postId);
+    if (notice.kind === "score") return openScoreFromNotification(notice.week);
+    if (notice.kind === "duty") return openDutyFromNotification(notice.week, notice.shiftId);
+    if (notice.kind === "activity") {
+      const { target } = notice;
+      if (target.area === "duty") return openDutyFromNotification(target.week, target.shiftId);
+      if (target.area === "event" && !target.deleted) {
+        closeProfile();
+        go("requests");
+        setEventFocus({ id: target.eventId });
+        return;
+      }
+      if (target.area === "meeting") {
+        closeProfile();
+        go("meetings");
+        setMeetingFocusWeek(target.week);
+        return;
+      }
+    }
+    closeProfile();
+    const { title, body } = notificationCopy(notice);
+    setModal({
+      title,
+      description: <time dateTime={new Date(notice.createdAt).toISOString()}>{notificationClock.format(notice.createdAt)}</time>,
+      content: <p className="notification-detail-body">{body}</p>,
+    });
   }
   if (loading) return <Loading />;
   if (auth) return <Login onSuccess={load} />;
@@ -1904,7 +1987,7 @@ export default function Workspace() {
             ) : null}
           </div>
         </div>
-        <DutyWeekActions key={dutyWeek} week={dutyWeek} entries={entries} club={club} me={me!} />
+        <DutyWeekActions key={dutyWeek} week={dutyWeek} entries={entries} club={club} me={me!} focusShift={dutyFocus} />
         {isAdmin ? (
           <div className="notice green">
             <Sparkles size={19} />
@@ -2950,17 +3033,24 @@ export default function Workspace() {
 
   function meetingRegistration(insidePersonal = false) {
     const Heading = insidePersonal ? "h2" : "h1";
-    const { closed, cancelled } = currentWeek;
+    const meeting = (!insidePersonal && club.weeks.find(item => item.id === meetingFocusWeek)) || currentWeek;
+    const ownEntry = meeting.entries.find(entry => entry.memberId === me!.id);
+    const isCurrent = meeting.id === currentWeek.id;
+    const { closed, cancelled } = meeting;
     const recorded = closed || ownEntry?.attendanceVerified;
-    const canRegister = !cancelled && !recorded && !!ownEntry;
+    const canRegister = isCurrent && !cancelled && !recorded && !!ownEntry;
     return <section className="panel activity-panel meeting-action-panel" id="personal-registration">
       <div className="activity-panel-title">
         <Heading>Đăng ký họp</Heading>
         <Badge status={cancelled || closed ? "neutral" : "attending"}>
-          {cancelled ? "Không tổ chức họp" : closed ? "Đã chốt" : "Đang mở đăng ký"}
+          {cancelled ? "Không tổ chức họp" : closed ? "Đã chốt" : isCurrent ? "Đang mở đăng ký" : "Tuần đã chọn"}
         </Badge>
       </div>
-      {!cancelled && meetingActivityFacts(currentWeek)}
+      {!isCurrent && <div className="meeting-own-status">
+        <span>Tuần {dateLabel(meeting.id, true)}</span>
+        <Button variant="secondary" onClick={() => setMeetingFocusWeek(undefined)}>Về tuần này</Button>
+      </div>}
+      {!cancelled && meetingActivityFacts(meeting)}
       {!cancelled && ownEntry && (
         <div className="meeting-own-status">
           {recorded ? <Badge status={ownEntry.absent ? "absent" : "attending"}>
@@ -2988,7 +3078,7 @@ export default function Workspace() {
             Tôi xin vắng
           </Button>
         </>}
-      </div> : !cancelled && <p className="activity-action-hint">
+      </div> : isCurrent && !cancelled && <p className="activity-action-hint">
         {ownEntry ? "Kết quả đã được ghi nhận, liên hệ BĐH nếu cần điều chỉnh" : "Liên hệ BĐH nếu cần bổ sung vào danh sách họp tuần này"}
       </p>}
       {ownEntry?.decision && <p className="activity-action-hint">Kết quả xử lý: {ownEntry.decision}</p>}
@@ -3261,13 +3351,26 @@ export default function Workspace() {
           {sidebarTabs.map(id => {
             const { icon: Icon, sections } = sidebarGroups[id];
             const active = id === activeSidebarTab;
+            const count = id in noticeCounts ? noticeCounts[id as keyof typeof noticeCounts] : 0;
+            const pending = id === "activity" && isAdmin ? pendingTotal : 0;
+            const hasBadge = count > 0 || pending > 0;
+            const description = [count ? count + (id === "bulletin" ? " bài chưa xác nhận" : " thông báo chưa đọc") : "",
+              pending ? pending + " đăng ký chờ xử lý" : ""].filter(Boolean).join(", ");
             return (
               <button key={id} type="button" className={active ? "active" : ""}
                 aria-current={active ? "page" : undefined}
+                aria-label={sidebarTabLabels[id]}
+                aria-describedby={hasBadge ? "sidebar-notices-" + id : undefined}
                 onClick={() => go(active ? activeTab : sections[0])}>
                 <Icon size={19} aria-hidden="true" />
                 <span>{sidebarTabLabels[id]}</span>
-                {id === "activity" && pendingTotal > 0 && <b aria-hidden="true">{pendingTotal}</b>}
+                {hasBadge && <>
+                  <span className="sidebar-notice-badges" aria-hidden="true" title={description}>
+                    {count > 0 && <span className="sidebar-notice-count" data-notice-count={id}>{count > 99 ? "99+" : count}</span>}
+                    {pending > 0 && <span className="sidebar-notice-count" data-pending-count>{pending > 99 ? "99+" : pending} chờ</span>}
+                  </span>
+                  <span className="sr-only" id={"sidebar-notices-" + id}>{description}</span>
+                </>}
               </button>
             );
           })}
@@ -3364,11 +3467,9 @@ export default function Workspace() {
             >
               <RefreshCw size={17} className={busy ? "spin" : ""} />
             </button>
-            <WorkspaceNotifications key={me.id} pending={isAdmin ? pendingTotal : 0}
+            <WorkspaceNotifications key={me.id} state={notificationState} pending={isAdmin ? pendingTotal : 0}
               onOpenPending={() => go(pending.length ? "meetings" : "requests")}
-              onOpenFeedback={openFeedbackFromNotification} onOpenSharing={openSharingFromNotification}
-              onOpenBulletin={openBulletinFromNotification} onOpenScoreWeek={openScoreFromNotification}
-              onOpenDutyWeek={openDutyFromNotification} />
+              onOpenNotice={openWorkspaceNotification} onCompose={isAdmin ? () => setComposingNotice(true) : undefined} />
             <span className="topbar-divider" />
             <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} size="small" />
             <span className="topbar-role">
@@ -3428,12 +3529,15 @@ export default function Workspace() {
           ) : activeTab === "weeklyScores" ? (
             weeklyScorePage()
           ) : activeTab === "requests" ? (
-            <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load} />
+            <Activities club={club} me={me} isAdmin={isAdmin} busy={busy} onAction={act} onEvidenceSaved={load} focusEvent={eventFocus}
+              onViewEvent={eventId => readMatchingNotices(notice => notice.kind === "activity" &&
+                notice.target.area === "event" && notice.target.eventId === eventId)} />
           ) : activeTab === "duties" ? (
             duties()
           ) : activeTab === "bulletin" ? (
             <BulletinBoard key={linkedBulletin ?? "feed"} posts={view.bulletin?.posts ?? []} nextChangeAt={view.bulletin?.nextChangeAt}
               me={me} isAdmin={isAdmin} busy={busy} linkedPostId={linkedBulletin} onDismissLink={dismissBulletinLink}
+              onViewPost={postId => readMatchingNotices(notice => notice.kind === "bulletin" && notice.postId === postId)}
               onOpen={load} onAction={(action, data, message) => act(action, data, message, false)} />
           ) : activeTab === "links" ? (
             <section className="bulletin-links" aria-label="Danh sách liên kết">
@@ -3477,6 +3581,9 @@ export default function Workspace() {
           </footer>
         </main>
       </div>
+      {isAdmin && composingNotice && <DirectNoticeComposer senderId={me.id} people={club.members} busy={busy}
+        onSend={(draft, onError) => act("sendDirectNotice", draft, "Đã gửi thông báo", false, onError)}
+        onClose={() => setComposingNotice(false)} />}
       {modal ? (
         <Dialog
           title={modal.title}

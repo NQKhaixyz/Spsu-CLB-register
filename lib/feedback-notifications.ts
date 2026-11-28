@@ -1,7 +1,8 @@
 import type { Club } from "./club";
 import type { StoredFeedback } from "./feedback";
 import type { SharingNotice } from "./sharing-types";
-import { markWorkspaceNotificationRead, workspaceNotificationsFor, type WorkspaceNotification } from "./workspace-notifications";
+import type { WorkspaceNotification } from "./notification-types";
+import { readWorkspaceNotifications, workspaceNotificationsFor } from "./workspace-notifications";
 
 export type FeedbackNotificationKind = "received" | "reply" | "consent";
 export type StoredFeedbackNotification = {
@@ -15,22 +16,41 @@ type FeedbackNotification = Omit<StoredFeedbackNotification, "memberId"> & {
   feedbackId: string;
   actorId?: string;
 };
-type InboxNotification = FeedbackNotification | Omit<SharingNotice, "memberId"> | WorkspaceNotification;
+export type InboxNotification = FeedbackNotification | Omit<SharingNotice, "memberId"> | WorkspaceNotification;
 export type MemberNotificationInbox = { revision: number; notifications: InboxNotification[] };
+export type NotificationFormat = "feedback" | "workspace" | "all";
 
-export function memberNotificationsFor(club: Club, viewerId: string, includeWorkspace = true): InboxNotification[] {
+export function memberNotificationsFor(club: Club, viewerId: string, includeWorkspace = true, now = Date.now()): InboxNotification[] {
   return [...feedbackNotificationsFor(club, viewerId),
     ...(club.sharing?.notices ?? []).flatMap(({ memberId, ...notice }) => memberId === viewerId ? [notice] : []),
-    ...(includeWorkspace ? workspaceNotificationsFor(club, viewerId) : []),
+    ...(includeWorkspace ? workspaceNotificationsFor(club, viewerId, now) : []),
   ].sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export function visibleMemberNotifications(club: Club, viewerId: string, format: NotificationFormat, now = Date.now()) {
+  const notices = memberNotificationsFor(club, viewerId, format !== "feedback", now);
+  return format === "workspace" ? notices.filter(item => item.kind !== "activity" && item.kind !== "direct" &&
+    (item.kind !== "duty" || item.dutyChange === undefined || item.dutyChange === "assigned")) : notices;
+}
+
+export function markMemberNotificationsRead(club: Club, viewerId: string, selection: ReadonlySet<string> | "all", format: NotificationFormat, now = Date.now()) {
+  const selected = new Set(visibleMemberNotifications(club, viewerId, format, now)
+    .filter(item => item.createdAt <= now && (selection === "all" || selection.has(item.id))).map(item => item.id));
+  if (!selected.size) return 0;
+  for (const item of club.memberFeedback ?? []) {
+    for (const notice of item.notifications ?? []) {
+      if (notice.memberId === viewerId && selected.has(notice.id)) notice.read = true;
+    }
+  }
+  for (const notice of club.sharing?.notices ?? []) {
+    if (notice.memberId === viewerId && selected.has(notice.id)) notice.read = true;
+  }
+  readWorkspaceNotifications(club, viewerId, selected);
+  return selected.size;
+}
+
 export function markMemberNotificationRead(club: Club, viewerId: string, id: string, includeWorkspace = true) {
-  const notice = club.sharing?.notices.find(item => item.memberId === viewerId && item.id === id);
-  if (!notice) return markFeedbackNotificationRead(club, viewerId, id) ||
-    (includeWorkspace && markWorkspaceNotificationRead(club, viewerId, id));
-  notice.read = true;
-  return true;
+  return markMemberNotificationsRead(club, viewerId, new Set([id]), includeWorkspace ? "all" : "feedback") > 0;
 }
 
 function otherParticipant(item: StoredFeedback, memberId: string) {

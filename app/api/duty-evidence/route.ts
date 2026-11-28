@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { clubState, dutyEvidence } from "../../../db/schema";
+import { addDutyEvidenceNotice } from "../../../lib/activity-notifications";
 import { evidenceExpiry, evidenceSubmissionOpen, findEvidenceAssignment, type DutyEvidence, type DutyEvidenceView } from "../../../lib/duty-evidence";
 import { dutyPhotoKey } from "../../../lib/duty-photo-storage";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
@@ -46,7 +47,7 @@ async function context(request: Request) {
     canUpload: member.id === memberId && evidence?.status !== "approved" && evidenceSubmissionOpen(shift, now),
     canReview: member.role === "admin" && !expired && evidence?.status === "pending",
   };
-  return { member, revision, userId: user.userId, target: { month, shiftId, memberId }, shift, expiresAt, view, bucket, db, searchParams };
+  return { club, member, revision, userId: user.userId, target: { month, shiftId, memberId }, shift, expiresAt, view, bucket, db, searchParams };
 }
 
 const sameSchedule = (revision: number) =>
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     verifyOrigin(request);
-    const { view, member, db, revision, expiresAt } = await context(request);
+    const { view, club, member, revision, expiresAt, shift, target } = await context(request);
     if (member.role !== "admin") throw new AuthError("Chỉ BĐH được duyệt minh chứng.", 403);
     const bytes = await readBody(request, "application/json", 8192, "Ghi chú quá dài.");
     let input: unknown;
@@ -153,10 +154,20 @@ export async function PATCH(request: Request) {
     if (status === "rejected" && !reviewNote) throw new AuthError("Nhập lý do từ chối.", 400);
     const reviewedAt = Date.now();
     if (reviewedAt >= expiresAt) throw new AuthError("Ảnh đã hết hạn lưu.", 410);
-    const updated = await db.update(dutyEvidence).set({ status, reviewedAt, reviewedBy: member.id, reviewNote })
-      .where(and(eq(dutyEvidence.id, id), eq(dutyEvidence.status, "pending"), gt(dutyEvidence.expiresAt, reviewedAt), sameSchedule(revision)))
-      .returning({ id: dutyEvidence.id }).get();
-    if (!updated) throw new AuthError("Minh chứng vừa thay đổi. Mở lại để xem bản mới.", 409);
+    const db = env.DB;
+    if (!db) throw new AuthError("Chưa kết nối được cơ sở dữ liệu.", 503);
+    addDutyEvidenceNotice(club, member, target.memberId, shift, status === "approved", reviewedAt);
+    const payload = JSON.stringify(club);
+    const [state, updated] = await db.batch([
+      db.prepare(`UPDATE club_state SET payload=?, revision=revision+1 WHERE id='main' AND revision=?
+        AND EXISTS (SELECT 1 FROM duty_evidence WHERE id=? AND status='pending' AND expires_at>?)`)
+        .bind(payload, revision, id, reviewedAt),
+      db.prepare(`UPDATE duty_evidence SET status=?, reviewed_at=?, reviewed_by=?, review_note=?
+        WHERE id=? AND status='pending' AND expires_at>?
+        AND EXISTS (SELECT 1 FROM club_state WHERE id='main' AND revision=? AND payload=?)`)
+        .bind(status, reviewedAt, member.id, reviewNote, id, reviewedAt, revision + 1, payload),
+    ]);
+    if (!state.meta.changes || !updated.meta.changes) throw new AuthError("Minh chứng vừa thay đổi. Mở lại để xem bản mới.", 409);
     const evidence: DutyEvidence = { ...view.evidence, status, reviewedAt, reviewNote };
     return json({ ...view, evidence, canUpload: view.canUpload && status !== "approved", canReview: false } satisfies DutyEvidenceView);
   } catch (error) {

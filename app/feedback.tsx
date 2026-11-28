@@ -14,6 +14,7 @@ export type RecallFeedback = (id: string, onError: (message: string) => void) =>
 export type FeedbackConversationActions = {
   onReply: (draft: FeedbackReplyDraft, onError: (message: string) => void) => Promise<boolean>;
   onConsent: (draft: FeedbackConsentDraft, onError: (message: string) => void) => Promise<boolean>;
+  onOpen?: (feedbackId: string) => void;
 };
 type FeedbackAction = { kind: "edit"; item: FeedbackView } | { kind: "recall"; id: string };
 
@@ -146,7 +147,8 @@ function FeedbackConversation({ item, openForActions, busy, actions, initiallyOp
   }
 
   if (!item.replies.length && !canReply && !consent) return null;
-  return <details className="feedback-conversation" open={initiallyOpen || undefined}>
+  return <details className="feedback-conversation" open={initiallyOpen || undefined}
+    onToggle={event => { if (event.currentTarget.open) actions.onOpen?.(item.id); }}>
     <summary>Phản hồi{item.replies.length > 0 && ` · ${item.replies.length}`}</summary>
     {item.replies.length > 0 && <ol className="feedback-messages">
       {item.replies.map(reply => <li key={reply.id}>

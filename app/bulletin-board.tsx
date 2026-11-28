@@ -216,7 +216,7 @@ function SharePost({ post, onClose }: { post: BulletinPostView; onClose: () => v
   </Dialog>;
 }
 
-export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, linkedPostId, onDismissLink, onOpen, onAction }: {
+export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, linkedPostId, onDismissLink, onOpen, onViewPost, onAction }: {
   posts: BulletinPostView[];
   nextChangeAt?: number;
   me: BulletinViewer;
@@ -225,6 +225,7 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
   linkedPostId?: string;
   onDismissLink: () => void;
   onOpen: (signal: AbortSignal) => Promise<void>;
+  onViewPost?: (postId: string) => void;
   onAction: Act;
 }) {
   const [readingId, setReadingId] = useState(linkedPostId);
@@ -247,6 +248,9 @@ export default function BulletinBoard({ posts, nextChangeAt, me, isAdmin, busy, 
     return () => controller.abort();
   }, [onOpen, readingId]);
   const selectedId = selected?.id;
+  useEffect(() => {
+    if (selectedId) onViewPost?.(selectedId);
+  }, [selectedId, onViewPost]);
   useEffect(() => {
     if (selectedId) threadTitle.current?.focus({ preventScroll: true });
   }, [selectedId]);

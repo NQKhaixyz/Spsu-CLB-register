@@ -1,96 +1,66 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Bell, CalendarDays, CheckCheck, ClipboardList, Feather, MessageSquare, MessageSquarePlus, Newspaper, Shield, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Bell, CalendarDays, Check, CheckCheck, ClipboardList, Feather, Mail, MessageSquare, MessageSquarePlus, Newspaper, Plus, Shield, X } from "lucide-react";
 import { dateLabel } from "../lib/club";
-import type { MemberNotificationInbox, FeedbackNotificationKind } from "../lib/feedback-notifications";
+import type { InboxNotification } from "../lib/feedback-notifications";
 import { sharingNoticeTitles } from "../lib/sharing-types";
-import type { WorkspaceNotification } from "../lib/workspace-notifications";
 import { MemberName } from "./member-identity";
 import { formatScore } from "./scoreboard";
+import type { WorkspaceNotificationState } from "./use-workspace-notifications";
 
-const inboxPath = "/api/feedback-notifications?include=workspace";
-const pollInterval = 30_000;
-const notificationClock = new Intl.DateTimeFormat("vi-VN", {
+export const notificationClock = new Intl.DateTimeFormat("vi-VN", {
   dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh",
 });
-const notificationKinds = {
-  received: { title: "Feedback mới", icon: MessageSquarePlus },
-  reply: { title: "Phản hồi feedback mới", icon: MessageSquare },
-  consent: { title: "Đã đồng ý công khai feedback", icon: CheckCheck },
-  bulletin: { title: "Bài đăng mới", icon: Newspaper },
-  score: { title: "Đã cập nhật điểm của bạn", icon: ClipboardList },
-  duty: { title: "Bạn có lịch trực C1", icon: CalendarDays },
-} satisfies Record<FeedbackNotificationKind | WorkspaceNotification["kind"], { title: string; icon: typeof Bell }>;
 
-function notificationDetail(notification: MemberNotificationInbox["notifications"][number]) {
-  if (notification.kind === "bulletin") return notification.postTitle;
-  if (notification.kind === "score")
-    return `Tuần ${dateLabel(notification.week, true)} · ${notification.change > 0 ? "+" : ""}${formatScore(notification.change)} điểm`;
-  if (notification.kind === "duty") {
-    const times = [notification.startTime, notification.endTime].filter(Boolean).join(" – ");
-    return [`Ca ${notification.period === "am" ? "sáng" : "chiều"}`, dateLabel(notification.date, true), times].filter(Boolean).join(" · ");
+const feedbackCopy = {
+  received: { title: "Feedback mới", body: "Bạn có một cuộc trao đổi mới", icon: MessageSquarePlus },
+  reply: { title: "Phản hồi feedback mới", body: "Cuộc trao đổi có tin nhắn mới", icon: MessageSquare },
+  consent: { title: "Đã đồng ý công khai feedback", body: "Quyền hiển thị cuộc trao đổi đã cập nhật", icon: CheckCheck },
+};
+
+export function notificationCopy(notice: InboxNotification) {
+  if ("sharingId" in notice) return {
+    title: sharingNoticeTitles[notice.kind],
+    body: notice.kind.startsWith("cupid") ? "Cập nhật Cupid trong Góc của tôi" : "Cập nhật Bang hội trong Góc của tôi",
+    icon: notice.kind.startsWith("cupid") ? Feather : Shield,
+  };
+  if ("feedbackId" in notice) return feedbackCopy[notice.kind];
+  switch (notice.kind) {
+    case "direct": return { title: notice.title, body: notice.body, icon: Mail };
+    case "activity": return { title: notice.title, body: notice.body, icon: CalendarDays };
+    case "bulletin": return { title: "Bài đăng mới", body: notice.postTitle, icon: Newspaper };
+    case "score": return {
+      title: "Đã cập nhật điểm của bạn",
+      body: "Tuần " + dateLabel(notice.week, true) + " · " + (notice.change > 0 ? "+" : "") + formatScore(notice.change) + " điểm",
+      icon: ClipboardList,
+    };
+    case "duty": {
+      const title = notice.dutyChange === "cancelled" ? "Ca trực C1 đã hủy"
+        : notice.dutyChange === "removed" ? "Bạn đã được gỡ khỏi ca trực C1"
+        : notice.dutyChange === "withdrawn" ? "Ca trực C1 đã hủy công bố"
+        : notice.dutyChange === "updated" ? "Lịch trực C1 đã thay đổi" : "Bạn có lịch trực C1";
+      const hours = [notice.startTime, notice.endTime].filter(Boolean).join(" – ");
+      return { title, body: [notice.period === "am" ? "Ca sáng" : "Ca chiều", dateLabel(notice.date, true), hours].filter(Boolean).join(" · "), icon: CalendarDays };
+    }
   }
 }
 
-export default function WorkspaceNotifications({ pending, onOpenPending, onOpenFeedback, onOpenSharing,
-  onOpenBulletin, onOpenScoreWeek, onOpenDutyWeek }: {
+export default function WorkspaceNotifications({ state, pending, onOpenPending, onOpenNotice, onCompose }: {
+  state: WorkspaceNotificationState;
   pending: number;
   onOpenPending: () => void;
-  onOpenFeedback: (feedbackId: string) => void;
-  onOpenSharing: (sharingId: string) => void;
-  onOpenBulletin: (postId: string) => void;
-  onOpenScoreWeek: (week: string) => void;
-  onOpenDutyWeek: (week: string) => void;
+  onOpenNotice: (notice: InboxNotification) => void;
+  onCompose?: () => void;
 }) {
   const panelId = useId();
   const center = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [inbox, setInbox] = useState<MemberNotificationInbox>();
-  const [loadError, setLoadError] = useState(false);
-  const notifications = inbox?.notifications ?? [];
-  const unread = notifications.filter(notification => !notification.read).length;
-  const bellLabel = ["Thông báo", unread ? `${unread} chưa đọc` : "", pending ? `${pending} đăng ký chờ xử lý` : ""]
+  const { notifications, loadError, loaded, refresh, read } = state;
+  const unread = notifications.filter(notice => !notice.read).length;
+  const bellLabel = ["Thông báo", unread ? unread + " chưa đọc" : "", pending ? pending + " đăng ký chờ xử lý" : ""]
     .filter(Boolean).join(", ");
-
-  const receiveInbox = useCallback((next: MemberNotificationInbox) => {
-    setInbox(current => current && current.revision > next.revision ? current : next);
-    setLoadError(false);
-  }, []);
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch(inboxPath, { cache: "no-store", signal });
-      if (signal?.aborted) return;
-      if (response.status === 401) {
-        setInbox(undefined);
-        setLoadError(false);
-        return;
-      }
-      if (!response.ok) throw new Error("Chưa tải được thông báo");
-      const next: MemberNotificationInbox = await response.json();
-      if (!signal?.aborted) receiveInbox(next);
-    } catch {
-      if (!signal?.aborted) setLoadError(true);
-    }
-  }, [receiveInbox]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const refreshWhileVisible = () => {
-      if (!document.hidden) void refresh(controller.signal);
-    };
-    refreshWhileVisible();
-    const timer = window.setInterval(refreshWhileVisible, pollInterval);
-    window.addEventListener("focus", refreshWhileVisible);
-    document.addEventListener("visibilitychange", refreshWhileVisible);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refreshWhileVisible);
-      document.removeEventListener("visibilitychange", refreshWhileVisible);
-    };
-  }, [refresh]);
 
   useEffect(() => {
     if (!open) return;
@@ -111,31 +81,6 @@ export default function WorkspaceNotifications({ pending, onOpenPending, onOpenF
     };
   }, [open]);
 
-  async function openNotification(notification: MemberNotificationInbox["notifications"][number]) {
-    setOpen(false);
-    if ("sharingId" in notification) onOpenSharing(notification.sharingId);
-    else if ("feedbackId" in notification) onOpenFeedback(notification.feedbackId);
-    else if (notification.kind === "bulletin") onOpenBulletin(notification.postId);
-    else if (notification.kind === "score") onOpenScoreWeek(notification.week);
-    else onOpenDutyWeek(notification.week);
-    if (notification.read) return;
-    try {
-      const response = await fetch(inboxPath, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: notification.id }),
-      });
-      if (response.status === 404 || response.status === 401) {
-        void refresh();
-        return;
-      }
-      if (!response.ok) throw new Error("Chưa cập nhật được thông báo");
-      receiveInbox(await response.json());
-    } catch {
-      setLoadError(true);
-    }
-  }
-
   return <div className="notification-center" ref={center}>
     <button type="button" ref={trigger} className="icon-button notification-button"
       aria-label={bellLabel} title="Thông báo" aria-expanded={open} aria-controls={panelId}
@@ -155,6 +100,14 @@ export default function WorkspaceNotifications({ pending, onOpenPending, onOpenF
           trigger.current?.focus();
         }}><X size={18} aria-hidden="true" /></button>
       </div>
+      {(onCompose || notifications.length > 0) && <div className="notification-toolbar">
+        {onCompose && <button type="button" className="text-button" onClick={() => {
+          setOpen(false);
+          onCompose();
+        }}><Plus size={16} aria-hidden="true" /> Soạn thông báo</button>}
+        {notifications.length > 0 && <button type="button" className="text-button" disabled={!unread}
+          onClick={() => void read("all")}><CheckCheck size={16} aria-hidden="true" /> Đánh dấu tất cả đã đọc</button>}
+      </div>}
       {pending > 0 && <button type="button" className="notification-pending" onClick={() => {
         setOpen(false);
         onOpenPending();
@@ -163,28 +116,30 @@ export default function WorkspaceNotifications({ pending, onOpenPending, onOpenF
         Chưa đồng bộ được thông báo <button type="button" className="text-button" onClick={() => void refresh()}>Thử lại</button>
       </div>}
       {notifications.length ? <ul className="notification-items">
-        {notifications.map(notification => {
-          const { title, icon: Icon } = "sharingId" in notification
-            ? { title: sharingNoticeTitles[notification.kind], icon: notification.kind.startsWith("cupid") ? Feather : Shield }
-            : notificationKinds[notification.kind];
-          const detail = notificationDetail(notification);
-          return <li key={notification.id}>
-            <button type="button" className="notification-item" data-unread={!notification.read}
-              onClick={() => void openNotification(notification)}>
+        {notifications.map(notice => {
+          const { title, body, icon: Icon } = notificationCopy(notice);
+          return <li key={notice.id} className="notification-entry" data-unread={!notice.read}>
+            <button type="button" className="notification-item" data-unread={!notice.read} onClick={() => {
+              setOpen(false);
+              if (!notice.read) void read([notice.id]);
+              onOpenNotice(notice);
+            }}>
               <span className="notification-item-icon"><Icon size={17} aria-hidden="true" /></span>
               <span className="notification-item-copy">
                 <strong>{title}</strong>
-                {detail && <span className="notification-item-detail">{detail}</span>}
+                <span className="notification-item-detail">{body}</span>
                 <span className="notification-item-meta">
-                  {notification.actorId ? <MemberName memberId={notification.actorId} /> : <span>{"feedbackId" in notification ? "Ẩn danh" : "Nhịp Đội"}</span>}
-                  <time dateTime={new Date(notification.createdAt).toISOString()}>{notificationClock.format(notification.createdAt)}</time>
+                  {notice.actorId ? <MemberName memberId={notice.actorId} /> : <span>{"feedbackId" in notice ? "Ẩn danh" : "Nhịp Đội"}</span>}
+                  <time dateTime={new Date(notice.createdAt).toISOString()}>{notificationClock.format(notice.createdAt)}</time>
                 </span>
+                <span className="sr-only">{notice.read ? "Đã đọc" : "Chưa đọc"}</span>
               </span>
-              {!notification.read && <span className="notification-unread"><span className="sr-only">Chưa đọc</span></span>}
             </button>
+            {!notice.read && <button type="button" className="icon-button notification-read-button" title="Đánh dấu đã đọc"
+              aria-label={"Đánh dấu đã đọc · " + title} onClick={() => void read([notice.id])}><Check size={16} aria-hidden="true" /></button>}
           </li>;
         })}
-      </ul> : !loadError && <p className="notification-status">{inbox ? "Chưa có thông báo" : "Đang tải thông báo…"}</p>}
+      </ul> : !loadError && <p className="notification-status">{loaded ? "Chưa có thông báo" : "Đang tải thông báo…"}</p>}
     </section>}
   </div>;
 }

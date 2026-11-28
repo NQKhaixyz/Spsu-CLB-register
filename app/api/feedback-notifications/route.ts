@@ -1,4 +1,5 @@
-import { memberNotificationsFor, markMemberNotificationRead, type MemberNotificationInbox } from "../../../lib/feedback-notifications";
+import { markMemberNotificationsRead, visibleMemberNotifications, type MemberNotificationInbox, type NotificationFormat } from "../../../lib/feedback-notifications";
+import { isNoticeId } from "../../../lib/notification-types";
 import type { Club } from "../../../lib/club";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
@@ -10,18 +11,20 @@ export const dynamic = "force-dynamic";
 const json = (data: unknown, status = 200) => Response.json(data, {
   status, headers: { "Cache-Control": "private, no-store" },
 });
-// Tabs running an earlier build can only display feedback and sharing notices.
-const includesWorkspace = (request: Request) => new URL(request.url).searchParams.get("include") === "workspace";
+function formatFor(request: Request): NotificationFormat {
+  const include = new URL(request.url).searchParams.get("include");
+  return include === "all" || include === "workspace" ? include : "feedback";
+}
 
-function inbox(club: Club, memberId: string, revision: number, includeWorkspace: boolean): MemberNotificationInbox {
-  return { revision, notifications: memberNotificationsFor(club, memberId, includeWorkspace) };
+function inbox(club: Club, memberId: string, revision: number, format: NotificationFormat): MemberNotificationInbox {
+  return { revision, notifications: visibleMemberNotifications(club, memberId, format) };
 }
 
 export async function GET(request: Request) {
   try {
     const user = await getNativeUserWithClub(request);
     if (!user) return json({ error: "Vui lòng đăng nhập để xem thông báo" }, 401);
-    return json(inbox(user.club, user.member.id, user.revision, includesWorkspace(request)));
+    return json(inbox(user.club, user.member.id, user.revision, formatFor(request)));
   } catch (error) {
     console.error("feedback-notifications:get", error);
     return json({ error: "Chưa tải được thông báo" }, 500);
@@ -33,26 +36,34 @@ export async function POST(request: Request) {
     const user = await getNativeUserWithClub(request);
     if (!user) return json({ error: "Vui lòng đăng nhập để xem thông báo" }, 401);
     verifyOrigin(request);
-    const bytes = await readBody(request, "application/json", 512, "Thông báo không hợp lệ");
+    const bytes = await readBody(request, "application/json", 12_000, "Thông báo không hợp lệ");
     let data: unknown;
     try {
       data = JSON.parse(new TextDecoder().decode(bytes));
     } catch {
       return json({ error: "Thông báo không hợp lệ" }, 400);
     }
-    const id = data && typeof data === "object" && "id" in data ? data.id : undefined;
-    if (typeof id !== "string" || id.length !== 36) return json({ error: "Thông báo không hợp lệ" }, 400);
-    const includeWorkspace = includesWorkspace(request);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return json({ error: "Thông báo không hợp lệ" }, 400);
+    const { id, ids, all } = data as Record<string, unknown>;
+    const format = formatFor(request);
+    const single = isNoticeId(id) && ids === undefined && all === undefined;
+    let selection: Set<string> | "all";
+    if (single) selection = new Set([id]);
+    else if (format === "all" && all === true && ids === undefined && id === undefined) selection = "all";
+    else if (format === "all" && all === undefined && id === undefined &&
+      Array.isArray(ids) && ids.length > 0 && ids.length <= 250 && ids.every(isNoticeId)) selection = new Set(ids);
+    else return json({ error: "Thông báo không hợp lệ" }, 400);
+    const now = Date.now();
 
     const { club, revision } = await mutate(user.userId, current => {
       if (!current.members.some(member => member.id === user.member.id && member.userId === user.userId && member.active)) {
         throw new AuthError("Vui lòng đăng nhập để xem thông báo", 401);
       }
-      if (!markMemberNotificationRead(current, user.member.id, id, includeWorkspace)) {
+      if (!markMemberNotificationsRead(current, user.member.id, selection, format, now) && single) {
         throw new AuthError("Thông báo không còn hiển thị", 404);
       }
     });
-    return json(inbox(club, user.member.id, revision, includeWorkspace));
+    return json(inbox(club, user.member.id, revision, format));
   } catch (error) {
     if (error instanceof AuthError) return json({ error: error.message }, error.status);
     console.error("feedback-notifications:post", error);

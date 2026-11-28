@@ -2,11 +2,12 @@
 
 import { Download, FileText } from "lucide-react";
 import { useState } from "react";
-import { bulletinMediaUrl, isBulletinDocument, type BulletinMedia, type BulletinMediaType } from "../lib/bulletin-media";
+import { bulletinDocumentFormat, bulletinMediaUrl, isBulletinDocument, type BulletinMedia, type BulletinMediaType } from "../lib/bulletin-media";
 
-export function BulletinAttachmentView({ type, url, label, lazy = false }: {
+export function BulletinAttachmentView({ type, url, previewUrl, label, lazy = false }: {
   type: BulletinMediaType;
   url: string;
+  previewUrl?: string;
   label: string;
   lazy?: boolean;
 }) {
@@ -17,9 +18,14 @@ export function BulletinAttachmentView({ type, url, label, lazy = false }: {
     return <img src={url} alt={label} loading={lazy ? "lazy" : "eager"} decoding="async" />;
   }
   if (isBulletinDocument(type)) {
-    return <a href={url} download={label} className="bulletin-document" aria-label={`Tải ${label}`}>
-      <FileText size={18} aria-hidden="true" /> <span>{label}</span> <Download size={16} aria-hidden="true" />
-    </a>;
+    return <div className="bulletin-document">
+      <FileText size={18} aria-hidden="true" />
+      <div className="bulletin-document-name"><strong>{label}</strong><small>{bulletinDocumentFormat(type)}</small></div>
+      <div className="bulletin-document-links">
+        {previewUrl && <a href={previewUrl} target="_blank" rel="noopener" aria-label={`Mở ${label}`}>Mở</a>}
+        <a href={url} download={label} title="Tải xuống" aria-label={`Tải ${label}`}><Download size={17} aria-hidden="true" /></a>
+      </div>
+    </div>;
   }
   return videoFailed ? (
     <div className="bulletin-video-fallback">
@@ -48,7 +54,8 @@ export function BulletinAttachments({ postId, title, files, onOpen }: {
         const image = file.type === "image/jpeg";
         const document = isBulletinDocument(file.type);
         const label = file.name ?? `${image ? "Ảnh" : document ? "Tài liệu" : "Video"} ${index + 1} của ${title}`;
-        const attachment = <BulletinAttachmentView type={file.type} url={url} label={label} lazy={!!onOpen} />;
+        const previewUrl = file.type === "application/pdf" ? bulletinMediaUrl(postId, file.id, true) : undefined;
+        const attachment = <BulletinAttachmentView type={file.type} url={url} previewUrl={previewUrl} label={label} lazy={!!onOpen} />;
         return <li key={file.id} className={image ? "bulletin-media-image" : document ? "bulletin-media-document" : "bulletin-media-video"}>
           {image ? onOpen
             ? <button type="button" aria-label={`Xem ${label.toLowerCase()}`} onClick={onOpen}>{attachment}</button>

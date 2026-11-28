@@ -6,7 +6,7 @@ import { bulletinContentLimit, bulletinDateInput, bulletinTitleLimit, type Bulle
 import {
   bulletinDocumentAccept, bulletinDocumentLimitMb, bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit,
   bulletinMediaEndpoint, bulletinMediaLimit, bulletinMediaUrl, bulletinStageMs, bulletinVideoLimitMb, bulletinVideoTypes,
-  isBulletinDocument, isBulletinMediaId, isBulletinVideo, type BulletinMedia, type BulletinMediaType,
+  isBulletinDocument, isBulletinMediaId, isBulletinVideo, validBulletinDocumentPrefix, type BulletinMedia, type BulletinMediaType,
 } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 import { BulletinAttachmentView } from "./bulletin-attachments";
@@ -46,9 +46,11 @@ async function prepareSelection({ files, kind }: BulletinMediaSelection) {
     } else {
       const label = bulletinDocumentName(file.name);
       const type = bulletinDocumentType(label);
-      if (!type || label.length > 255) throw new Error("Chọn tệp PDF, DOCX, XLSX hoặc PPTX có tên hợp lệ");
+      if (!type || label.length > 255) throw new Error("Chọn tài liệu PDF, Word, Excel hoặc PowerPoint có tên hợp lệ");
       if (!file.size) throw new Error("Tài liệu không có dữ liệu");
       if (file.size > bulletinMediaByteLimit(type)) throw new Error(`Tài liệu tối đa ${bulletinDocumentLimitMb} MB mỗi tệp`);
+      if (!validBulletinDocumentPrefix(new Uint8Array(await file.slice(0, 12).arrayBuffer()), type))
+        throw new Error(`Nội dung của ${label} không đúng định dạng tài liệu`);
       prepared.push({ label, type, body: file });
     }
   }
@@ -173,10 +175,10 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
     }
   }
 
-  return <Dialog title={original ? "Sửa tin" : "Đăng tin"} onClose={onClose} wide busy={waiting}>
+  return <Dialog title={original ? "Sửa tin" : "Đăng tin"} onClose={onClose} wide className="bulletin-composer-dialog" busy={waiting}>
     <form onSubmit={save}>
       <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit} defaultValue={original?.title} /></Field>
-      <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={4} maxLength={bulletinContentLimit}
+      <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={9} maxLength={bulletinContentLimit} autoGrow
         initialText={original?.content} initialFormat={original?.contentFormat} required={!files.length} busy={waiting} />
       <div className="bulletin-picker">
         <div className="bulletin-picker-actions">
@@ -195,7 +197,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
           <small>{files.length}/{bulletinMediaLimit} tệp</small>
         </div>
         <p className="hint">Video MP4, WebM hoặc MOV tối đa {bulletinVideoLimitMb} MB mỗi tệp</p>
-        <p className="hint">PDF, DOCX, XLSX hoặc PPTX tối đa {bulletinDocumentLimitMb} MB mỗi tệp</p>
+        <p className="hint">PDF, Word, Excel và PowerPoint tối đa {bulletinDocumentLimitMb} MB mỗi tệp</p>
         {files.length > 0 && <ul className="bulletin-drafts">
           {files.map(file => <li key={file.key}>
             {!isBulletinDocument(file.type) && <BulletinAttachmentView type={file.type} url={file.url} label={file.label} />}

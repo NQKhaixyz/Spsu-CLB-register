@@ -51,7 +51,8 @@ import { committeeKinds, isCommitteeKind, memberCommittees } from "./committees"
 import { isFontId } from "./interface-fonts";
 import { isMemberPosition } from "./member-positions";
 import { planDutyWeek } from "./duty-week-plan";
-import { captureWorkspaceNotifications } from "./workspace-notifications";
+import { captureWorkspaceNotifications } from "./activity-notifications";
+import { confirmBulletinNotice, sendDirectNotice } from "./workspace-notifications";
 import type { AvailabilitySettings } from "./club";
 
 export type Identity = { userId: string; email: string; displayName: string };
@@ -148,6 +149,10 @@ function applyClubAction(
     return;
   }
   check(me?.active, "Tài khoản chưa có hồ sơ hoặc đã ngừng hoạt động.");
+  if (action === "sendDirectNotice") {
+    sendDirectNotice(club, me, data);
+    return;
+  }
   if (applySharingAction(club, me, action, data)) return;
   if (action === "sendFeedback") {
     sendMemberFeedback(club, me, data);
@@ -277,7 +282,10 @@ function applyClubAction(
         else members.delete(me.id);
         return [...members];
       };
-      if (action === "setBulletinLike") post.likedBy = selected(post.likedBy, data.liked);
+      if (action === "setBulletinLike") {
+        if (data.liked || post.likedBy?.includes(me.id)) confirmBulletinNotice(post, me.id);
+        post.likedBy = selected(post.likedBy, data.liked);
+      }
       else if (action === "setBulletinSaved") post.savedBy = selected(post.savedBy, data.saved);
       else {
         const comment = post.comments?.find(item => item.id === data.commentId);

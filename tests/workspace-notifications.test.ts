@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyAction, type Identity } from "../lib/actions";
 import { bulletinDateInput } from "../lib/bulletin";
-import { bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit } from "../lib/bulletin-media";
+import { bulletinDocumentName, bulletinDocumentType, bulletinMediaByteLimit, validBulletinDocumentPrefix } from "../lib/bulletin-media";
 import { addDays, createClub, syncWeeks, today, weekId, type Member } from "../lib/club";
-import { memberNotificationsFor, markMemberNotificationRead } from "../lib/feedback-notifications";
+import { memberNotificationsFor, markMemberNotificationRead, markMemberNotificationsRead, visibleMemberNotifications } from "../lib/feedback-notifications";
 import { workspaceNotificationsFor, markWorkspaceNotificationRead } from "../lib/workspace-notifications";
 import { workspaceView } from "../lib/workspace-view";
 
@@ -70,7 +70,7 @@ test("Entering, repeating, and correcting points sends only real weekly changes 
   assert.ok(!JSON.stringify(memberNotificationsFor(club, minh.id)).includes("Lý do riêng"));
 });
 
-test("Duty notices start at publication, reach new assignments, and retire when a shift is cancelled", () => {
+test("Duty notices start at publication and retain a separate update for cancellation and restoration", () => {
   const { club, admin, minh, other, run } = fixture();
   const week = addDays(weekId(), 7);
   const month = week.slice(0, 7);
@@ -89,11 +89,84 @@ test("Duty notices start at publication, reach new assignments, and retire when 
   assert.equal(memberNotificationsFor(club, other.id).length, 1);
   assert.equal(memberNotificationsFor(club, minh.id).length, 1);
   run(admin, "cancelShift", { month, shiftId });
-  assert.deepEqual(memberNotificationsFor(club, minh.id), []);
+  const cancelled = memberNotificationsFor(club, minh.id).filter(item => item.kind === "duty");
+  assert.deepEqual(cancelled.map(item => item.dutyChange), ["cancelled", "assigned"]);
+  assert.equal(cancelled[1].id, published.id);
   run(admin, "restoreShift", { month, shiftId });
-  const restored = memberNotificationsFor(club, minh.id);
-  assert.equal(restored.length, 1);
+  const restored = memberNotificationsFor(club, minh.id).filter(item => item.kind === "duty");
+  assert.equal(restored.length, 3);
   assert.notEqual(restored[0].id, published.id);
+  assert.equal(restored[0].dutyChange, "assigned");
+});
+
+test("Reading a bulletin and confirming it with a reaction persist independently for each account", () => {
+  const { club, admin, minh, other, run } = fixture();
+  const postId = "separate-confirmation";
+  run(admin, "saveBulletinPost", { id: postId, title: "Tin mới", content: "Lịch họp tuần này" });
+  const id = memberNotificationsFor(club, minh.id)[0].id;
+  assert.equal(markMemberNotificationRead(club, minh.id, id), true);
+  const [readOnly] = memberNotificationsFor(club, minh.id);
+  assert.equal(readOnly.read, true);
+  assert.equal(readOnly.kind === "bulletin" && readOnly.confirmed, undefined);
+  run(minh, "setBulletinLike", { postId, liked: true });
+  run(minh, "setBulletinLike", { postId, liked: false });
+  const [confirmed] = memberNotificationsFor(club, minh.id);
+  assert.equal(confirmed.kind === "bulletin" && confirmed.confirmed, true);
+  assert.equal(confirmed.id, id);
+  const [untouched] = memberNotificationsFor(club, other.id);
+  assert.equal(untouched.read, undefined);
+  assert.equal(untouched.kind === "bulletin" && untouched.confirmed, undefined);
+});
+
+test("Direct notices authorize BĐH, deduplicate retries, and keep recipients and bulk-read state private", () => {
+  const { club, admin, minh, other, run, identity } = fixture();
+  const privateDraft = { id: crypto.randomUUID(), title: "Trao đổi riêng", body: "Hẹn trao đổi sau giờ họp",
+    audience: "members", recipientIds: [minh.id] };
+  assert.throws(() => run(minh, "sendDirectNotice", privateDraft), /Chỉ BĐH/);
+  run(admin, "sendDirectNotice", privateDraft);
+  run(admin, "sendDirectNotice", privateDraft);
+  assert.throws(() => run(admin, "sendDirectNotice", { ...privateDraft, body: "Nội dung khác" }), /nội dung khác/);
+  assert.equal(memberNotificationsFor(club, minh.id).length, 1);
+  assert.equal(markMemberNotificationRead(club, other.id, privateDraft.id), false);
+  assert.deepEqual(memberNotificationsFor(club, other.id), []);
+  assert.deepEqual(memberNotificationsFor(club, admin.id), []);
+  const teamDraft = { ...privateDraft, id: crypto.randomUUID(), audience: "all", title: "Gửi cả Đội" };
+  run(admin, "sendDirectNotice", teamDraft);
+  assert.equal(markMemberNotificationsRead(club, minh.id, "all", "all"), 2);
+  assert.ok(memberNotificationsFor(club, minh.id).every(item => item.read && !("recipients" in item)));
+  assert.deepEqual(memberNotificationsFor(club, other.id).map(item => [item.id, item.read]), [[teamDraft.id, undefined]]);
+  assert.deepEqual(visibleMemberNotifications(club, minh.id, "workspace"), []);
+  assert.equal("directNotices" in workspaceView(club, identity(other), 1).club, false);
+  assert.equal(club.bulletinPosts?.length ?? 0, 0);
+});
+
+test("An individual score change notifies the account scored even when Cupid affects another total", () => {
+  const { club, admin, minh, other, run } = fixture();
+  club.sharing = { invites: [], locked: [], notices: [], groups: [{
+    id: "notice-pair", kind: "cupid", name: "Cupid",
+    periods: [{ id: "notice-period", memberIds: [minh.id, other.id], startedAt: Date.now() - 172_800_000 }],
+  }] };
+  run(admin, "saveManualActivity", { week: weekId(), date: today(), time: "00:00", memberId: minh.id, kind: "special", points: 4 });
+  const [notice] = memberNotificationsFor(club, minh.id);
+  assert.equal(notice.kind === "score" && notice.change, 2);
+  assert.deepEqual(memberNotificationsFor(club, other.id), []);
+});
+
+test("An event decision creates one status notice and one real score change for the participant", () => {
+  const { club, admin, minh, other, run } = fixture();
+  const eventId = "status-event-test";
+  run(admin, "createEvent", { id: eventId, name: "Sinh hoạt đầu tuần", points: 1.25, startDate: today(), endDate: today() });
+  run(minh, "registerEvent", { eventId });
+  const id = club.activityRegistrations![0].id;
+  run(admin, "reviewActivity", { id, confirmed: true });
+  run(admin, "reviewActivity", { id, confirmed: true });
+  const notices = memberNotificationsFor(club, minh.id);
+  assert.equal(notices.length, 2);
+  const activity = notices.find(item => item.kind === "activity")!;
+  assert.deepEqual(activity.target, { area: "event", eventId });
+  assert.match(activity.body, /1 lượt được duyệt/);
+  assert.equal(notices.find(item => item.kind === "score")!.change, 1.25);
+  assert.deepEqual(memberNotificationsFor(club, other.id), []);
 });
 
 test("Document uploads keep their sanitized filename when attached to a bulletin", () => {
@@ -103,6 +176,11 @@ test("Document uploads keep their sanitized filename when attached to a bulletin
   assert.equal(name, "Quy chế.PDF");
   assert.equal(type, "application/pdf");
   assert.equal(bulletinDocumentType("noi-dung.html"), undefined);
+  const ole = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+  for (const filename of ["BanCu.doc", "DiemCu.xls", "TrinhChieu.ppt"]) {
+    assert.equal(validBulletinDocumentPrefix(ole, bulletinDocumentType(filename)!), true);
+    assert.equal(validBulletinDocumentPrefix(new TextEncoder().encode("%PDF-1.7"), bulletinDocumentType(filename)!), false);
+  }
   assert.equal(bulletinMediaByteLimit(type!), 20 * 1024 * 1024);
   const postId = "document-test-post";
   const media = { id: crypto.randomUUID(), type: type!, name, bytes: 123 };

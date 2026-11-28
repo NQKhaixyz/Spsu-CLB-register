@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { eraseEventFromHistory } from "./activity";
+import { captureWorkspaceNotifications } from "./activity-notifications";
 import type { Identity } from "./actions";
 import { syncWeeks } from "./club";
 import { eventPhotoId } from "./event-evidence";
@@ -23,6 +24,7 @@ export async function deleteEvent(identity: Identity, data: Record<string, unkno
     const event = club.events?.find(item => item.id === id);
     if (!event) return { club, revision, photosDeleted: true };
 
+    const notify = captureWorkspaceNotifications(club, admin, "deleteEvent", data);
     const photoIds = eraseEventFromHistory(club, id);
     club.logs.unshift({
       at: new Date().toISOString(),
@@ -32,6 +34,7 @@ export async function deleteEvent(identity: Identity, data: Record<string, unkno
     });
     club.logs = club.logs.slice(0, 2000);
     syncWeeks(club);
+    notify?.();
     const payload = JSON.stringify(club);
     const updated = revision + 1;
     const statements = [

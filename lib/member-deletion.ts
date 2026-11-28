@@ -104,12 +104,19 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
     club.activityNotices = club.activityNotices.filter(item => item.memberId !== member.id).map(item =>
       item.actorId === member.id ? { ...item, actorId: undefined } : item);
   }
+  if (club.directNotices) {
+    club.directNotices = club.directNotices.filter(item => item.actorId !== member.id).map(item => ({
+      ...item, recipients: item.recipients.filter(id => id !== member.id),
+      readBy: item.readBy?.filter(id => id !== member.id),
+    })).filter(item => item.recipients.length);
+  }
   if (club.bulletinPosts) club.bulletinPosts = club.bulletinPosts.filter(post => bulletinAuthorId(club, post) !== member.id);
   if (club.bulletinUploads) club.bulletinUploads = club.bulletinUploads.filter(upload => upload.uploaderId !== member.id);
   for (const post of club.bulletinPosts ?? []) {
     if (post.likedBy) post.likedBy = post.likedBy.filter(id => id !== member.id);
     if (post.savedBy) post.savedBy = post.savedBy.filter(id => id !== member.id);
     if (post.notice?.readBy) post.notice.readBy = post.notice.readBy.filter(id => id !== member.id);
+    if (post.notice?.confirmedBy) post.notice.confirmedBy = post.notice.confirmedBy.filter(id => id !== member.id);
     if (post.comments) {
       const removed = new Set(post.comments.filter(comment => comment.memberId === member.id).map(comment => comment.id));
       post.comments = post.comments.filter(comment => !removed.has(comment.id));

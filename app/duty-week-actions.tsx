@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarDays, ImageIcon, MapPin } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dateLabel, dutyNames, isShiftPublished, today, type Club, type Member, type Schedule, type Shift } from "../lib/club";
 import { displayMessage } from "../lib/display-message";
 import { evidenceExpiry, evidenceSubmissionOpen, type DutyEvidenceSummary } from "../lib/duty-evidence";
@@ -18,13 +18,15 @@ function shiftTime(shift: Shift) {
   return `${period} · ${shift.startTime}${shift.endTime ? ` – ${shift.endTime}` : ""}`;
 }
 
-export default function DutyWeekActions({ week, entries, club, me }: {
+export default function DutyWeekActions({ week, entries, club, me, focusShift }: {
   week: string; entries: DutyEntry[]; club: Club; me: Member;
+  focusShift?: { id: string };
 }) {
   const [result, setResult] = useState<DutyEvidenceResult>();
   const [attempt, setAttempt] = useState(0);
   const [review, setReview] = useState<DutyEntry>();
   const [now, setNow] = useState(() => new Date());
+  const focused = useRef<typeof focusShift>(undefined);
   const isAdmin = me.role === "admin";
   const day = today(now);
   const expired = now.getTime() >= evidenceExpiry(week);
@@ -71,6 +73,15 @@ export default function DutyWeekActions({ week, entries, club, me }: {
     .sort((a, b) => priority(a.shift.date) - priority(b.shift.date) ||
       a.shift.date.localeCompare(b.shift.date) || a.shift.period.localeCompare(b.shift.period));
   const myShifts = ordered.filter(({ shift }) => shift.assignments.some(row => row.memberId === me.id));
+  const canFocusShift = !!focusShift && myShifts.some(({ shift }) => shift.id === focusShift.id);
+  useEffect(() => {
+    if (!focusShift || !canFocusShift || focused.current === focusShift) return;
+    const row = document.getElementById("own-duty-" + focusShift.id);
+    if (!row) return;
+    focused.current = focusShift;
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+  }, [focusShift, canFocusShift]);
   const waiting = (entry: DutyEntry) => proofRows.filter(row => row.shiftId === entry.shift.id &&
     row.month === entry.schedule.month && row.status === "pending" && !entry.shift.cancelled &&
     entry.shift.assignments.some(person => person.memberId === row.memberId && person.result !== "cancelled"));
@@ -98,7 +109,7 @@ export default function DutyWeekActions({ week, entries, club, me }: {
         const showEvidence = !isAdmin && !cancelled && (!!status || canSend);
         const label = status === "rejected" && canSend ? "Gửi lại minh chứng"
           : status ? "Xem minh chứng" : "Gửi minh chứng";
-        return <div className="duty-action-row" key={shift.id}>
+        return <div className="duty-action-row" key={shift.id} id={isAdmin ? undefined : "own-duty-" + shift.id} tabIndex={-1}>
           <div>
             <h3>{shift.date === day ? "Hôm nay · " : ""}{dateLabel(shift.date, true)}</h3>
             <div className="activity-meta">

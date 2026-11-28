@@ -7,8 +7,11 @@ export const bulletinDocumentLimitMb = 20;
 export const bulletinVideoTypes = ["video/mp4", "video/webm", "video/quicktime"] as const;
 const documentFormats = {
   pdf: "application/pdf",
+  doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 } as const;
 export const bulletinDocumentAccept = Object.entries(documentFormats).flatMap(([extension, mime]) => ["." + extension, mime]).join(",");
@@ -16,7 +19,7 @@ export const bulletinStageMs = 2 * 60 * 60 * 1000;
 export const bulletinMediaEndpoint = "/api/bulletin-media";
 
 export type BulletinVideoType = typeof bulletinVideoTypes[number];
-type BulletinDocumentType = (typeof documentFormats)[keyof typeof documentFormats];
+export type BulletinDocumentType = (typeof documentFormats)[keyof typeof documentFormats];
 export type BulletinMediaType = "image/jpeg" | BulletinVideoType | BulletinDocumentType;
 export type BulletinMedia = { id: string; type: BulletinMediaType; bytes: number; name?: string };
 export type BulletinUpload = BulletinMedia & { postId: string; uploaderId: string; expiresAt: number };
@@ -26,8 +29,23 @@ export const isBulletinVideo = (type: unknown): type is BulletinVideoType =>
 export const isBulletinDocument = (type: unknown): type is BulletinDocumentType =>
   Object.values(documentFormats).some(format => format === type);
 export function bulletinDocumentType(name: string): BulletinDocumentType | undefined {
-  const extension = name.match(/\.(pdf|docx|xlsx|pptx)$/i)?.[1]?.toLowerCase() as keyof typeof documentFormats | undefined;
-  return extension ? documentFormats[extension] : undefined;
+  const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  return name.includes(".") && Object.hasOwn(documentFormats, extension)
+    ? documentFormats[extension as keyof typeof documentFormats] : undefined;
+}
+
+export function bulletinDocumentFormat(type: BulletinDocumentType) {
+  return Object.entries(documentFormats).find(([, mime]) => mime === type)?.[0].toUpperCase();
+}
+
+const officeContainer = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+export function validBulletinDocumentPrefix(prefix: Uint8Array, type: BulletinDocumentType) {
+  if (prefix.length < 8) return false;
+  if (type === documentFormats.pdf) return new TextDecoder().decode(prefix.subarray(0, 5)) === "%PDF-";
+  if (type === documentFormats.doc || type === documentFormats.xls || type === documentFormats.ppt) {
+    return officeContainer.every((byte, index) => prefix[index] === byte);
+  }
+  return prefix[0] === 0x50 && prefix[1] === 0x4b && prefix[2] === 0x03 && prefix[3] === 0x04;
 }
 
 export function bulletinDocumentName(name: string) {
@@ -41,8 +59,8 @@ export const isBulletinMediaId = (id: unknown): id is string =>
 export const bulletinMediaByteLimit = (type: BulletinMediaType) =>
   type === "image/jpeg" ? maxPhotoBytes : (isBulletinVideo(type) ? bulletinVideoLimitMb : bulletinDocumentLimitMb) * 1024 * 1024;
 export const bulletinMediaKey = (id: string) => `bulletin-media/${id}`;
-export const bulletinMediaUrl = (postId: string, id: string) =>
-  bulletinMediaEndpoint + "?" + new URLSearchParams({ postId, id });
+export const bulletinMediaUrl = (postId: string, id: string, preview = false) =>
+  bulletinMediaEndpoint + "?" + new URLSearchParams({ postId, id, ...(preview ? { preview: "1" } : {}) });
 
 export function bulletinMediaIds(club: Club) {
   return new Set([

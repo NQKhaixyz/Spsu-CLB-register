@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { Identity } from "./actions";
+import { captureWorkspaceNotifications } from "./activity-notifications";
 import { syncWeeks } from "./club";
 import { queueDutyPhotoDeletions } from "./duty-photo-storage";
 import { AuthError } from "./password";
@@ -24,6 +25,7 @@ export async function removeDutyMember(identity: Identity, data: Record<string, 
     if (!shift.assignments.some(assignment => assignment.memberId === memberId)) {
       return { club, revision, photoDeleted: true };
     }
+    const notify = captureWorkspaceNotifications(club, admin, "removeDutyMember", data);
     shift.assignments = shift.assignments.filter(assignment => assignment.memberId !== memberId);
     if (shift.cancellationSnapshot) {
       shift.cancellationSnapshot = shift.cancellationSnapshot.filter(assignment => assignment.memberId !== memberId);
@@ -37,6 +39,7 @@ export async function removeDutyMember(identity: Identity, data: Record<string, 
     });
     club.logs = club.logs.slice(0, 2000);
     syncWeeks(club);
+    notify?.();
 
     const payload = JSON.stringify(club);
     const updated = revision + 1;

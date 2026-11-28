@@ -1,6 +1,6 @@
 "use client";
 import { CalendarDays, ChevronDown, MapPin, Paperclip, Plus } from "lucide-react";
-import { useCallback, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
 import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, defaultEventPoints, eventQuantityPoints, eventRoundRegistration, recordedEventQuantity, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
@@ -57,7 +57,11 @@ function eventScheduleLabel({ startDate, startTime, endDate, endTime }: ClubEven
   return date;
 }
 
-export default function Activities({ club, me, isAdmin, busy, onAction, onEvidenceSaved }: Omit<ActivityProps, "week"> & { onEvidenceSaved: () => void }) {
+export default function Activities({ club, me, isAdmin, busy, onAction, onEvidenceSaved, focusEvent, onViewEvent }: Omit<ActivityProps, "week"> & {
+  onEvidenceSaved: () => void;
+  focusEvent?: { id: string };
+  onViewEvent?: (eventId: string) => void;
+}) {
   const [eventDialog, setEventDialog] = useState<EventDialog | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [eventFilter, setEventFilter] = useState("");
@@ -74,6 +78,23 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
     (a.startTime ?? "").localeCompare(b.startTime ?? "") || a.name.localeCompare(b.name));
   const visibleEvents = events.filter(event => showHistory || isEventOpen(event, currentDay));
   const visibleEventIds = new Set(visibleEvents.map(event => event.id));
+  const focusExists = !!focusEvent && events.some(event => event.id === focusEvent.id);
+  const focusVisible = !!focusEvent && visibleEventIds.has(focusEvent.id);
+  const lastFocus = useRef<typeof focusEvent>(undefined);
+  useEffect(() => {
+    if (!focusEvent || !focusExists || lastFocus.current === focusEvent) return;
+    if (!focusVisible) {
+      setShowHistory(true);
+      return;
+    }
+    const card = document.getElementById("event-card-" + focusEvent.id);
+    if (!(card instanceof HTMLDetailsElement)) return;
+    lastFocus.current = focusEvent;
+    setEventFilter(focusEvent.id);
+    card.open = true;
+    card.querySelector("summary")?.focus({ preventScroll: true });
+    card.scrollIntoView({ block: "nearest" });
+  }, [focusEvent, focusExists, focusVisible]);
   const selectedEvent = visibleEventIds.has(eventFilter) ? eventFilter : "";
   const registrations = (club.activityRegistrations ?? []).filter(r => r.kind === "event" && (isAdmin || r.memberId === me.id));
   const cards = visibleEvents.map(event => {
@@ -119,6 +140,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
 
   function showRegistrations(eventId: string) {
     setEventFilter(eventId);
+    onViewEvent?.(eventId);
     requestAnimationFrame(() => {
       results.current?.focus({ preventScroll: true });
       results.current?.scrollIntoView({ block: "start" });
@@ -158,7 +180,8 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
         const status = cancelled ? "Đã hủy" : ended ? "Đã kết thúc" :
           startsLater ? "Sắp diễn ra" : afterSchedule ? "Đang mở đăng ký" : "Đang diễn ra";
         const actionableProof = proofRows[0];
-        return <details className="activity-item event-card" key={event.id} name="team-events">
+        return <details className="activity-item event-card" key={event.id} name="team-events" id={"event-card-" + event.id}
+          onToggle={change => { if (change.currentTarget.open) onViewEvent?.(event.id); }}>
           <summary className="event-card-summary">
             <span className="event-card-title">
               <strong>{event.name}</strong>
