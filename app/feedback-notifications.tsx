@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Bell, CalendarDays, Check, CheckCheck, ClipboardList, Feather, Mail, MessageSquare, MessageSquarePlus, Newspaper, Plus, Shield, Trash2, X } from "lucide-react";
+import { Bell, CalendarDays, Check, CheckCheck, ClipboardList, Heart, Mail, MessageSquare, MessageSquarePlus, Newspaper, Plus, Shield, Trash2, X } from "lucide-react";
 import { activityLabels } from "../lib/activity";
 import { dateLabel } from "../lib/club";
 import type { InboxNotification } from "../lib/feedback-notifications";
@@ -30,7 +30,7 @@ export function notificationCopy(notice: InboxNotification) {
   if ("sharingId" in notice) return {
     title: sharingNoticeTitles[notice.kind],
     body: notice.kind.startsWith("cupid") ? "Cập nhật Cupid trong Góc của tôi" : "Cập nhật Bang hội trong Góc của tôi",
-    icon: notice.kind.startsWith("cupid") ? Feather : Shield,
+    icon: notice.kind.startsWith("cupid") ? Heart : Shield,
   };
   if ("feedbackId" in notice) return feedbackCopy[notice.kind];
   switch (notice.kind) {

@@ -6,7 +6,7 @@ import {
   Check,
   ChevronRight,
   Clover,
-  Feather,
+  Heart,
   LoaderCircle,
   X,
   type LucideIcon,
@@ -77,8 +77,8 @@ export function Avatar({
       <span className="avatar-frame-sheen" aria-hidden="true" />
       <span className="avatar-frame-gem" aria-hidden="true" />
     </>}
-    {cupid?.kind === "cupid" && <span className="cupid-avatar-wing" data-side={cupid.memberIds[0] === memberId ? "left" : "right"} aria-hidden="true">
-      <Feather />
+    {cupid?.kind === "cupid" && <span className="cupid-avatar-heart" aria-hidden="true">
+      <Heart fill="currentColor" />
     </span>}
   </>;
   if (!profileLink) return <span className={frameClass} data-tier={tier?.id} aria-hidden="true">{framedPortrait}</span>;

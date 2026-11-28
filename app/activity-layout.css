@@ -179,6 +179,7 @@
   overflow-wrap: anywhere;
 }
 .event-description :is(strong, em) { font-synthesis: weight style; }
+.event-description > hr { border: 0; border-block-start: 1px solid var(--line); margin-block: .7em; }
 .dialog.wide.event-composer-dialog { width: min(66rem, 100%); }
 .event-compose-layout { display: grid; row-gap: 14px; }
 .event-compose-layout > * { min-width: 0; }

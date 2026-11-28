@@ -1,6 +1,6 @@
 "use client";
 
-import { Feather, Sparkles, Users } from "lucide-react";
+import { Heart, Sparkles, Users } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Member } from "../lib/club";
@@ -27,7 +27,7 @@ function CupidCard({ group, profileMemberId }: { group: PublicSharingGroup; prof
   const identity = useMemberIdentity();
   return <section className="sharing-card" data-kind="cupid" data-milestone={group.jointEvent || group.sevenDays} aria-label="Thẻ Cupid">
     <header className="sharing-card-title">
-      <span className="sharing-emblem"><Feather size={21} aria-hidden="true" /></span>
+      <span className="sharing-emblem"><Heart size={21} fill="currentColor" aria-hidden="true" /></span>
       <div><h3>Cupid</h3><span>Ghép từ {dateTime.format(group.startedAt)}</span></div>
     </header>
     <ul className="sharing-roster">
@@ -150,7 +150,7 @@ export default function SharingPanel({ me, view, target, busy, onAction }: {
   if (!mine) return null;
   return <section className="panel sharing-panel" aria-labelledby="my-sharing-title" tabIndex={-1} ref={section}>
     <header className="sharing-panel-title">
-      <span className="sharing-emblem"><Feather size={21} aria-hidden="true" /></span>
+      <span className="sharing-emblem"><Heart size={21} fill="currentColor" aria-hidden="true" /></span>
       <h2 id="my-sharing-title">Cupid</h2>
     </header>
     {mine.invited.filter(invite => invite.kind === "cupid").map(invite => {
@@ -191,7 +191,7 @@ export default function SharingPanel({ me, view, target, busy, onAction }: {
     </div> : mine.eligible && <div className="sharing-choices">
       <p>{sharingRule}</p>
       <div className="sharing-actions">
-        <Button variant="secondary" disabled={busy} onClick={() => setEditing(true)}><Feather size={16} aria-hidden="true" /> Mời ghép Cupid</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => setEditing(true)}><Heart size={16} aria-hidden="true" /> Mời ghép Cupid</Button>
       </div>
       {editing && <form className="sharing-form" onSubmit={prepareInvite}>
         <Field label="Người được mời ghép Cupid">

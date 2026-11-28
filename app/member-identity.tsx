@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, Fragment, useContext, type ReactNode } from "react";
-import { Feather } from "lucide-react";
+import { Heart } from "lucide-react";
 import type { Member } from "../lib/club";
 import type { ScoreStanding } from "../lib/score-ranks";
 import type { PublicSharingGroup } from "../lib/sharing-types";
@@ -31,8 +31,10 @@ export function MemberName({ memberId, name, as: Tag = "span", className }: {
   return <Tag className={className ? `member-identity ${className}` : "member-identity"}>
     <span className="member-name" data-weekly-rank={rank}>{name ?? member?.name ?? "Thành viên"}</span>
     {group?.hashtag ? <>{" "}<span className="member-sharing-tag" data-kind={group.kind}
-      title={group.kind === "cupid" ? "Hashtag Cupid" : group.name}>#{group.hashtag}</span></>
-      : group?.kind === "cupid" ? <span className="sharing-name-wing" title="Cupid"><Feather size={12} aria-label="Cupid" /></span> : null}
+      title={group.kind === "cupid" ? "Hashtag Cupid" : group.name}>
+      {group.kind === "cupid" && <Heart aria-hidden="true" fill="currentColor" />}<span>#{group.hashtag}</span>
+    </span></>
+      : group?.kind === "cupid" ? <span className="sharing-name-heart" title="Cupid"><Heart size={12} fill="currentColor" aria-label="Cupid" /></span> : null}
   </Tag>;
 }
 

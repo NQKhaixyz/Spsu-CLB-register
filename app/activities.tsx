@@ -17,7 +17,7 @@ import { Avatar, Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } fr
 import { MemberName, MemberOption } from "./member-identity";
 import { ScoreInput } from "./score-input";
 import { EventRoundField } from "./event-round-field";
-import { BulletinText } from "./bulletin-text";
+import { EventDescription } from "./event-description";
 import { TextEmphasisEditor } from "./text-emphasis-editor";
 import { TitleField } from "./title-field";
 type ActivityProps = {club:Club;me:Member;isAdmin:boolean;week:string;busy:boolean;onAction:Act};
@@ -189,9 +189,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
               </div>
               <Badge status={cancelled ? "absent" : "neutral"}>{status}</Badge>
             </header>
-            {event.description && <p className="event-description">
-              <BulletinText content={event.description} contentFormat={event.descriptionFormat} />
-            </p>}
+            {event.description && <EventDescription content={event.description} contentFormat={event.descriptionFormat} />}
             <div className="activity-actions event-card-actions">
               {actionableProof && <Button disabled={busy} onClick={() => {
                 if (multiple || (isAdmin && proofRows.length > 1)) showRegistrations(event.id);
@@ -572,6 +570,7 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
       <div className="event-compose-description">
         <TextEmphasisEditor label="Mô tả sự kiện (không bắt buộc)" name="description" formatName="descriptionFormat"
           rows={5} maxLength={eventDescriptionLimit} initialText={event?.description} initialFormat={event?.descriptionFormat} busy={busy}
+          autoFormatPaste
           onDraftChange={(content, contentFormat) => setDraft({ content, contentFormat })} />
       </div>
       <section className="event-compose-preview" aria-label="Xem trước sự kiện">
@@ -585,7 +584,7 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
             <span><MapPin size={16} aria-hidden="true" /> {location.trim() || "Chưa cập nhật địa điểm"}</span>
           </div>
           <div className="event-card-details">
-            {draft.content.trim() ? <p className="event-description"><BulletinText {...draft} /></p> :
+            {draft.content.trim() ? <EventDescription {...draft} /> :
               <p className="hint">Mô tả sẽ hiện ở đây</p>}
           </div>
         </article>

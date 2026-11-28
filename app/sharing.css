@@ -23,7 +23,7 @@
   color: #864c59;
   background: #f4e3e6;
 }
-.sharing-name-wing, .sharing-leader {
+.sharing-name-heart, .sharing-leader {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
@@ -49,9 +49,23 @@
   overflow-wrap: anywhere;
 }
 .member-sharing-tag[data-kind="guild"] { background: #ece8d5; color: #684f24; }
+.member-sharing-tag[data-kind="cupid"] {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: .2em;
+  padding-inline: .38em;
+  vertical-align: middle;
+}
+.member-sharing-tag[data-kind="cupid"] > svg {
+  flex: none;
+  width: .78em;
+  height: .78em;
+  margin-block-start: .23em;
+}
+.member-sharing-tag[data-kind="cupid"] > span { min-inline-size: 0; }
 .sidebar-user .member-identity:has(> .member-sharing-tag) { white-space: normal; }
-.sharing-name-wing { margin-inline-start: .24em; color: #a6576d; }
-.cupid-avatar-wing {
+.sharing-name-heart { margin-inline-start: .24em; color: #a6576d; }
+.cupid-avatar-heart {
   position: absolute;
   z-index: 2;
   inset-inline-start: .05rem;
@@ -67,10 +81,9 @@
   box-shadow: 0 1px 4px #70273c40;
   pointer-events: none;
 }
-.cupid-avatar-wing svg { width: .66rem; height: .66rem; stroke-width: 2.2; }
-.cupid-avatar-wing[data-side="right"] svg { transform: scaleX(-1); }
-.avatar-frame.large > .cupid-avatar-wing { inset-inline-start: .36rem; inset-block-end: .42rem; width: 1.27rem; height: 1.27rem; }
-.avatar-frame.large > .cupid-avatar-wing svg { width: .81rem; height: .81rem; }
+.cupid-avatar-heart svg { width: .66rem; height: .66rem; stroke-width: 1.8; }
+.avatar-frame.large > .cupid-avatar-heart { inset-inline-start: .36rem; inset-block-end: .42rem; width: 1.27rem; height: 1.27rem; }
+.avatar-frame.large > .cupid-avatar-heart svg { width: .81rem; height: .81rem; }
 .sharing-card {
   border: 1px solid var(--line);
   border-radius: 13px;
