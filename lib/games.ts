@@ -31,6 +31,7 @@ const emptyWheelProgress: WheelProgress = { spins: 0, netCredits: 0 };
 type Wallet = {
   balanceCents: number;
   version: number;
+  loanDebtCents?: string;
   spins: WheelSpin[];
   flips?: CoinFlip[];
   wheelProgress?: WheelProgress;
@@ -55,6 +56,12 @@ export type CreditAdjustmentCommand = {
 };
 export type CreditRecipient = { memberId: string; name: string; balanceCents: number; walletVersion: number; identifier?: string; partnerName?: string };
 export type CreditAdjustmentResult = { memberId: string; name: string; balanceCents: number; walletVersion: number; receipt: CreditAdjustmentReceipt };
+export type CreditLoanRequest = { id: string; requestedBy: string; amountCents: number };
+export type CreditLoanCommand = { operationId: string } & (
+  | { kind: "borrow" | "repay"; amountCents: number; walletVersion: number }
+  | { kind: "approve" | "decline" | "cancel"; requestId: string }
+);
+type CreditLoanOperation = { memberId: string; command: CreditLoanCommand; requestedCupidLoan: boolean };
 const defaultWallet: Wallet = { balanceCents: startingBalance, version: 0, spins: [] };
 
 export type WheelSpin = {
@@ -65,6 +72,7 @@ export type WheelSpin = {
   netCents: number;
   balanceCents: number;
   refundCents?: number;
+  loanRepaymentCents?: number;
   walletChangeCents?: number;
 };
 
@@ -76,6 +84,7 @@ export type CoinFlip = {
   side: CoinSide;
   netCents: number;
   balanceCents: number;
+  loanRepaymentCents?: number;
   walletChangeCents?: number;
 };
 export type CoinFlipCommand = { kind: "flip"; id: string; stake: number; pick: CoinSide; walletVersion: number };
@@ -89,6 +98,7 @@ export type XoRoom = {
   moves: number[];
   status: "waiting" | "playing" | "won" | "draw" | "cancelled";
   winnerId?: string;
+  winnerLoanRepaymentCents?: number;
   finishReason?: "surrender" | "unavailable";
   updatedAt: number;
 };
@@ -99,6 +109,7 @@ export type GamesState = {
   rooms: XoRoom[];
   creditHistorySince?: number;
   exchangeReceipts?: CreditExchangeReceipt[];
+  loanOperations?: CreditLoanOperation[];
 };
 export type GamesView = {
   revision: number;
@@ -143,6 +154,22 @@ export function parseCreditAdjustment(data: Record<string, unknown>): CreditAdju
     throw new GameRuleError(mode === "set" ? "Nhập số credits từ 0 trở lên" : "Nhập số credits lớn hơn 0");
   if (!integerBetween(walletVersion, 0, maxBalance)) throw new GameRuleError("Phiên bản số dư không hợp lệ");
   return { operationId, memberId, mode, amountCents, walletVersion };
+}
+
+export function parseCreditLoanCommand(input: unknown): CreditLoanCommand {
+  const invalid = () => new GameRuleError("Thao tác vay hoặc trả nợ không hợp lệ");
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw invalid();
+  const { operationId, kind, amountCents, walletVersion, requestId } = input as Record<string, unknown>;
+  if (typeof operationId !== "string" || !requestIdFormat.test(operationId)) throw invalid();
+  if (kind === "borrow" || kind === "repay") {
+    if (!integerBetween(amountCents, 1, maxBalance)) throw new GameRuleError("Nhập số credits hợp lệ lớn hơn 0");
+    if (!integerBetween(walletVersion, 0, maxBalance)) throw invalid();
+    return { operationId, kind, amountCents, walletVersion };
+  }
+  if ((kind === "approve" || kind === "decline" || kind === "cancel") &&
+      typeof requestId === "string" && requestIdFormat.test(requestId))
+    return { operationId, kind, requestId };
+  throw invalid();
 }
 
 export function parseGameCommand(body: unknown): GameCommand | CoinFlipCommand {
@@ -229,6 +256,7 @@ export function creditWalletBalance(club: Club, memberId: string) {
 }
 
 const two = BigInt(2);
+const zero = BigInt(0);
 const maxCreditBalance = BigInt(maxBalance);
 function creditPair(club: Club, memberId: string) {
   for (const group of club.sharing?.groups ?? []) {
@@ -242,6 +270,44 @@ function creditPair(club: Club, memberId: string) {
 export function cupidCreditPartnerId(club: Club, memberId: string) {
   return creditPair(club, memberId)?.partnerId;
 }
+
+function personalLoanDebt(games: GamesState | undefined, memberId: string) {
+  return BigInt(walletFor(games, memberId).loanDebtCents ?? "0");
+}
+
+function sharedLoanDebt(period?: SharingPeriod) {
+  return BigInt(period?.loanDebtCents ?? "0");
+}
+
+export function creditLoanStatus(club: Club, memberId: string) {
+  const pair = creditPair(club, memberId);
+  const debt = personalLoanDebt(club.games, memberId) + sharedLoanDebt(pair?.period);
+  const partnerHasDebt = pair !== undefined && personalLoanDebt(club.games, pair.partnerId) > zero;
+  return { debtCents: debt.toString(), exchangeBlocked: debt > zero || partnerHasDebt };
+}
+
+function sharedWalletBalance(club: Club, memberId: string, pair: ReturnType<typeof creditPair>) {
+  const balance = BigInt(creditWalletBalance(club, memberId));
+  return pair ? balance + BigInt(creditWalletBalance(club, pair.partnerId)) + BigInt(pair.period.creditRemainder ?? 0) : balance;
+}
+
+export function creditLoanView(club: Club, memberId: string, revision: number) {
+  const wallet = walletFor(club.games, memberId);
+  const pair = creditPair(club, memberId);
+  const personal = personalLoanDebt(club.games, memberId);
+  const shared = sharedLoanDebt(pair?.period);
+  const totalDebt = personal + shared;
+  const balance = sharedWalletBalance(club, memberId, pair);
+  const affordable = balance < totalDebt ? balance : totalDebt;
+  return {
+    revision, balanceCents: balance.toString(), walletVersion: wallet.version,
+    debtCents: totalDebt.toString(), personalDebtCents: personal.toString(), sharedDebtCents: shared.toString(),
+    repayableCents: Number(affordable < maxCreditBalance ? affordable : maxCreditBalance),
+    partnerId: pair?.partnerId, request: pair?.period.loanRequest,
+  };
+}
+
+export type CreditLoanView = ReturnType<typeof creditLoanView>;
 
 export function mergeCupidCredits(club: Club, period: SharingPeriod, at: number) {
   const games: GamesState = club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
@@ -259,8 +325,8 @@ export function mergeCupidCredits(club: Club, period: SharingPeriod, at: number)
 
 export function separateCupidCredits(club: Club, period: SharingPeriod, at: number) {
   const games = club.games;
-  const [one] = period.memberIds;
-  if (!games || !one) return;
+  const [one, other] = period.memberIds;
+  if (!games || !one || !other) return;
   const balance = walletFor(games, one).balanceCents;
   period.endingCreditBalance = balance;
   const remainder = period.creditRemainder ?? 0;
@@ -271,6 +337,15 @@ export function separateCupidCredits(club: Club, period: SharingPeriod, at: numb
   }
   for (const memberId of period.memberIds) saveWalletBalance(games, memberId, walletFor(games, memberId).balanceCents);
   delete period.creditRemainder;
+  const unpaid = sharedLoanDebt(period);
+  if (unpaid > zero) {
+    const secondShare = unpaid / two;
+    walletFor(games, one).loanDebtCents = (personalLoanDebt(games, one) + unpaid - secondShare).toString();
+    if (secondShare > zero)
+      walletFor(games, other).loanDebtCents = (personalLoanDebt(games, other) + secondShare).toString();
+  }
+  delete period.loanDebtCents;
+  delete period.loanRequest;
 }
 
 export function initializeCreditHistory(club: Club, now: number) {
@@ -306,10 +381,11 @@ export function initializeCreditHistory(club: Club, now: number) {
   return true;
 }
 
-export function formatCredits(cents: number) {
-  const amount = Math.abs(cents);
-  const remainder = amount % creditCents;
-  const whole = creditNumber.format((amount - remainder) / creditCents);
+export function formatCredits(cents: number | bigint) {
+  const amount = cents < 0 ? -cents : cents;
+  const wholeCredits = BigInt(creditCents);
+  const remainder = typeof amount === "bigint" ? Number(amount % wholeCredits) : amount % creditCents;
+  const whole = creditNumber.format(typeof amount === "bigint" ? amount / wholeCredits : (amount - remainder) / creditCents);
   const fraction = remainder ? "," + String(remainder).padStart(2, "0").replace(/0$/, "") : "";
   return (cents < 0 ? "−" : "") + whole + fraction;
 }
@@ -380,7 +456,9 @@ export function adjustGameCredits(club: Club, command: CreditAdjustmentCommand, 
   const multiplier = mode === "set" && creditPair(club, memberId) ? 2 : 1;
   if (changeCents > 0 && BigInt(changeCents) * BigInt(multiplier) > creditHeadroom(club, memberId))
     throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
-  const next = updateBalance(club, memberId, at, [{ kind: "adjustment", label: "Điều chỉnh credits", changeCents }], multiplier);
+  const movements: CreditMovement[] = [{ kind: "adjustment", label: "Điều chỉnh credits", changeCents }];
+  const next = mode === "add" ? updateCreditIncome(club, memberId, at, movements, changeCents).wallet
+    : updateBalance(club, memberId, at, movements, multiplier);
   const receipt: CreditAdjustmentReceipt = {
     operationId, mode, amountCents, beforeCents: wallet.balanceCents, afterCents: next.balanceCents, appliedAt: at, actorId,
   };
@@ -423,6 +501,33 @@ function updateBalance(club: Club, memberId: string, at: number, movements: read
   return saveWalletBalance(games, memberId, balanceCents);
 }
 
+function applyLoanPayment(wallet: Wallet, period: SharingPeriod | undefined, amount: bigint) {
+  const shared = sharedLoanDebt(period);
+  const jointPayment = amount < shared ? amount : shared;
+  if (period && jointPayment > zero) {
+    const remaining = shared - jointPayment;
+    period.loanDebtCents = remaining ? remaining.toString() : undefined;
+  }
+  const personalPayment = amount - jointPayment;
+  if (personalPayment > zero) {
+    const remaining = BigInt(wallet.loanDebtCents ?? "0") - personalPayment;
+    wallet.loanDebtCents = remaining ? remaining.toString() : undefined;
+  }
+}
+
+function updateCreditIncome(club: Club, memberId: string, at: number, movements: readonly CreditMovement[], incomeCents: number) {
+  const period = creditPair(club, memberId)?.period;
+  const debt = personalLoanDebt(club.games, memberId) + sharedLoanDebt(period);
+  const halfIncome = BigInt(Math.floor(Math.max(0, incomeCents) / 2));
+  const payment = debt < halfIncome ? debt : halfIncome;
+  const repaidCents = Number(payment);
+  const wallet = updateBalance(club, memberId, at, repaidCents
+    ? [...movements, { kind: "loanRepayment", label: "Tự trả nợ credits", changeCents: -repaidCents }]
+    : movements);
+  if (payment > zero) applyLoanPayment(wallet, period, payment);
+  return { wallet, repaidCents };
+}
+
 export function spendGameCredits(club: Club, memberId: string, amountCents: number, label: string, at: number) {
   if (!integerBetween(amountCents, 1, creditWalletBalance(club, memberId)))
     throw new GameRuleError("Bạn không đủ credits để đổi điểm", 409);
@@ -434,7 +539,7 @@ export function awardGameCredits(club: Club, memberId: string, amountCents: numb
   club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
   if (!integerBetween(amountCents, 1, maxBalance) || BigInt(amountCents) > creditHeadroom(club, memberId))
     throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
-  return updateBalance(club, memberId, at, [{ kind: "exchange", label, changeCents: amountCents }]);
+  return updateCreditIncome(club, memberId, at, [{ kind: "exchange", label, changeCents: amountCents }], amountCents).wallet;
 }
 
 export function clearLegacyInactivity(games: GamesState | undefined) {
@@ -477,6 +582,76 @@ function creditHeadroom(club: Club, memberId: string) {
   return two * (maxCreditBalance - (reserve > partnerReserve ? reserve : partnerReserve)) - total;
 }
 
+function checkLoanHeadroom(club: Club, memberId: string, amountCents: number) {
+  if (BigInt(amountCents) > creditHeadroom(club, memberId))
+    throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
+}
+
+function drawCreditLoan(club: Club, memberId: string, amountCents: number, period: SharingPeriod | undefined, at: number) {
+  checkLoanHeadroom(club, memberId, amountCents);
+  const wallet = updateBalance(club, memberId, at, [{ kind: "loan", label: "Vay credits", changeCents: amountCents }]);
+  const added = BigInt(amountCents);
+  if (period) period.loanDebtCents = (sharedLoanDebt(period) + added).toString();
+  else wallet.loanDebtCents = (BigInt(wallet.loanDebtCents ?? "0") + added).toString();
+}
+
+function repayCreditLoan(club: Club, memberId: string, amountCents: number, pair: ReturnType<typeof creditPair>, at: number) {
+  const amount = BigInt(amountCents);
+  const debt = personalLoanDebt(club.games, memberId) + sharedLoanDebt(pair?.period);
+  if (amount > debt) throw new GameRuleError("Số credits trả lớn hơn dư nợ", 409);
+  if (amount > sharedWalletBalance(club, memberId, pair)) throw new GameRuleError("Số dư không đủ để trả nợ", 409);
+  const wallet = updateBalance(club, memberId, at, [{ kind: "loanRepayment", label: "Trả nợ credits", changeCents: -amountCents }]);
+  applyLoanPayment(wallet, pair?.period, amount);
+}
+
+function sameLoanCommand(one: CreditLoanCommand, other: CreditLoanCommand) {
+  if (one.kind !== other.kind) return false;
+  if ("amountCents" in one && "amountCents" in other)
+    return one.amountCents === other.amountCents && one.walletVersion === other.walletVersion;
+  return "requestId" in one && "requestId" in other && one.requestId === other.requestId;
+}
+
+export function applyCreditLoanCommand(club: Club, memberId: string, command: CreditLoanCommand, at: number) {
+  const member = club.members.find(item => item.id === memberId);
+  if (!member || !canReceiveCredits(club, member))
+    throw new GameRuleError("Vay và trả nợ dành cho tài khoản đang hoạt động", 403);
+
+  const games = club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
+  const previous = games.loanOperations?.find(item => item.command.operationId === command.operationId);
+  if (previous) {
+    if (previous.memberId !== memberId || !sameLoanCommand(previous.command, command))
+      throw new GameRuleError("Mã giao dịch đã được sử dụng", 409);
+    return previous.requestedCupidLoan;
+  }
+
+  const pair = creditPair(club, memberId);
+  const requestedCupidLoan = command.kind === "borrow" && !!pair;
+  if ("amountCents" in command) {
+    const wallet = walletFor(games, memberId);
+    if (wallet.version !== command.walletVersion)
+      throw new GameRuleError("Ví vừa thay đổi. Kiểm tra số dư rồi thử lại", 409);
+    if (command.kind === "repay") {
+      repayCreditLoan(club, memberId, command.amountCents, pair, at);
+    } else if (pair) {
+      if (pair.period.loanRequest) throw new GameRuleError("Ví Cupid đang có đề nghị vay chờ xác nhận", 409);
+      checkLoanHeadroom(club, memberId, command.amountCents);
+      pair.period.loanRequest = { id: command.operationId, requestedBy: memberId, amountCents: command.amountCents };
+    } else {
+      drawCreditLoan(club, memberId, command.amountCents, undefined, at);
+    }
+  } else {
+    const request = pair?.period.loanRequest;
+    if (!pair || !request || request.id !== command.requestId)
+      throw new GameRuleError("Đề nghị vay đã được xử lý hoặc ví Cupid đã thay đổi", 409);
+    const authorized = command.kind === "cancel" ? request.requestedBy === memberId : request.requestedBy === pair.partnerId;
+    if (!authorized) throw new GameRuleError("Tài khoản này không thể xử lý đề nghị", 403);
+    if (command.kind === "approve") drawCreditLoan(club, memberId, request.amountCents, pair.period, at);
+    delete pair.period.loanRequest;
+  }
+  (games.loanOperations ??= []).push({ memberId, command, requestedCupidLoan });
+  return requestedCupidLoan;
+}
+
 function maxWheelStake(club: Club, memberId: string) {
   const balanceCents = walletFor(club.games, memberId).balanceCents;
   return Math.max(0, Math.min(
@@ -514,10 +689,11 @@ export function applyCoinFlip(club: Club, memberId: string, command: CoinFlipCom
   if (!integerBetween(command.stake, 1, maxCoinflipStake(club, memberId)))
     throw new GameRuleError("Mức cược vượt số credits có thể dùng");
   const netCents = command.stake * (command.pick === side ? coinWinCentsPerCredit : -creditCents);
-  const next = updateBalance(club, memberId, at, [{ kind: "coinflip",
-    label: command.pick === side ? "Coinflip · Đoán đúng" : "Coinflip · Đoán sai", changeCents: netCents }]);
+  const { wallet: next, repaidCents } = updateCreditIncome(club, memberId, at, [{ kind: "coinflip",
+    label: command.pick === side ? "Coinflip · Đoán đúng" : "Coinflip · Đoán sai", changeCents: netCents }], netCents);
   const flip = { id: command.id, at, stake: command.stake, pick: command.pick, side, netCents, balanceCents: next.balanceCents,
-    ...(creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}) };
+    ...(repaidCents ? { loanRepaymentCents: repaidCents } : {}),
+    ...(repaidCents || creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}) };
   next.flips = [flip, ...(wallet.flips ?? [])].slice(0, gameResultHistoryLimit);
   return flip;
 }
@@ -564,9 +740,15 @@ function trimFinishedRooms(games: GamesState) {
 
 function finishRoom(club: Club, room: XoRoom, at: number,
   status: "won" | "draw" | "cancelled", winnerId?: string, reason?: XoRoom["finishReason"]) {
-  if (status === "won" && winnerId) updateBalance(club, winnerId, at,
-    [{ kind: "xo", label: "XO · Nhận thưởng thắng ván", changeCents: xoPrizeCents(room.stake) }]);
-  else if (status !== "won") {
+  if (status === "won" && winnerId) {
+    const prize = xoPrizeCents(room.stake);
+    const opponent = winnerId === room.hostId ? room.guestId : room.hostId;
+    const partnerId = cupidCreditPartnerId(club, winnerId);
+    const profit = prize - room.stake * creditCents * (partnerId && partnerId === opponent ? 2 : 1);
+    const { repaidCents } = updateCreditIncome(club, winnerId, at,
+      [{ kind: "xo", label: "XO · Nhận thưởng thắng ván", changeCents: prize }], profit);
+    if (repaidCents) room.winnerLoanRepaymentCents = repaidCents;
+  } else if (status !== "won") {
     const returned = [{ kind: "xo" as const, label: "XO · Hoàn tiền cược", changeCents: room.stake * creditCents }];
     updateBalance(club, room.hostId, at, returned);
     if (room.guestId) updateBalance(club, room.guestId, at, returned);
@@ -587,6 +769,7 @@ export function dropMemberFromGames(club: Club, memberId: string, erase = false,
     delete games.wallets[memberId];
     games.rooms = games.rooms.filter(room => !isPlayer(room, memberId));
     if (games.exchangeReceipts) games.exchangeReceipts = games.exchangeReceipts.filter(row => row.memberId !== memberId);
+    if (games.loanOperations) games.loanOperations = games.loanOperations.filter(row => row.memberId !== memberId);
   }
 }
 
@@ -648,15 +831,16 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     const netCredits = progress.netCredits + netCents / creditCents;
     const settleRefund = spins >= WHEEL_REFUND_EVERY;
     const refundCents = settleRefund ? wheelRefundCents(netCredits) : 0;
-    const next = updateBalance(club, memberId, at, [
+    const { wallet: next, repaidCents } = updateCreditIncome(club, memberId, at, [
       { kind: "wheel", label: `Vòng quay ×${wheelFactor}`, changeCents: netCents },
       { kind: "refund", label: "Hoàn cược vòng quay", changeCents: refundCents },
-    ]);
+    ], netCents);
     next.wheelProgress = settleRefund ? emptyWheelProgress : { spins, netCredits };
     const spin: WheelSpin = {
       id: command.id, at, stake: command.stake, factor: wheelFactor, netCents, balanceCents: next.balanceCents,
       ...(refundCents ? { refundCents } : {}),
-      ...(creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}),
+      ...(repaidCents ? { loanRepaymentCents: repaidCents } : {}),
+      ...(repaidCents || creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}),
     };
     next.spins = [spin, ...next.spins].slice(0, gameResultHistoryLimit);
     return spin;

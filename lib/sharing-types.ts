@@ -1,3 +1,5 @@
+import type { CreditLoanRequest } from "./games";
+
 export type SharingKind = "cupid" | "guild";
 
 export type SharingPeriod = {
@@ -8,6 +10,8 @@ export type SharingPeriod = {
   asset?: "credits";
   creditRemainder?: number;
   endingCreditBalance?: number;
+  loanDebtCents?: string;
+  loanRequest?: CreditLoanRequest;
 };
 
 export type CupidTag = { id: string; authorId: string; memberId: string; text: string; approved: boolean };

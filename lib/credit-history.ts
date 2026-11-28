@@ -1,6 +1,6 @@
 import type { GamesState } from "./games";
 
-export type CreditHistoryKind = "coinflip" | "wheel" | "xo" | "refund" | "adjustment" | "inactivity" | "exchange" | "cupid";
+export type CreditHistoryKind = "coinflip" | "wheel" | "xo" | "refund" | "adjustment" | "inactivity" | "exchange" | "cupid" | "loan" | "loanRepayment";
 export type CreditMovement = { kind: CreditHistoryKind; changeCents: number; label: string };
 export type PendingCreditEntry = CreditMovement & { memberId: string; at: number; balanceCents: number | null };
 export type CreditHistoryEntry = Omit<PendingCreditEntry, "memberId"> & { sequence: number };

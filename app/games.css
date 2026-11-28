@@ -94,7 +94,13 @@
 .credit-exchange-grid .field { margin-block: 0; }
 .credit-exchange-grid .btn { justify-self: start; }
 .credit-exchange-receipt { margin-block: 0 14px; }
+.credit-loan-summary, .credit-loan-actions, .credit-exchange-debt { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.credit-exchange-debt { justify-content: space-between; }
+.credit-loan-request, .credit-exchange-debt { margin-block: 0 14px; }
 @media (max-width: 720px) { .credit-exchange-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) {
+  .workspace-section-nav.games-section-nav { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .games-room-list, .games-history ul, .game-wheel-rules ul {
   list-style: none;
   margin: 0;

@@ -17,7 +17,7 @@ const price = formatCredits(CREDIT_EXCHANGE_COST_CENTS);
 const award = formatScore(CREDIT_EXCHANGE_AWARD_CENTS / 100);
 const pointUnit = formatScore(POINT_EXCHANGE_UNIT_CENTS / 100);
 
-export default function CreditExchange({ onExchanged }: { onExchanged: () => void }) {
+export default function CreditExchange({ onExchanged, onOpenLoans }: { onExchanged: () => void; onOpenLoans: () => void }) {
   const [view, setView] = useState<ExchangeView>();
   const [month, setMonth] = useState("");
   const [amount, setAmount] = useState(pointUnit);
@@ -30,7 +30,7 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
   const cents = parseCreditAmount(amount);
   const units = cents && cents % POINT_EXCHANGE_UNIT_CENTS === 0 ? cents / POINT_EXCHANGE_UNIT_CENTS : 0;
   const canBuyCredits = !!view?.open && !!selected && units > 0 && units <= selected.units;
-  const canBuyPoints = !!view?.open && view.balanceCents >= CREDIT_EXCHANGE_COST_CENTS;
+  const canBuyPoints = !!view?.open && !view.loan.exchangeBlocked && view.balanceCents >= CREDIT_EXCHANGE_COST_CENTS;
 
   useEffect(() => {
     const control = new AbortController();
@@ -111,6 +111,10 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
       ? `Đã cộng ${formatScore(receipt.pointCents / 100)} Điểm riêng · Số dư giảm ${formatCredits(-receipt.balanceChangeCents)} credits`
       : `Đã ghi ${formatScore(receipt.units * POINT_EXCHANGE_UNIT_CENTS / 100)} Điểm trừ · Số dư tăng ${formatCredits(receipt.balanceChangeCents)} credits`}</p>}
     {view && !view.open && <p className="games-note" role="status">{creditExchangeOpeningMessage}</p>}
+    {view?.loan.exchangeBlocked && <div className="games-note credit-exchange-debt">
+      <span>{view.cupid ? "Cả hai cần trả hết nợ để đổi credits sang điểm bằng ví Cupid" : "Trả hết nợ credits để đổi sang điểm"}</span>
+      <Button variant="secondary" onClick={onOpenLoans}>Xem khoản vay</Button>
+    </div>}
     {view?.open && <div className="credit-exchange-grid">
       {selected && <form className="games-card" onSubmit={submitCredits} aria-label="Điểm tháng sang credits">
         <h2>Điểm tháng sang credits</h2>
@@ -125,6 +129,7 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
           <input value={amount} onChange={event => setAmount(event.target.value)} inputMode="decimal" required disabled={busy || !!retry} />
         </Field>
         {canBuyCredits && <p className="games-caption">Nhận {formatCredits(units * CREDITS_PER_POINT_UNIT_CENTS)} credits sau phí</p>}
+        {view.loan.debtCents !== "0" && <p className="games-caption">50% credits thực nhận được dùng để trả nợ, tối đa bằng dư nợ</p>}
         <Button type="submit" disabled={!canBuyCredits || busy || !!retry}>Đổi điểm lấy credits</Button>
       </form>}
       <form className="games-card" onSubmit={submitPoints} aria-label="Credits sang điểm tháng">
@@ -132,7 +137,7 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
         <p className="games-caption">Đổi {price} credits · Cộng {award} vào Điểm riêng sau phí</p>
         <p className="games-caption">{monthLabel(view.month)} · Điểm hiện tại <strong>{formatScore(view.points)}</strong></p>
         {view.cupid && <p className="games-caption">Credits sẽ trừ từ ví Cupid</p>}
-        {!canBuyPoints && <p className="games-caption">Cần {price} credits để đổi</p>}
+        {!view.loan.exchangeBlocked && !canBuyPoints && <p className="games-caption">Cần {price} credits để đổi</p>}
         <Button type="submit" disabled={!canBuyPoints || busy || !!retry}>Đổi {price} credits lấy điểm</Button>
       </form>
     </div>}

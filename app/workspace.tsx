@@ -29,6 +29,7 @@ import WorkspaceNotifications, { NotificationDetail, notificationClock, notifica
 import { DirectNoticeComposer } from "./direct-notice-composer";
 import GamesPage from "./games";
 import CreditExchange from "./credit-exchange";
+import CreditLoans from "./credit-loans";
 import { sidebarNoticeCounts, useWorkspaceNotifications } from "./use-workspace-notifications";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
@@ -145,6 +146,7 @@ type Tab =
   | "feedback"
   | "coinflip"
   | "exchange"
+  | "creditLoans"
   | "xo"
   | "wheel"
   | "members"
@@ -168,7 +170,7 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
-const gameTabs: readonly Tab[] = ["coinflip", "xo", "wheel", "exchange", "creditsRank"];
+const gameTabs: readonly Tab[] = ["coinflip", "xo", "wheel", "exchange", "creditLoans", "creditsRank"];
 const getForm = (e: FormEvent<HTMLFormElement>) => {
   e.preventDefault();
   return Object.fromEntries(new FormData(e.currentTarget));
@@ -730,6 +732,7 @@ export default function Workspace() {
     { id: "xo", label: "XO" },
     { id: "wheel", label: "Vòng quay may mắn" },
     ...(!isAdmin ? [{ id: "exchange" as const, label: "Đổi điểm tháng" }] : []),
+    { id: "creditLoans", label: "Vay credits" },
     { id: "creditsRank", label: "Hạng credits" },
   ] : [];
   const count = (s: Registration) =>
@@ -3547,7 +3550,8 @@ export default function Workspace() {
           ) : null}
           {loadError ? <div className="notice amber">{loadError}</div> : null}
           {sectionOptions.length > 0 && (
-            <nav className={`workspace-section-nav${activeSidebarTab === "bulletin" ? " bulletin-section-nav" : ""}`} aria-label={`Mục trong ${headerTitle}`}>
+            <nav className={`workspace-section-nav${activeSidebarTab === "bulletin" ? " bulletin-section-nav" : ""}${inGames ? " games-section-nav" : ""}`}
+              aria-label={`Mục trong ${headerTitle}`}>
               {sectionOptions.map(({ id, label, pending }) => (
                 <button key={id} type="button" aria-current={activeTab === id ? "page" : undefined} onClick={() => go(id)}>
                   <span>{label}</span>
@@ -3586,7 +3590,9 @@ export default function Workspace() {
           ) : activeTab === "coinflip" || activeTab === "xo" || activeTab === "wheel" ? (
             <GamesPage key={me.id} tab={activeTab} memberId={me.id} />
           ) : activeTab === "exchange" ? (
-            <CreditExchange key={me.id} onExchanged={() => { void load(); }} />
+            <CreditExchange key={me.id} onExchanged={() => { void load(); }} onOpenLoans={() => go("creditLoans")} />
+          ) : activeTab === "creditLoans" ? (
+            <CreditLoans key={me.id} memberId={me.id} />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (

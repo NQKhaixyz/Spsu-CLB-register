@@ -1,5 +1,5 @@
 import { dateLabel, monthLabel, reportMembers, scoreFor, today, type Club, type Member } from "./club";
-import { awardGameCredits, creditWalletBalance, cupidCreditPartnerId, GameRuleError, spendGameCredits } from "./games";
+import { awardGameCredits, creditLoanStatus, creditWalletBalance, cupidCreditPartnerId, GameRuleError, spendGameCredits } from "./games";
 import { isNoticeId } from "./notification-types";
 import { sharingScoreBook } from "./sharing-scores";
 
@@ -71,6 +71,7 @@ export function creditExchangeView(club: Club, member: Member, date = today()) {
     month, points: availableMonths.find(row => row.month === month)?.points ?? 0,
     balanceCents: creditWalletBalance(club, member.id),
     cupid: !!cupidCreditPartnerId(club, member.id),
+    loan: creditLoanStatus(club, member.id),
     months: availableMonths,
   };
 }
@@ -94,6 +95,8 @@ export function exchangeMonthlyCredits(club: Club, member: Member, command: Cred
   let receipt: CreditExchangeReceipt;
   if (command.direction === CREDITS_TO_POINTS) {
     if (month !== date.slice(0, 7)) throw new GameRuleError("Chỉ cộng điểm đổi từ credits vào tháng hiện tại", 409);
+    if (creditLoanStatus(club, member.id).exchangeBlocked)
+      throw new GameRuleError("Trả hết dư nợ credits trước khi đổi sang điểm", 409);
     const awards = club.monthlyCreditAwards ??= [];
     const previous = awards.find(row => row.memberId === member.id && row.month === month);
     const spentCents = CREDIT_EXCHANGE_COST_CENTS;

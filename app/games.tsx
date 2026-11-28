@@ -207,6 +207,7 @@ function CoinFlipGame({ view, moving, disabled, onSubmit }: {
           <span data-result={Math.sign(result.netCents)}>
             {result.pick === result.side ? "Đoán đúng" : "Đoán sai"} · {signedCredits(result.netCents)} credits
           </span>
+          {!!result.loanRepaymentCents && <small>Đã trả nợ {formatCredits(result.loanRepaymentCents)} credits</small>}
           {result.walletChangeCents !== undefined && <small>Ví của bạn {signedCredits(result.walletChangeCents)} credits</small>}
         </> : "Chọn một mặt để bắt đầu"}
       </div>
@@ -337,8 +338,10 @@ function XoGame({ view, memberId, disabled, onSubmit }: {
 }
 
 function resultFor(room: XoRoom, memberId: string) {
+  const repaid = room.winnerLoanRepaymentCents;
   if (room.status === "won") return room.winnerId === memberId
-    ? { title: "Bạn thắng", detail: "Nhận " + formatCredits(xoPrizeCents(room.stake)) + " credits" }
+    ? { title: "Bạn thắng", detail: "Nhận " + formatCredits(xoPrizeCents(room.stake)) + " credits" +
+      (repaid ? " · Đã trả nợ " + formatCredits(repaid) + " credits" : "") }
     : { title: "Bạn thua", detail: "Mất " + creditNumber.format(room.stake) + " credits đã cược" };
   if (room.status === "draw") return { title: "Hòa", detail: "Cả hai được hoàn cược" };
   return {
@@ -429,6 +432,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
           <strong>{factorLabel(display.factor)}</strong>
           <span data-result={Math.sign(display.netCents)}>{signedCredits(display.netCents)} credits</span>
           {!!display.refundCents && <small className="game-wheel-refund">Hoàn cược {signedCredits(display.refundCents)} credits</small>}
+          {!!display.loanRepaymentCents && <small>Đã trả nợ {formatCredits(display.loanRepaymentCents)} credits</small>}
           {display.walletChangeCents !== undefined && <small>Ví của bạn {signedCredits(display.walletChangeCents)} credits</small>}
         </> : <span>Đặt cược để bắt đầu</span>}
       </div>
