@@ -3,7 +3,8 @@ import test from "node:test";
 import { applyAction, type Identity } from "../lib/actions";
 import { createClub, syncWeeks, type Member } from "../lib/club";
 import {
-  applyGameCommand, creditsRanking, drawWheelFactor, formatCredits, gamesView, parseGameCommand,
+  adjustGameCredits, applyGameCommand, creditRecipients, creditsRanking, drawWheelFactor, formatCredits, gamesView, parseCreditAdjustment,
+  parseCreditAmount, parseGameCommand,
   wheelFactorForRoll, WHEEL_FACTORS, WHEEL_REFUND_EVERY, wheelNetCents, xoBoard, xoWinningLine, XO_BOARD_SIZE,
   type GameCommand, type Mark, type WheelFactor,
 } from "../lib/games";
@@ -75,6 +76,45 @@ test("Credits ranking includes active accounts, shares ranks for equal balances,
   assert.deepEqual(creditsRanking(club, 10).rows[0], { memberId: guest.id, name: guest.name, balanceCents: 1_000_400, rank: 1 });
   applyAction(club, identity(owner), "member", { memberId: guest.id, active: false });
   assert.deepEqual(creditsRanking(club, 11).rows.map(row => row.memberId), [host.id, owner.id, spectator.id]);
+});
+
+test("Issuer wallet adjustments are idempotent and preserve rewards, exact credits and concurrent play", () => {
+  const { club, host, guest, view, run } = fixture();
+  host.name = guest.name = "Nguyễn Minh Đức";
+  run(host.id, { kind: "spin", id: spinId, stake: 1, walletVersion: 0 }, -4);
+  const original = view(host.id).wallet.balanceCents;
+  const initialVersion = view(host.id).wallet.version;
+  const command = parseCreditAdjustment({ operationId: roomId, memberId: host.id, mode: "add", amountCents: 700_000, walletVersion: initialVersion });
+  const grant = adjustGameCredits(club, command, "issuer", 101);
+  assert.equal(grant.changed, true);
+  assert.equal(grant.result.receipt.beforeCents, original);
+  assert.equal(grant.result.balanceCents, original + 700_000);
+  assert.equal(creditsRanking(club, 1).rows[0].memberId, host.id);
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 250 });
+  assert.deepEqual(adjustGameCredits(club, command, "issuer", 102), { changed: false, result: grant.result });
+  assert.throws(() => adjustGameCredits(club, { ...command, memberId: guest.id }, "issuer", 103), /đã được sử dụng/);
+  assert.throws(() => adjustGameCredits(club, { ...command, amountCents: 100 }, "issuer", 103), /đã được sử dụng/);
+  assert.throws(() => parseCreditAdjustment({ ...command, amountCents: -1 }), /lớn hơn 0/);
+  const subtract = parseCreditAdjustment({ ...command, operationId: crypto.randomUUID(), mode: "subtract", amountCents: 25 });
+  assert.throws(() => adjustGameCredits(club, subtract, "issuer", 104), /Số dư vừa thay đổi/);
+  const reduced = adjustGameCredits(club, { ...subtract, walletVersion: grant.result.walletVersion }, "issuer", 104);
+  assert.equal(reduced.result.balanceCents, grant.result.balanceCents - 25);
+  assert.throws(() => adjustGameCredits(club, {
+    ...subtract, operationId: crypto.randomUUID(), amountCents: reduced.result.balanceCents + 1, walletVersion: reduced.result.walletVersion,
+  }, "issuer", 105), /lớn hơn số dư/);
+  const cleared = adjustGameCredits(club, parseCreditAdjustment({
+    ...command, operationId: crypto.randomUUID(), mode: "set", amountCents: 0, walletVersion: reduced.result.walletVersion,
+  }), "issuer", 106);
+  assert.equal(cleared.result.balanceCents, 0);
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 250 });
+  assert.equal(parseCreditAmount("25,01"), 2501);
+  assert.equal(parseCreditAmount("0.95"), 95);
+  assert.equal(parseCreditAmount("1.005"), undefined);
+  assert.deepEqual(creditRecipients(club).filter(item => item.name === host.name).map(item => item.identifier).sort(),
+    [host.studentId, guest.studentId].sort());
+  guest.active = false;
+  assert.throws(() => adjustGameCredits(club, { ...command, operationId: spinId, memberId: guest.id }, "issuer", 107), /tạm nghỉ/);
+  assert.ok(!creditRecipients(club).some(item => item.memberId === guest.id));
 });
 
 test("XO holds both stakes and a win pays exactly 1.95 once, even on replay", () => {

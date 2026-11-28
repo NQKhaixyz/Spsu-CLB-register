@@ -19,7 +19,32 @@ const rankNames = new Intl.Collator("vi-VN", { numeric: true });
 
 type WheelProgress = { spins: number; netCredits: number };
 const emptyWheelProgress: WheelProgress = { spins: 0, netCredits: 0 };
-type Wallet = { balanceCents: number; version: number; spins: WheelSpin[]; wheelProgress?: WheelProgress };
+type Wallet = {
+  balanceCents: number;
+  version: number;
+  spins: WheelSpin[];
+  wheelProgress?: WheelProgress;
+  operatorGrants?: CreditAdjustmentReceipt[];
+};
+export type CreditAdjustmentMode = "add" | "subtract" | "set";
+export type CreditAdjustmentReceipt = {
+  operationId: string;
+  amountCents: number;
+  beforeCents: number;
+  afterCents: number;
+  appliedAt: number;
+  actorId?: string;
+  mode?: CreditAdjustmentMode;
+};
+export type CreditAdjustmentCommand = {
+  operationId: string;
+  memberId: string;
+  mode: CreditAdjustmentMode;
+  amountCents: number;
+  walletVersion: number;
+};
+export type CreditRecipient = { memberId: string; name: string; balanceCents: number; walletVersion: number; identifier?: string };
+export type CreditAdjustmentResult = { memberId: string; name: string; balanceCents: number; walletVersion: number; receipt: CreditAdjustmentReceipt };
 const defaultWallet: Wallet = { balanceCents: startingBalance, version: 0, spins: [] };
 
 export type WheelSpin = {
@@ -76,6 +101,18 @@ export class GameRuleError extends Error {
 
 function integerBetween(value: unknown, min: number, max: number): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
+}
+
+export function parseCreditAdjustment(data: Record<string, unknown>): CreditAdjustmentCommand {
+  const { operationId, memberId, mode, amountCents, walletVersion } = data;
+  if (typeof operationId !== "string" || !requestIdFormat.test(operationId) || typeof memberId !== "string" || !memberId || memberId.length > 120)
+    throw new GameRuleError("Tài khoản hoặc mã điều chỉnh credits không hợp lệ");
+  if (mode !== "add" && mode !== "subtract" && mode !== "set")
+    throw new GameRuleError("Chọn thao tác điều chỉnh");
+  if (!integerBetween(amountCents, mode === "set" ? 0 : 1, maxBalance))
+    throw new GameRuleError(mode === "set" ? "Nhập số credits từ 0 trở lên" : "Nhập số credits lớn hơn 0");
+  if (!integerBetween(walletVersion, 0, maxBalance)) throw new GameRuleError("Phiên bản số dư không hợp lệ");
+  return { operationId, memberId, mode, amountCents, walletVersion };
 }
 
 export function parseGameCommand(body: unknown): GameCommand {
@@ -161,9 +198,16 @@ export function formatCredits(cents: number) {
   return (cents < 0 ? "−" : "") + whole + fraction;
 }
 
+export function parseCreditAmount(text: string) {
+  const match = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(text.trim());
+  if (!match) return;
+  const cents = Number(match[1]) * creditCents + Number((match[2] ?? "").padEnd(2, "0"));
+  return Number.isSafeInteger(cents) ? cents : undefined;
+}
+
 export function creditsRanking(club: Club, revision: number): CreditsRanking {
   const sorted = club.members
-    .filter(member => member.active && member.userId && !(club.testAccountsDisabled && member.userId === "native:test-member"))
+    .filter(member => canReceiveCredits(club, member))
     .map(({ id, name }) => ({ memberId: id, name, balanceCents: walletFor(club.games, id).balanceCents }))
     .sort((a, b) => b.balanceCents - a.balanceCents || rankNames.compare(a.name, b.name) || a.memberId.localeCompare(b.memberId));
   let rank = 0;
@@ -172,6 +216,59 @@ export function creditsRanking(club: Club, revision: number): CreditsRanking {
     return { ...row, rank };
   });
   return { revision, rows };
+}
+
+function canReceiveCredits(club: Club, member: Club["members"][number]) {
+  return member.active && !!member.userId && !(club.testAccountsDisabled && member.userId === "native:test-member");
+}
+
+export function creditRecipients(club: Club): CreditRecipient[] {
+  const members = club.members.filter(member => canReceiveCredits(club, member));
+  const names = new Map<string, number>();
+  const keyFor = (name: string) => name.normalize("NFC").trim().toLocaleLowerCase("vi-VN");
+  for (const member of members) {
+    const key = keyFor(member.name);
+    names.set(key, (names.get(key) ?? 0) + 1);
+  }
+  return members.map(member => {
+    const wallet = walletFor(club.games, member.id);
+    return {
+      memberId: member.id, name: member.name, balanceCents: wallet.balanceCents, walletVersion: wallet.version,
+      ...((names.get(keyFor(member.name)) ?? 0) > 1 ? { identifier: member.studentId || member.loginName || member.id } : {}),
+    };
+  }).sort((a, b) => rankNames.compare(a.name, b.name) || a.memberId.localeCompare(b.memberId));
+}
+
+export function adjustGameCredits(club: Club, command: CreditAdjustmentCommand, actorId: string, at: number) {
+  const { memberId, operationId, mode, amountCents, walletVersion } = command;
+  const member = club.members.find(item => item.id === memberId);
+  if (!member) throw new GameRuleError("Không tìm thấy tài khoản nhận credits", 404);
+  const games: GamesState = club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
+  const wallet = walletFor(games, memberId);
+  for (const [owner, otherWallet] of Object.entries(games.wallets)) {
+    const receipt = otherWallet.operatorGrants?.find(item => item.operationId === operationId);
+    if (!receipt) continue;
+    if (owner !== memberId || receipt.amountCents !== amountCents || receipt.actorId !== actorId || (receipt.mode ?? "add") !== mode)
+      throw new GameRuleError("Mã điều chỉnh credits đã được sử dụng", 409);
+    const result: CreditAdjustmentResult = { memberId, name: member.name, balanceCents: wallet.balanceCents, walletVersion: wallet.version, receipt };
+    return { changed: false, result };
+  }
+  if (!canReceiveCredits(club, member)) throw new GameRuleError("Tài khoản nhận credits đang tạm nghỉ hoặc chưa đăng ký", 409);
+  if (wallet.version !== walletVersion) throw new GameRuleError("Số dư vừa thay đổi. Kiểm tra lại số dư hiện tại", 409);
+  const balance = mode === "set" ? amountCents : wallet.balanceCents + (mode === "add" ? amountCents : -amountCents);
+  if (balance < 0) throw new GameRuleError("Số credits muốn trừ lớn hơn số dư hiện tại");
+  const room = liveRoomFor(games, memberId);
+  const reservedPrize = room ? xoPrizeCents(room.stake) : 0;
+  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits);
+  if (!Number.isSafeInteger(balance) || balance > maxBalance - reservedPrize - reservedRefund)
+    throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
+  const next = updateBalance(games, memberId, balance - wallet.balanceCents);
+  const receipt: CreditAdjustmentReceipt = {
+    operationId, mode, amountCents, beforeCents: wallet.balanceCents, afterCents: next.balanceCents, appliedAt: at, actorId,
+  };
+  next.operatorGrants = [...(next.operatorGrants ?? []), receipt];
+  const result: CreditAdjustmentResult = { memberId, name: member.name, balanceCents: next.balanceCents, walletVersion: next.version, receipt };
+  return { changed: true, result };
 }
 
 function updateBalance(games: GamesState, memberId: string, delta: number) {

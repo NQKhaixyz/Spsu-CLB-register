@@ -25,38 +25,50 @@ const db = () => {
   if (!env.DB) throw new AuthError("Chưa kết nối được cơ sở dữ liệu.", 503);
   return env.DB;
 };
-const cookieName = (request: Request) =>
-  new URL(request.url).protocol === "https:"
-    ? "__Host-nhip_session"
-    : "nhip_session_dev";
+const creditIssuer = {
+  id: "account-credit-issuer",
+  userId: "native:credit-issuer",
+  login: "vuacobac",
+  name: "Vua Cờ Bạc",
+};
+const reservedLogins = ["admin", "member", creditIssuer.login];
+const dummyPasswordHash =
+  "100000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000";
+type SessionScope = "workspace" | "credit-issuer";
+const cookieName = (request: Request, scope: SessionScope) => {
+  const name = scope === "credit-issuer" ? "nhip_credit_issuer_session" : "nhip_session";
+  return new URL(request.url).protocol === "https:" ? "__Host-" + name : name + "_dev";
+};
 export function sessionCookie(
   request: Request,
   value: string,
   maxAge = 604800,
+  scope: SessionScope = "workspace",
 ) {
-  return `${cookieName(request)}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${new URL(request.url).protocol === "https:" ? "; Secure" : ""}`;
+  return `${cookieName(request, scope)}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${new URL(request.url).protocol === "https:" ? "; Secure" : ""}`;
 }
-function cookieToken(request: Request) {
+function cookieToken(request: Request, scope: SessionScope = "workspace") {
   return (
     (request.headers.get("cookie") ?? "")
       .split(";")
       .map((x) => x.trim())
-      .find((x) => x.startsWith(cookieName(request) + "="))
+      .find((x) => x.startsWith(cookieName(request, scope) + "="))
       ?.split("=")[1] ?? ""
   );
 }
-export async function getNativeUserWithClub(
-  request: Request,
-) {
-  const token = cookieToken(request);
+async function sessionAccount(request: Request, scope: SessionScope) {
+  const token = cookieToken(request, scope);
   if (!/^[0-9a-f]{64}$/.test(token)) return null;
-  const account = await db()
+  return db()
     .prepare(
       "SELECT a.id,a.login,a.user_id,a.display_name,a.email FROM auth_sessions s JOIN auth_accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_at>?",
     )
     .bind(await tokenHash(token), Date.now())
     .first<Omit<Account, "password_hash">>();
-  if (!account) return null;
+}
+export async function getNativeUserWithClub(request: Request) {
+  const account = await sessionAccount(request, "workspace");
+  if (!account || account.user_id === creditIssuer.userId) return null;
   const { club, revision } = await readState("", false);
   const member = club.members.find((m) => m.userId === account.user_id);
   if (
@@ -86,6 +98,42 @@ export async function getNativeUser(request: Request): Promise<(Identity & { acc
   const { userId, displayName, email, accountId, login } = session;
   return { userId, displayName, email, accountId, login };
 }
+export async function getCreditIssuer(request: Request) {
+  const account = await sessionAccount(request, "credit-issuer");
+  return account?.user_id === creditIssuer.userId && account.id === creditIssuer.id && account.login === creditIssuer.login
+    ? { id: account.id, name: account.display_name } : null;
+}
+
+export async function loginCreditIssuer(request: Request, data: Record<string, unknown>) {
+  const category = "credit-issuer-login";
+  await attempt(request, category, 12);
+  const name = normalizeLogin(data.login);
+  const password = validatePassword(data.password);
+  const query = db().prepare("SELECT password_hash FROM auth_accounts WHERE id=? AND login=? AND user_id=?")
+    .bind(creditIssuer.id, creditIssuer.login, creditIssuer.userId);
+  const account = await query.first<Pick<Account, "password_hash">>();
+  const initialHash = (env as typeof env & { NHIP_CREDIT_ISSUER_INITIAL_HASH?: string }).NHIP_CREDIT_ISSUER_INITIAL_HASH;
+  const valid = await verifyPassword(password, account?.password_hash ?? initialHash ?? dummyPasswordHash);
+  if (!valid || name !== creditIssuer.login || (!account && !initialHash)) {
+    throw new AuthError("Tên đăng nhập hoặc mật khẩu chưa đúng.", 401);
+  }
+  if (!account) {
+    await db().prepare("INSERT OR IGNORE INTO auth_accounts(id,login,user_id,display_name,email,password_hash) VALUES(?,?,?,?,'',?)")
+      .bind(creditIssuer.id, creditIssuer.login, creditIssuer.userId, creditIssuer.name, initialHash).run();
+    const created = await query.first<Pick<Account, "password_hash">>();
+    if (created?.password_hash !== initialHash) throw new AuthError("Chưa khởi tạo được tài khoản cấp credits.", 409);
+  }
+  return issueSession(creditIssuer.id);
+}
+
+export async function logoutCreditIssuer(request: Request) {
+  const token = cookieToken(request, "credit-issuer");
+  if (/^[0-9a-f]{64}$/.test(token)) {
+    await db().prepare("DELETE FROM auth_sessions WHERE token_hash=? AND account_id=?")
+      .bind(await tokenHash(token), creditIssuer.id).run();
+  }
+}
+
 async function issueSession(accountId: string) {
   const token = randomToken();
   await db().batch([
@@ -226,10 +274,9 @@ export async function login(request: Request, data: Record<string, unknown>) {
   }
   const valid = await verifyPassword(
     password,
-    account?.password_hash ??
-      "100000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000",
+    account?.password_hash ?? dummyPasswordHash,
   );
-  if (!account || !valid) {
+  if (!account || !valid || account.user_id === creditIssuer.userId) {
     await attempt(request, "login", 30);
     await attempt(request, `login:${name}`, 12);
     throw new AuthError("Tên đăng nhập hoặc mật khẩu chưa đúng.", 401);
@@ -254,7 +301,7 @@ export async function register(
       .slice(0, 100),
     studentId = normalizeLogin(data.studentId),
     password = validatePassword(data.password);
-  if (name.length < 2 || ["admin", "member"].includes(studentId))
+  if (name.length < 2 || reservedLogins.includes(studentId))
     throw new AuthError("Nhập họ tên và MSSV hợp lệ.");
   const accountId = uid(),
     userId = `native:${uid()}`,
@@ -320,7 +367,7 @@ export async function setAccountPassword(
     if (!me?.active || me.role !== "admin")
       throw new AuthError("Chỉ BĐH được cấp mật khẩu.", 403);
     const target = club.members.find((m) => m.id === data.memberId);
-    if (!target) throw new AuthError("Không tìm thấy thành viên.", 404);
+    if (!target || target.userId === creditIssuer.userId) throw new AuthError("Không tìm thấy thành viên.", 404);
     if (club.testAccountsDisabled && target.userId === "native:test-member")
       throw new AuthError("Tài khoản thử nghiệm đã được ngừng sử dụng.", 403);
     const existing = target.userId
@@ -340,7 +387,7 @@ export async function setAccountPassword(
         .prepare("SELECT id FROM auth_accounts WHERE login=?")
         .bind(loginName)
         .first<{ id: string }>();
-      if (["admin", "member"].includes(loginName) || collision)
+      if (reservedLogins.includes(loginName) || collision)
         throw new AuthError(
           "MSSV trùng tên đăng nhập đã có hoặc tên dành riêng. Nhờ BĐH sửa MSSV trước khi cấp tài khoản.",
           409,

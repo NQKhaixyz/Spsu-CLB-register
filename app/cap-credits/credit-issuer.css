@@ -1,0 +1,43 @@
+.credit-issuer-page {
+  width: min(100% - 32px, 640px);
+  margin: 0 auto;
+  padding: clamp(20px, 6vw, 52px) 0;
+}
+.credit-issuer-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.credit-issuer-panel {
+  background: var(--surface-warm);
+  padding: clamp(16px, 5vw, 30px);
+}
+.credit-issuer-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--green-dark);
+  margin-bottom: 18px;
+}
+.credit-issuer-title h1 {
+  font-size: clamp(1.4rem, 5vw, 1.75rem);
+  margin: 0;
+}
+.credit-issuer-title svg { flex: none; }
+.credit-issuer-form { display: grid; gap: 14px; }
+.credit-issuer-form .field { margin: 0; min-width: 0; }
+.credit-issuer-form .field :is(input, select) { width: 100%; min-width: 0; min-height: 44px; }
+.credit-issuer-form .btn { justify-self: start; min-height: 44px; }
+.credit-issuer-balance {
+  margin: -5px 0 0;
+  color: var(--muted);
+  font-size: .9rem;
+}
+.credit-issuer-balance strong { color: var(--green-dark); margin-inline-start: 4px; }
+.credit-issuer-message { margin: 0; font-size: .9rem; overflow-wrap: anywhere; }
+.credit-issuer-error, .credit-issuer-success { border-radius: 10px; padding: 10px 12px; }
+.credit-issuer-error { background: #faeee7; color: #773f2b; }
+.credit-issuer-success { display: grid; gap: 4px; background: #e8f0e4; color: var(--green-dark); }
