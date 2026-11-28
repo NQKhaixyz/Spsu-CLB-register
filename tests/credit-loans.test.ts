@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createClub, scoreFor, today, weekId, type Member } from "../lib/club";
+import { recoverPersonalDebt } from "../lib/credit-debt-history";
 import {
   CREDITS_TO_POINTS, CREDIT_EXCHANGE_RATE, CREDIT_EXCHANGE_START_AT, POINTS_TO_CREDITS,
   creditExchangeView, exchangeMonthlyCredits, parseCreditExchange,
@@ -223,4 +224,21 @@ test("Cupid applies one loan cap including both personal debts, and checks it ag
   assert.throws(() => submit(b, "borrow", 1), /hạn mức dư nợ/);
   applyCreditLoanCommand(club, b.id, approval, at + 1);
   assert.equal(view(a).sharedDebtCents, String(room));
+});
+
+test("Profile debt history recovers exact solo repayments and stored interest from the old credit ledger", () => {
+  const movements = [
+    { at: 1, kind: "loan", label: "Vay credits", changeCents: 1_000 },
+    { at: 2, kind: "loan", label: "Vay credits · Lãi 4.000,05 credits", changeCents: 2_000_025 },
+    { at: 3, kind: "loanRepayment", label: "Trả nợ credits", changeCents: -2_400_000 },
+    { at: 4, kind: "loanRepayment", label: "Tự trả nợ credits", changeCents: -1_030 },
+  ] as const;
+  assert.deepEqual(recoverPersonalDebt(movements, "0"), [
+    { at: 1, kind: "loan", debtCents: "1000", repaidCents: 0 },
+    { at: 2, kind: "loan", debtCents: "2401030", repaidCents: 0 },
+    { at: 3, kind: "repayment", debtCents: "1030", repaidCents: 2_400_000 },
+    { at: 4, kind: "automatic", debtCents: "0", repaidCents: 1_030 },
+  ]);
+  assert.equal(recoverPersonalDebt(movements, "1"), undefined);
+  assert.equal(recoverPersonalDebt([movements[3]], "0"), undefined);
 });

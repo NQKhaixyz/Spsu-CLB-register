@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import type { Identity } from "./actions";
 import { readState } from "./store";
 import { syncWeeks } from "./club";
+import { creditHistoryWrites } from "./credit-history";
 import { planTestDataCleanup } from "./test-data-cleanup";
 
 export async function purgeTestData(identity: Identity, data: Record<string, unknown>) {
@@ -14,6 +15,7 @@ export async function purgeTestData(identity: Identity, data: Record<string, unk
     const payload = JSON.stringify(club);
     const gate = "EXISTS(SELECT 1 FROM club_state WHERE id='main' AND revision=? AND payload=?)";
     const statements = [env.DB.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=?").bind(payload, revision)];
+    statements.push(...await creditHistoryWrites(env.DB, club.games, revision + 1, payload));
     for (const userId of result.removedUserIds) {
       statements.push(env.DB.prepare(`DELETE FROM auth_sessions WHERE account_id IN (SELECT id FROM auth_accounts WHERE user_id=?) AND ${gate}`).bind(userId, revision + 1, payload));
       statements.push(env.DB.prepare(`DELETE FROM auth_accounts WHERE user_id=? AND ${gate}`).bind(userId, revision + 1, payload));

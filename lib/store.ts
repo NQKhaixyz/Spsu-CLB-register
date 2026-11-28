@@ -5,16 +5,18 @@ import { bulletinMediaIds, removedBulletinKeys } from "./bulletin-media";
 import { queuePhotoDeletions } from "./photo-deletion";
 import { clearLegacyInactivity, initializeCreditHistory } from "./games";
 import { settleRoundEventNotices } from "./round-event-notifications";
-import { clearPendingCreditEntries, creditHistoryWrite } from "./credit-history";
+import { clearPendingCreditEntries, creditHistoryWrites } from "./credit-history";
+import { initializeCreditDebtHistory } from "./credit-debt-history";
 import { activateCreditSharing } from "./sharing";
 
-function updateTimedRules(club: Club) {
+async function updateTimedRules(db: D1Database, club: Club, revision: number) {
   const now = Date.now();
   const initializedHistory = initializeCreditHistory(club, now);
   const clearedInactivity = clearLegacyInactivity(club.games);
   const changedRounds = settleRoundEventNotices(club, now);
   const changedSharing = activateCreditSharing(club, now);
-  return initializedHistory || clearedInactivity || changedRounds || changedSharing;
+  const initializedDebt = await initializeCreditDebtHistory(db, club, revision, now);
+  return initializedHistory || clearedInactivity || changedRounds || changedSharing || initializedDebt;
 }
 
 type Row = { payload: string; revision: number };
@@ -37,7 +39,7 @@ export async function readState(ownerId: string, canInitialize: boolean) {
       continue;
     }
     const club = JSON.parse(row.payload) as Club;
-    if (!updateTimedRules(club)) return { club, revision: row.revision };
+    if (!await updateTimedRules(db, club, row.revision)) return { club, revision: row.revision };
     if (await writeState(club, row.revision)) return { club, revision: row.revision + 1 };
   }
   throw new Error("Dữ liệu Đội vừa thay đổi, vui lòng thử lại.");
@@ -48,8 +50,7 @@ export async function writeState(club: Club, revision: number, removedObjects: s
   const update = db.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=?")
     .bind(payload, revision);
   const statements = [update];
-  const history = await creditHistoryWrite(db, club.games, revision + 1, payload);
-  if (history) statements.push(history);
+  statements.push(...await creditHistoryWrites(db, club.games, revision + 1, payload));
   if (removedObjects.length) statements.push(queuePhotoDeletions(db, removedObjects, revision + 1, payload));
   const r = statements.length > 1 ? (await db.batch(statements))[0] : await update.run();
   if (r.meta.changes) clearPendingCreditEntries(club.games);
@@ -73,14 +74,16 @@ export async function mutate<T>(
   throw new Error("Có người đang cập nhật cùng lúc. Vui lòng thử lại.");
 }
 export async function synchronize() {
-  const row = await env.DB?.prepare(
+  const db = env.DB;
+  if (!db) return false;
+  const row = await db.prepare(
     "SELECT payload,revision FROM club_state WHERE id='main'",
   ).first<Row>();
   if (!row) return false;
   const club = JSON.parse(row.payload) as Club;
   const mediaBefore = bulletinMediaIds(club);
   const expired = pruneBulletinState(club);
-  const settled = updateTimedRules(club);
+  const settled = await updateTimedRules(db, club, row.revision);
   if (syncWeeks(club) || expired || settled) return writeState(club, row.revision, removedBulletinKeys(mediaBefore, club));
   return false;
 }

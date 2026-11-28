@@ -9,7 +9,7 @@ import { canDeleteMember, eraseMemberData, scrubWeekArchive } from "./member-del
 import { AuthError } from "./password";
 import { deleteQueuedPhotos, queuePhotoDeletions } from "./photo-deletion";
 import { readState } from "./store";
-import { creditHistoryWrite, ensureCreditHistory } from "./credit-history";
+import { creditHistoryWrites, ensureCreditHistory } from "./credit-history";
 
 export async function deleteMember(identity: Identity, data: Record<string, unknown>) {
   const db = env.DB;
@@ -36,9 +36,9 @@ export async function deleteMember(identity: Identity, data: Record<string, unkn
       db.prepare("UPDATE club_state SET payload=?, revision=revision+1 WHERE id='main' AND revision=?").bind(payload, revision),
     ];
     await ensureCreditHistory(db);
-    const history = await creditHistoryWrite(db, club.games, updated, payload);
-    if (history) statements.push(history);
-    statements.push(db.prepare(`DELETE FROM credit_history WHERE member_id=? AND ${gate}`).bind(member.id, updated, payload));
+    statements.push(...await creditHistoryWrites(db, club.games, updated, payload),
+      db.prepare(`DELETE FROM credit_history WHERE member_id=? AND ${gate}`).bind(member.id, updated, payload),
+      db.prepare(`DELETE FROM credit_debt_history WHERE member_id=? AND ${gate}`).bind(member.id, updated, payload));
     for (const archived of archives.results) {
       const archive = JSON.parse(archived.payload);
       scrubWeekArchive(archive, member.id, eventPhotos);

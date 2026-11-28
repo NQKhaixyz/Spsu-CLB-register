@@ -499,9 +499,23 @@
 @media (prefers-reduced-motion: reduce) {
   .game-wheel-disc[data-moving="true"], .game-wheel-disc[data-moving="true"] > span { transition: none; }
 }
-.profile-credit-history { display: grid; gap: 10px; min-width: 0; padding: 12px 18px 20px; }
+.profile-credit-history { --credit-debt-color: #9a4c38; display: grid; gap: 10px; min-width: 0; padding: 12px 18px 20px; }
 .credit-history-balance { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; }
 .credit-history-balance strong { color: var(--green-dark); overflow-wrap: anywhere; }
+.credit-debt-balance strong { color: var(--credit-debt-color); }
+.credit-debt-breakdown { margin: -4px 0 0; overflow-wrap: anywhere; }
+.credit-debt-history { min-width: 0; border-block: 1px solid var(--line); padding-block: 12px; }
+.credit-debt-history h3 { margin: 0 0 4px; font-size: .95rem; }
+.credit-debt-history > :is(.btn, .hint) { margin: 8px 0 0; }
+.credit-debt-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 14px; color: var(--muted); }
+.credit-debt-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.credit-debt-legend span::before { content: ""; width: 14px; height: 3px; border-radius: 3px; background: var(--credit-debt-color); }
+.credit-debt-legend span + span::before { width: 8px; height: 10px; border-radius: 2px; background: var(--green); }
+.credit-debt-tooltip { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-warm); color: var(--ink); }
+.credit-debt-tooltip time { display: block; color: var(--muted); }
+.credit-debt-tooltip dl { margin: 4px 0 0; }
+.credit-debt-tooltip dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.credit-debt-tooltip dd { margin: 0; font-weight: 700; }
 .credit-history-chart { margin: 0; min-width: 0; font-size: .75rem; }
 .credit-history-entries { list-style: none; margin: 0; padding: 0; }
 .credit-history-entries li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: 8px; padding-block: 9px; border-top: 1px solid var(--line); }

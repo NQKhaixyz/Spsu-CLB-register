@@ -1,5 +1,5 @@
 import type { Club } from "./club";
-import { recordCreditEntry, type CreditMovement, type PendingCreditEntry } from "./credit-history";
+import { recordCreditDebt, recordCreditEntry, type CreditDebtKind, type CreditMovement, type PendingCreditEntry } from "./credit-history";
 import { activeSharingPeriod, type SharingPeriod } from "./sharing-types";
 import type { CreditExchangeReceipt } from "./credit-exchange";
 
@@ -110,6 +110,7 @@ export type GamesState = {
   wallets: Record<string, Wallet>;
   rooms: XoRoom[];
   creditHistorySince?: number;
+  creditDebtHistorySince?: number;
   exchangeReceipts?: CreditExchangeReceipt[];
   loanOperations?: CreditLoanOperation[];
 };
@@ -282,6 +283,11 @@ function sharedLoanDebt(period?: SharingPeriod) {
   return BigInt(period?.loanDebtCents ?? "0");
 }
 
+function recordDebtBalance(games: GamesState, memberId: string, at: number, kind: CreditDebtKind, period?: SharingPeriod, repaidCents = 0) {
+  const debtCents = (personalLoanDebt(games, memberId) + sharedLoanDebt(period)).toString();
+  recordCreditDebt(games, memberId, { at, kind, debtCents, repaidCents });
+}
+
 export function creditLoanStatus(club: Club, memberId: string) {
   const pair = creditPair(club, memberId);
   const debt = personalLoanDebt(club.games, memberId) + sharedLoanDebt(pair?.period);
@@ -346,6 +352,7 @@ export function separateCupidCredits(club: Club, period: SharingPeriod, at: numb
     walletFor(games, one).loanDebtCents = (personalLoanDebt(games, one) + unpaid - secondShare).toString();
     if (secondShare > zero)
       walletFor(games, other).loanDebtCents = (personalLoanDebt(games, other) + secondShare).toString();
+    for (const memberId of period.memberIds) recordDebtBalance(games, memberId, at, "cupidSplit");
   }
   delete period.loanDebtCents;
   delete period.loanRequest;
@@ -508,7 +515,8 @@ function updateBalance(club: Club, memberId: string, at: number, movements: read
   return saveWalletBalance(games, memberId, balanceCents);
 }
 
-function applyLoanPayment(wallet: Wallet, period: SharingPeriod | undefined, amount: bigint) {
+function applyLoanPayment(games: GamesState, memberId: string, period: SharingPeriod | undefined, amount: bigint,
+  at: number, kind: "repayment" | "automatic") {
   const shared = sharedLoanDebt(period);
   const jointPayment = amount < shared ? amount : shared;
   if (period && jointPayment > zero) {
@@ -517,8 +525,15 @@ function applyLoanPayment(wallet: Wallet, period: SharingPeriod | undefined, amo
   }
   const personalPayment = amount - jointPayment;
   if (personalPayment > zero) {
+    const wallet = walletFor(games, memberId);
     const remaining = BigInt(wallet.loanDebtCents ?? "0") - personalPayment;
     wallet.loanDebtCents = remaining ? remaining.toString() : undefined;
+  }
+  recordDebtBalance(games, memberId, at, kind, period, Number(amount));
+  if (period && jointPayment > zero) {
+    for (const partnerId of period.memberIds) {
+      if (partnerId !== memberId) recordDebtBalance(games, partnerId, at, kind, period, Number(jointPayment));
+    }
   }
 }
 
@@ -531,7 +546,7 @@ function updateCreditIncome(club: Club, memberId: string, at: number, movements:
   const wallet = updateBalance(club, memberId, at, repaidCents
     ? [...movements, { kind: "loanRepayment", label: "Tự trả nợ credits", changeCents: -repaidCents }]
     : movements);
-  if (payment > zero) applyLoanPayment(wallet, period, payment);
+  if (payment > zero) applyLoanPayment(club.games!, memberId, period, payment, at, "automatic");
   return { wallet, repaidCents };
 }
 
@@ -605,6 +620,7 @@ function drawCreditLoan(club: Club, memberId: string, amountCents: number, inter
   const added = BigInt(amountCents) + BigInt(interestCents);
   if (period) period.loanDebtCents = (sharedLoanDebt(period) + added).toString();
   else wallet.loanDebtCents = (BigInt(wallet.loanDebtCents ?? "0") + added).toString();
+  for (const borrower of period?.memberIds ?? [memberId]) recordDebtBalance(club.games!, borrower, at, "loan", period);
 }
 
 function repayCreditLoan(club: Club, memberId: string, amountCents: number, pair: ReturnType<typeof creditPair>, at: number) {
@@ -612,8 +628,8 @@ function repayCreditLoan(club: Club, memberId: string, amountCents: number, pair
   const debt = personalLoanDebt(club.games, memberId) + sharedLoanDebt(pair?.period);
   if (amount > debt) throw new GameRuleError("Số credits trả lớn hơn dư nợ", 409);
   if (amount > sharedWalletBalance(club, memberId, pair)) throw new GameRuleError("Số dư không đủ để trả nợ", 409);
-  const wallet = updateBalance(club, memberId, at, [{ kind: "loanRepayment", label: "Trả nợ credits", changeCents: -amountCents }]);
-  applyLoanPayment(wallet, pair?.period, amount);
+  updateBalance(club, memberId, at, [{ kind: "loanRepayment", label: "Trả nợ credits", changeCents: -amountCents }]);
+  applyLoanPayment(club.games!, memberId, pair?.period, amount, at, "repayment");
 }
 
 function sameLoanCommand(one: CreditLoanCommand, other: CreditLoanCommand) {
