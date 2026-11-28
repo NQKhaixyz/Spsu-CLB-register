@@ -1,28 +1,22 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight, Circle, Coins, Dices, Gamepad2, LoaderCircle, Plus, RotateCw, Users, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Coins, Dices, Gamepad2, LoaderCircle, Plus, RotateCw, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
-  isLiveRoom, markOnTurn, WHEEL_FACTORS, xoBoard, xoPrizeCents, xoWinningLine,
+  formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, wheelOdds, WHEEL_FACTORS, WHEEL_REFUND_EVERY,
+  xoPrizeCents, xoSize, xoWinLength, XO_BOARD_SIZE,
   type GameCommand, type GamesResponse, type GamesView, type OpenXoRoom,
   type WheelFactor, type WheelSpin, type XoRoom,
 } from "../lib/games";
 import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button, Dialog, Field } from "./ui";
+import XoBoard from "./xo-board";
 
-const gamesPath = "/api/games";
+const gamesPath = "/api/games?rules=" + GAME_RULES_VERSION;
 const creditNumber = new Intl.NumberFormat("vi-VN");
 const spinTime = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const wheelDuration = 2_350;
-const sliceAngle = 360 / WHEEL_FACTORS.length;
 
-function formatCredits(cents: number) {
-  const amount = Math.abs(cents);
-  const remainder = amount % 100;
-  const whole = creditNumber.format((amount - remainder) / 100);
-  const fraction = remainder ? "," + String(remainder).padStart(2, "0").replace(/0$/, "") : "";
-  return (cents < 0 ? "−" : "") + whole + fraction;
-}
 const signedCredits = (cents: number) => (cents > 0 ? "+" : "") + formatCredits(cents);
 const factorLabel = (factor: WheelFactor) => "×" + (factor < 0 ? "−" + Math.abs(factor) : factor);
 
@@ -32,7 +26,8 @@ function checkedStake(raw: string, max: number) {
 }
 
 function angleFor(factor: WheelFactor | undefined) {
-  return factor === undefined ? 0 : (360 - WHEEL_FACTORS.indexOf(factor) * sliceAngle) % 360;
+  const segment = wheelSegments.find(item => item.factor === factor);
+  return segment ? (360 - segment.angle) % 360 : 0;
 }
 
 export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memberId: string }) {
@@ -44,7 +39,7 @@ export default function GamesPage({ tab, memberId }: { tab: "xo" | "wheel"; memb
   const sending = useRef(false);
   const [motion, setMotion] = useState<{ spin: WheelSpin; angle: number; moving: boolean }>();
   const receive = useCallback((incoming: GamesView) => {
-    setView(current => current && current.revision > incoming.revision ? current : incoming);
+    setView(current => current && current.revision >= incoming.revision ? current : incoming);
     setLoadError("");
   }, []);
 
@@ -179,7 +174,8 @@ function XoGame({ view, memberId, disabled, onSubmit }: {
     }
   };
 
-  return <div className="games-xo-layout" data-has-match={!!current}>
+  const largeMatch = current && xoSize(current) === XO_BOARD_SIZE && current.status !== "waiting" && current.status !== "cancelled";
+  return <div className="games-xo-layout" data-has-match={!!current} data-large-board={largeMatch || undefined}>
     {current && <div className="games-xo-own">
       <XoMatch room={current} memberId={memberId} disabled={disabled} onSubmit={onSubmit}
         onSurrender={() => setConfirmation({ kind: "surrender", room: current })} />
@@ -193,7 +189,7 @@ function XoGame({ view, memberId, disabled, onSubmit }: {
     <div className="games-lobby">
       <section className="games-card">
         <header className="games-card-heading"><Gamepad2 size={20} aria-hidden="true" /><h2>Tạo phòng XO</h2></header>
-        <p className="games-caption">Hai người cược bằng nhau · Thắng nhận ×1,95 mức cược · Hòa hoàn cược</p>
+        <p className="games-caption">Bàn 20 × 20 · 5 quân liên tiếp thắng · Nhận ×1,95 mức cược · Hòa hoàn cược</p>
         {active ? <p className="games-note">Mỗi người có một phòng đang chờ hoặc đang chơi</p> : <form className="games-form" onSubmit={create}>
           <Field label="Mức cược XO (credits)">
             <input name="stake" type="number" min="1" step="1" max={maxStake} inputMode="numeric" value={wager}
@@ -210,7 +206,7 @@ function XoGame({ view, memberId, disabled, onSubmit }: {
         {availableRooms.length ? <ul className="games-room-list">
           {availableRooms.map(room => <li key={room.id}>
             <div className="games-room-label"><GamePlayer memberId={room.hostId} />
-              <span className="games-caption">{creditNumber.format(room.stake)} credits mỗi người</span>
+              <span className="games-caption">{room.size} × {room.size} · {creditNumber.format(room.stake)} credits mỗi người</span>
             </div>
             <Button variant="secondary" disabled={disabled || !!active || room.stake > maxStake}
               onClick={() => setConfirmation({ kind: "join", room })}>{room.stake > maxStake ? "Thiếu credits" : "Tham gia"}</Button>
@@ -221,7 +217,7 @@ function XoGame({ view, memberId, disabled, onSubmit }: {
     {confirmation && <Dialog title={confirmation.kind === "join" ? "Tham gia phòng XO" : "Bỏ ván XO"}
       onClose={() => setConfirmation(undefined)}>
       {confirmation.kind === "join" ? <p className="games-caption">
-        Chủ phòng <MemberName memberId={confirmation.room.hostId} /> · Đặt cược <strong>{creditNumber.format(confirmation.room.stake)} credits</strong>
+        Chủ phòng <MemberName memberId={confirmation.room.hostId} /> · Bàn {confirmation.room.size} × {confirmation.room.size} · Cược <strong>{creditNumber.format(confirmation.room.stake)} credits</strong>
       </p> : <p className="games-caption">Đối thủ sẽ thắng và bạn mất {creditNumber.format(confirmation.room.stake)} credits đã cược</p>}
       <div className="games-dialog-actions">
         <Button variant="secondary" onClick={() => setConfirmation(undefined)}>Quay lại</Button>
@@ -253,8 +249,7 @@ function XoMatch({ room, memberId, disabled, onSubmit, onSurrender }: {
 }) {
   const waiting = room.status === "waiting";
   const playing = room.status === "playing";
-  const board = xoBoard(room.moves);
-  const winLine = xoWinningLine(board);
+  const size = xoSize(room);
   const currentMark = markOnTurn(room.moves.length);
   const myTurn = playing && currentMark === (room.hostId === memberId ? "X" : "O");
   const result = !playing && !waiting ? resultFor(room, memberId) : undefined;
@@ -262,7 +257,7 @@ function XoMatch({ room, memberId, disabled, onSubmit, onSurrender }: {
   return <section className="games-card games-match">
     <header className="games-match-heading">
       <h2>{isLiveRoom(room) ? "Phòng của bạn" : "Kết quả XO"}</h2>
-      <span>{creditNumber.format(room.stake)} credits mỗi người</span>
+      <span>{size} × {size} · {xoWinLength(size)} quân để thắng · {creditNumber.format(room.stake)} credits mỗi người</span>
     </header>
     <div className="game-players">
       <GamePlayer memberId={room.hostId} mark="X" />
@@ -273,15 +268,8 @@ function XoMatch({ room, memberId, disabled, onSubmit, onSurrender }: {
       {waiting ? "Đang chờ người chơi khác" : playing ? myTurn ? "Đến lượt bạn đánh " + currentMark : "Đang chờ " + currentMark + " đánh"
         : <><strong>{result?.title}</strong><span>{result?.detail}</span></>}
     </div>
-    {!waiting && room.status !== "cancelled" && <div className="xo-board" aria-label="Bàn cờ XO">
-      {board.map((mark, cell) => <button key={cell} type="button"
-        aria-label={"Ô " + (cell + 1) + ", " + (mark ?? "trống")} data-mark={mark ?? undefined}
-        data-win={winLine?.some(index => index === cell) || undefined}
-        disabled={disabled || !myTurn || !!mark}
-        onClick={() => void onSubmit({ kind: "move", id: room.id, cell, turn: room.moves.length })}>
-          {mark === "X" ? <X aria-hidden="true" /> : mark === "O" ? <Circle aria-hidden="true" /> : null}
-        </button>)}
-    </div>}
+    {!waiting && room.status !== "cancelled" && <XoBoard key={room.id} room={room} canPlay={!disabled && myTurn}
+      onMove={cell => void onSubmit({ kind: "move", id: room.id, cell, turn: room.moves.length })} />}
     <div className="game-match-actions">
       {waiting && <Button variant="secondary" disabled={disabled}
         onClick={() => void onSubmit({ kind: "cancel", id: room.id })}>Hủy phòng và hoàn cược</Button>}
@@ -291,12 +279,19 @@ function XoMatch({ room, memberId, disabled, onSubmit, onSurrender }: {
 }
 
 const wheelColors = ["#e3a38b", "#efb5a1", "#f4c9ab", "#f8d9b9", "#f6efda", "#dce7d5", "#c6ddbc", "#b0d1a5", "#9dc799", "#90bc9d", "#7bab94"];
-const wheelFill = "conic-gradient(from " + (-sliceAngle / 2) + "deg, " +
-  wheelColors.map((color, index) => color + " " + (index * sliceAngle) + "deg " + ((index + 1) * sliceAngle) + "deg").join(", ") + ")";
-const wheelLabels = WHEEL_FACTORS.map((factor, index) => ({
+const wheelStart = -wheelOdds(WHEEL_FACTORS[0]) * 3.6 / 2;
+const wheelSegments = WHEEL_FACTORS.reduce<{ factor: WheelFactor; start: number; end: number; angle: number }[]>((segments, factor) => {
+  const start = segments.at(-1)?.end ?? 0;
+  const end = start + wheelOdds(factor);
+  segments.push({ factor, start, end, angle: wheelStart + (start + end) * 3.6 / 2 });
+  return segments;
+}, []);
+const wheelFill = "conic-gradient(from " + wheelStart + "deg, " +
+  wheelSegments.map(({ start, end }, index) => wheelColors[index] + " " + start + "% " + end + "%").join(", ") + ")";
+const wheelLabels = wheelSegments.map(({ factor, angle }) => ({
   factor,
-  left: 50 + 36 * Math.sin((Math.PI * 2 * index) / WHEEL_FACTORS.length),
-  top: 50 - 36 * Math.cos((Math.PI * 2 * index) / WHEEL_FACTORS.length),
+  left: 50 + 36 * Math.sin(Math.PI * angle / 180),
+  top: 50 - 36 * Math.cos(Math.PI * angle / 180),
 }));
 
 function WheelGame({ view, motion, disabled, onSubmit }: {
@@ -305,6 +300,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
 }) {
   const [wager, setWager] = useState("1");
   const { maxWheelStake, version } = view.wallet;
+  const { spins, pendingRefundCents } = view.wheelProgress;
   const stake = checkedStake(wager, maxWheelStake);
   const latest = view.spins[0];
   const activeMotion = motion && (motion.moving || motion.spin.id === latest?.id) ? motion : undefined;
@@ -334,6 +330,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
         {rotating ? <span>Đang quay</span> : display ? <>
           <strong>{factorLabel(display.factor)}</strong>
           <span data-result={Math.sign(display.netCents)}>{signedCredits(display.netCents)} credits</span>
+          {!!display.refundCents && <small className="game-wheel-refund">Hoàn cược {signedCredits(display.refundCents)} credits</small>}
         </> : <span>Đặt cược để bắt đầu</span>}
       </div>
     </div>
@@ -354,10 +351,17 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
               : "Bạn cần ít nhất 5 credits để quay với mức cược 1"}
           </small>
         </form>
+        <div className="game-wheel-progress">
+          <strong>Hoàn cược 50%</strong>
+          <span>{spins}/{WHEEL_REFUND_EVERY} lượt</span>
+          {pendingRefundCents > 0 && <small>Dự kiến hoàn {formatCredits(pendingRefundCents)} credits</small>}
+        </div>
         <details className="game-wheel-rules">
           <summary>Cách tính kết quả</summary>
-          <p>11 ô có cơ hội xuất hiện bằng nhau</p>
+          <p>Ô ×1 đến ×6 có tỷ lệ 10% mỗi ô. Ô ×−4 đến ×0 có tỷ lệ 8% mỗi ô</p>
           <p>Số dư thay đổi bằng mức cược nhân hệ số rồi trừ mức cược</p>
+          <p>Sau mỗi {WHEEL_REFUND_EVERY} lượt, ví nhận lại 50% phần lỗ ròng sau khi bù trừ các lượt lãi và lỗ</p>
+          <p>Nếu hòa vốn hoặc có lãi trong nhóm {WHEEL_REFUND_EVERY} lượt thì mức hoàn là 0</p>
           <ul>
             <li><ArrowDownRight size={16} aria-hidden="true" /> Cược 1 gặp ô ×−4, số dư giảm 5 credits</li>
             <li><ArrowUpRight size={16} aria-hidden="true" /> Cược 1 gặp ô ×6, số dư tăng 5 credits</li>
@@ -368,7 +372,9 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
         <summary>Lượt quay gần đây</summary>
         <ul>{view.spins.map(item => <li key={item.id}>
           <span>{factorLabel(item.factor)} · {creditNumber.format(item.stake)} cược</span>
-          <strong data-result={Math.sign(item.netCents)}>{signedCredits(item.netCents)}</strong>
+          <strong data-result={Math.sign(item.netCents)}>{signedCredits(item.netCents)}
+            {!!item.refundCents && <small className="game-wheel-history-refund">Hoàn {signedCredits(item.refundCents)}</small>}
+          </strong>
         </li>)}</ul>
       </details>}
     </div>

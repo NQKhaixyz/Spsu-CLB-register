@@ -15,6 +15,7 @@ import { FontSettings } from "./font-settings";
 import { AvatarEditor } from "./avatar-editor";
 import { MemberMonthlyScoreboard, Scoreboard, WeeklyScoreboard, type ScoreScope } from "./scoreboard";
 import SemesterScoreboard, { MemberSemesterScoreboard } from "./semester-scoreboard";
+import CreditsLeaderboard from "./credits-leaderboard";
 import Login from "./login";
 import MusicPlayer from "./music-player";
 import AvailabilityPage, { AvailabilityPreview } from "./availability";
@@ -145,6 +146,7 @@ type Tab =
   | "members"
   | "reports"
   | "semesterScores"
+  | "creditsRank"
   | "settings"
   | "preferences"
   | "personal";
@@ -155,7 +157,7 @@ type Modal = {
   content: ReactNode;
 };
 const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [Tab, ...Tab[]] }> = {
-  scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores"] },
+  scoreboard: { icon: ClipboardCheck, sections: ["weeklyScores", "reports", "semesterScores", "creditsRank"] },
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
   feedback: { icon: MessageSquare, sections: ["feedback"] },
@@ -703,6 +705,7 @@ export default function Workspace() {
     { id: "weeklyScores", label: "Điểm tuần" },
     { id: "reports", label: "Điểm tháng" },
     { id: "semesterScores", label: "Học kỳ" },
+    { id: "creditsRank", label: "Hạng credits" },
   ] : activeSidebarTab === "activity" ? [
     { id: "meetings", label: isAdmin ? "Họp hằng tuần" : "Đăng ký họp", pending: pending.length },
     { id: "duties", label: "Lịch trực C1" },
@@ -3565,6 +3568,8 @@ export default function Workspace() {
               onSave={range => act("setSemesterScoreRange", range, "Đã công bố kỳ tổng kết", false)}
               onUnpublish={range => act("unpublishSemesterScoreRange", range, "Đã hủy công bố kỳ tổng kết", false)} />
               : <MemberSemesterScoreboard key={view.revision} />
+          ) : activeTab === "creditsRank" ? (
+            <CreditsLeaderboard key={me.id} memberId={me.id} workspaceRevision={view.revision} />
           ) : activeTab === "reports" ? (
             isAdmin ? reports() : <>
               <div className="page-heading score-page-heading"><h1>Điểm tháng</h1>{monthSelect}</div>

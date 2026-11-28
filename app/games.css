@@ -177,6 +177,70 @@
 .xo-board button:enabled:hover { background: #e3f0e1; border-color: #729271; }
 .xo-board button:focus-visible { outline: 3px solid #739d79; outline-offset: 2px; }
 .xo-board button svg { width: 55%; height: 55%; stroke-width: 2.6; }
+.xo-expanded { min-width: 0; }
+.xo-grid-help {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: .8rem;
+}
+.xo-grid-help .btn { min-height: 34px; }
+.xo-grid-viewport {
+  --xo-cell: 2rem;
+  --xo-axis: 1.6rem;
+  position: relative;
+  isolation: isolate;
+  width: max-content;
+  max-width: 100%;
+  max-height: min(72svh, 44rem);
+  margin-inline: auto;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid #d3ded0;
+  border-radius: 11px;
+  background: #f9fcf7;
+}
+.xo-grid {
+  display: grid;
+  grid-template-columns: var(--xo-axis) repeat(var(--xo-size), var(--xo-cell));
+  grid-template-rows: var(--xo-axis);
+  grid-auto-rows: var(--xo-cell);
+  width: max-content;
+}
+.xo-grid-axis {
+  position: sticky;
+  display: grid;
+  place-items: center;
+  background: #e9f0e5;
+  color: var(--green-dark);
+  font-size: .72rem;
+  font-weight: 700;
+}
+.xo-grid-axis[data-axis="column"], .xo-grid-axis[data-axis="corner"] { inset-block-start: 0; z-index: 2; }
+.xo-grid-axis[data-axis="row"], .xo-grid-axis[data-axis="corner"] { inset-inline-start: 0; }
+.xo-grid-axis[data-axis="row"] { z-index: 1; }
+.xo-grid-axis[data-axis="corner"] { z-index: 3; }
+.xo-grid button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-inline-start: 1px solid #e0e8dd;
+  border-block-start: 1px solid #e0e8dd;
+  border-radius: 0;
+  padding: 0;
+  background: #f9fcf7;
+  color: var(--green-dark);
+}
+.xo-grid button:not([aria-disabled="true"]):hover { cursor: pointer; background: #e8f2e4; }
+.xo-grid button[data-mark="O"] { color: #964f38; }
+.xo-grid button[data-latest] { box-shadow: inset 0 0 0 2px #789376; background: #edf2e8; }
+.xo-grid button[data-win] { background: #d4e7d4; }
+.xo-grid button:focus-visible { outline: 2px solid #49744f; outline-offset: -3px; }
+.xo-grid button svg { width: 62%; height: 62%; stroke-width: 2.7; }
 .game-match-actions:empty { display: none; }
 .games-dialog-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; margin-top: 16px; }
 .games-history { font-size: .84rem; }
@@ -264,6 +328,23 @@
 }
 .game-wheel-outcome strong { color: var(--ink); font-size: 1.5rem; }
 .game-wheel-outcome [data-result] { font-size: 1.1rem; font-weight: 740; }
+.game-wheel-refund {
+  flex-basis: 100%;
+  color: var(--green-dark);
+  font-weight: 700;
+}
+.game-wheel-history-refund { display: block; text-align: end; color: var(--green-dark); }
+.game-wheel-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 9px 11px;
+  gap: 3px 10px;
+  border-radius: 8px;
+  background: #edf3e9;
+  color: var(--green-dark);
+  font-size: .81rem;
+}
+.game-wheel-progress small { grid-column: 1 / -1; color: var(--muted); }
 .games-page [data-result="-1"] { color: #904831; }
 .games-page [data-result="1"] { color: #285839; }
 .game-wheel-rules { padding-top: 7px; border-top: 1px solid var(--line); }
@@ -289,12 +370,15 @@
 }
 @media (min-width: 900px) {
   .games-xo-layout[data-has-match="true"], .games-wheel-layout { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
-  .games-xo-layout[data-has-match="false"] .games-lobby { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .games-xo-layout[data-large-board] { grid-template-columns: minmax(0, 1fr); }
+  .games-xo-layout[data-has-match="false"] .games-lobby,
+  .games-xo-layout[data-large-board] .games-lobby { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 899px) {
   .games-wheel-controls { display: contents; }
   .games-wheel-wager { grid-row: 1; }
   .games-wheel-panel { grid-row: 2; }
+  .xo-grid-viewport { --xo-cell: 2.35rem; max-height: min(57svh, 35rem); }
 }
 @media (max-width: 399px) {
   .games-heading { padding-bottom: 12px; gap: 8px; }

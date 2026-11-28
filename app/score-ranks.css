@@ -52,6 +52,41 @@
   gap: 10px;
 }
 
+.credits-rank-table {
+  table-layout: fixed;
+  white-space: normal;
+}
+.credits-rank-table .score-rank-column { width: 4.75rem; }
+.credits-rank-table .score-numeric {
+  width: clamp(6.5rem, 27%, 12rem);
+  overflow-wrap: anywhere;
+}
+.credits-rank-table td.score-numeric { color: var(--green-dark); }
+.credits-rank-table .avatar-frame { flex: none; }
+.credits-rank-name { min-width: 0; overflow-wrap: anywhere; }
+.credits-rank-table tr[data-self] > td { background: #edf3e9; }
+.credits-rank-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 22px 16px;
+  color: var(--muted);
+}
+
+@media (max-width: 520px) {
+  .credits-rank-table th, .credits-rank-table td { padding: 9px 8px; }
+  .credits-rank-table .score-rank-column { width: 3.1rem; }
+  .credits-rank-table .score-numeric { width: 6rem; }
+  .credits-rank-table .score-person { gap: 7px; }
+  .credits-rank-table .avatar-frame.small {
+    --avatar-frame-size: 1.95rem;
+    --avatar-portrait-size: 1.4rem;
+  }
+  .credits-rank-name { font-size: .875rem; }
+  .credits-rank-name .score-self { display: block; margin-left: 0; }
+}
+
 [data-weekly-rank="1"] {
   --weekly-name-ink: #773807;
   --weekly-name-accent: #945010;
