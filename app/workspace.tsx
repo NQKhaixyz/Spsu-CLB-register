@@ -26,6 +26,7 @@ import BulletinBoard from "./bulletin-board";
 import { FeedbackPage, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import WorkspaceNotifications, { notificationClock, notificationCopy } from "./feedback-notifications";
 import { DirectNoticeComposer } from "./direct-notice-composer";
+import GamesPage from "./games";
 import { sidebarNoticeCounts, useWorkspaceNotifications } from "./use-workspace-notifications";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
@@ -59,6 +60,7 @@ import {
   Clock3,
   Coffee,
   FileSpreadsheet,
+  Gamepad2,
   HeartHandshake,
   ImagePlus,
   LayoutDashboard,
@@ -138,6 +140,8 @@ type Tab =
   | "bulletin"
   | "links"
   | "feedback"
+  | "xo"
+  | "wheel"
   | "members"
   | "reports"
   | "semesterScores"
@@ -155,6 +159,7 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
   feedback: { icon: MessageSquare, sections: ["feedback"] },
+  games: { icon: Gamepad2, sections: ["xo", "wheel"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
@@ -702,6 +707,9 @@ export default function Workspace() {
     { id: "meetings", label: isAdmin ? "Họp hằng tuần" : "Đăng ký họp", pending: pending.length },
     { id: "duties", label: "Lịch trực C1" },
     { id: "requests", label: isAdmin ? "Tạo sự kiện" : "Sự kiện", pending: activityPending },
+  ] : activeSidebarTab === "games" ? [
+    { id: "xo", label: "XO" },
+    { id: "wheel", label: "Vòng quay may mắn" },
   ] : [];
   const count = (s: Registration) =>
     week.entries.filter((e) => e.status === s).length;
@@ -3360,17 +3368,16 @@ export default function Workspace() {
               <button key={id} type="button" className={active ? "active" : ""}
                 aria-current={active ? "page" : undefined}
                 aria-label={sidebarTabLabels[id]}
-                aria-describedby={hasBadge ? "sidebar-notices-" + id : undefined}
+                aria-description={description || undefined}
                 onClick={() => go(active ? activeTab : sections[0])}>
                 <Icon size={19} aria-hidden="true" />
                 <span>{sidebarTabLabels[id]}</span>
-                {hasBadge && <>
-                  <span className="sidebar-notice-badges" aria-hidden="true" title={description}>
+                {hasBadge && (
+                  <span className="sidebar-notice-badges" aria-hidden="true">
                     {count > 0 && <span className="sidebar-notice-count" data-notice-count={id}>{count > 99 ? "99+" : count}</span>}
-                    {pending > 0 && <span className="sidebar-notice-count" data-pending-count>{pending > 99 ? "99+" : pending} chờ</span>}
+                    {pending > 0 && <span className="sidebar-notice-count" data-pending-count>{pending > 99 ? "99+" : pending}</span>}
                   </span>
-                  <span className="sr-only" id={"sidebar-notices-" + id}>{description}</span>
-                </>}
+                )}
               </button>
             );
           })}
@@ -3549,6 +3556,8 @@ export default function Workspace() {
               onSubmit={submitFeedback} onEdit={editFeedback} onRecall={recallFeedback} conversationActions={feedbackConversationActions}
               focusId={feedbackTarget?.id} focusPending={feedbackTarget !== loadedFeedbackTarget} focusError={loadError}
               onBack={() => go("feedback")} />
+          ) : activeTab === "xo" || activeTab === "wheel" ? (
+            <GamesPage key={me.id} tab={activeTab} memberId={me.id} />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (

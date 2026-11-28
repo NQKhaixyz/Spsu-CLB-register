@@ -65,7 +65,7 @@ test("The sidebar uses one fixed order and member positions do not grant BĐH pe
   const admin = c.members.find(m => m.userId === owner.userId)!;
   pending.sidebarOrder = ["members", "personal"];
   admin.sidebarOrder = ["overview", "scoreboard"];
-  assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Feedback", "Góc của tôi", "Thành viên"]);
+  assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Feedback", "Trò chơi", "Góc của tôi", "Thành viên"]);
   for (const identity of [owner, member]) {
     const view = workspaceView(c, identity, 1);
     assert.equal(view.me?.sidebarOrder, undefined);

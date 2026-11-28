@@ -1,5 +1,6 @@
 import { activityKinds, activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
 import type { StoredActivityNotice, StoredDirectNotice } from "./notification-types";
+import type { GamesState } from "./games";
 import type { SharedLink } from "./shared-links";
 import type { BulletinPost, BulletinPostView } from "./bulletin";
 import type { BulletinUpload } from "./bulletin-media";
@@ -155,6 +156,7 @@ export type Club = {
   directNotices?: StoredDirectNotice[];
   memberFeedback?: StoredFeedback[];
   sharing?: SharingState;
+  games?: GamesState;
   feedbackResetReceipt?: FeedbackResetReceipt;
   bulletinUploads?: BulletinUpload[];
   rules: Rule[];

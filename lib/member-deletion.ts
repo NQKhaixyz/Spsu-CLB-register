@@ -4,6 +4,7 @@ import { eventPhotoId } from "./event-evidence";
 import { bulletinAuthorId } from "./bulletin";
 import { eraseFeedbackMembers } from "./feedback";
 import { eraseSharingMembers } from "./sharing";
+import { dropMemberFromGames } from "./games";
 
 export function canDeleteMember(club: Club, admin: Member, target: Member) {
   return admin.active && admin.role === "admin" && target.id !== admin.id &&
@@ -98,6 +99,7 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   );
   const eventPhotos = new Set<string>();
   eraseSharingMembers(club, new Set([member.id]));
+  dropMemberFromGames(club, member.id, true);
   removeFromHistory(club, member.id, eventPhotos);
   eraseFeedbackMembers(club, new Set([member.id]));
   if (club.activityNotices) {

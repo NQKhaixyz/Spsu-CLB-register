@@ -2,6 +2,7 @@ import { check, type Identity } from "./actions";
 import { activeAvailabilityDatasetFor } from "./availability";
 import type { Club } from "./club";
 import { eraseFeedbackMembers } from "./feedback";
+import { dropMemberFromGames } from "./games";
 import { eraseSharingMembers } from "./sharing";
 
 export function planTestDataCleanup(club: Club, identity: Identity, data: Record<string, unknown>) {
@@ -25,6 +26,9 @@ export function planTestDataCleanup(club: Club, identity: Identity, data: Record
   const names = new Set(removed.map((m) => m.name));
   const removedUserIds = [...new Set(["native:test-member", ...removed.flatMap((m) => m.userId ? [m.userId] : [])])];
   eraseSharingMembers(club, ids);
+  for (const member of club.members) {
+    if (ids.has(member.id) || member.userId === "native:test-member") dropMemberFromGames(club, member.id, true);
+  }
   club.members = club.members.filter((m) => !ids.has(m.id));
   eraseFeedbackMembers(club, ids);
   for (const week of club.weeks) week.entries = week.entries.filter((e) => !ids.has(e.memberId));

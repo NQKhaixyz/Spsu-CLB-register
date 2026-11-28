@@ -1,4 +1,5 @@
 import { applyActivityAction, ratedActivityKinds, type ActivityRates } from "./activity";
+import { dropMemberFromGames } from "./games";
 import {
   addDays,
   adminMemberIds,
@@ -866,7 +867,10 @@ function applyClubAction(
           m.userId !== club.ownerId,
           "Không thể ngừng hoạt động tài khoản chủ quản trị.",
         );
-        if (!data.active) endSharingForMember(club, m.id);
+        if (!data.active) {
+          endSharingForMember(club, m.id);
+          dropMemberFromGames(club, m.id);
+        }
         setMemberActive(m, !!data.active);
       }
       if (data.role) {

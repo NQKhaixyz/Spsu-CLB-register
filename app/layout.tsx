@@ -10,6 +10,7 @@ import "./activity-layout.css";
 import "./score-ranks.css";
 import "./feedback.css";
 import "./sharing.css";
+import "./games.css";
 import { ScreenCat } from "../components/screen-cat";
 import { SiteUpdateNotice } from "./site-update";
 
