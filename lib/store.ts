@@ -3,7 +3,7 @@ import { createClub, syncWeeks, type Club } from "./club";
 import { pruneBulletinState } from "./bulletin";
 import { bulletinMediaIds, removedBulletinKeys } from "./bulletin-media";
 import { queuePhotoDeletions } from "./photo-deletion";
-import { initializeCreditHistory, settleGameInactivity } from "./games";
+import { clearLegacyInactivity, initializeCreditHistory } from "./games";
 import { settleRoundEventNotices } from "./round-event-notifications";
 import { clearPendingCreditEntries, creditHistoryWrite } from "./credit-history";
 import { activateCreditSharing } from "./sharing";
@@ -11,10 +11,10 @@ import { activateCreditSharing } from "./sharing";
 function updateTimedRules(club: Club) {
   const now = Date.now();
   const initializedHistory = initializeCreditHistory(club, now);
-  const changedCredits = settleGameInactivity(club, now);
+  const clearedInactivity = clearLegacyInactivity(club.games);
   const changedRounds = settleRoundEventNotices(club, now);
   const changedSharing = activateCreditSharing(club, now);
-  return initializedHistory || changedCredits || changedRounds || changedSharing;
+  return initializedHistory || clearedInactivity || changedRounds || changedSharing;
 }
 
 type Row = { payload: string; revision: number };

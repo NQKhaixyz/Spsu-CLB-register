@@ -5,7 +5,7 @@ import { createClub, scoreFor, today, weekId, weeklyScoreFor, type Member } from
 import { CREDITS_TO_POINTS, CREDIT_EXCHANGE_RATE, creditExchangeView, exchangeMonthlyCredits, parseCreditExchange } from "../lib/credit-exchange";
 import { pendingCreditEntries } from "../lib/credit-history";
 import { makeReport } from "../lib/excel";
-import { adjustGameCredits, applyCoinFlip, creditWalletBalance, GAME_INACTIVITY_MS, gamesView, settleGameInactivity } from "../lib/games";
+import { adjustGameCredits, applyCoinFlip, creditWalletBalance, gamesView } from "../lib/games";
 import { semesterScores } from "../lib/semester-scores";
 import { activateCreditSharing, applySharingAction } from "../lib/sharing";
 import { activeSharingPeriod, sharingConsentVersion } from "../lib/sharing-types";
@@ -85,8 +85,8 @@ test("A monthly exchange debits once and reconciles the monthly, semester and Ex
   assert.throws(() => exchangeMonthlyCredits(club, admin, command, at), /thành viên/);
   const receipt = exchangeMonthlyCredits(club, a, command, at);
   assert.ok("earnedCents" in receipt);
-  assert.equal(receipt.earnedCents, 224_000);
-  assert.equal(creditWalletBalance(club, a.id), 1_224_000);
+  assert.equal(receipt.earnedCents, 180_000);
+  assert.equal(creditWalletBalance(club, a.id), 1_180_000);
   assert.deepEqual(exchangeMonthlyCredits(club, a, command, at + 1), receipt);
   assert.throws(() => exchangeMonthlyCredits(club, b, command, at), /đã được sử dụng/);
   assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, operationId: crypto.randomUUID() }, at), /không đủ/);
@@ -104,36 +104,37 @@ test("A monthly exchange debits once and reconciles the monthly, semester and Ex
   assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm trừ")).value, 0.1);
 });
 
-test("7000-credit exchanges keep awarding 0.20 points after the previous two-exchange limit", async () => {
+test("5000-credit exchanges award exact 0.225 points after fees beyond the former two-exchange limit", async () => {
   const { club, admin, a, b, week, month, at, addPoint } = fixture();
   addPoint("special", 0.3);
   // Archived redemptions keep their original deduction in the same month.
   club.monthlyCreditUses = [{ memberId: a.id, month, units: 1 }];
   const previousAwards = [{ memberId: a.id, month, count: 2, pointCents: 40 }];
   club.monthlyCreditAwards = previousAwards;
-  adjustGameCredits(club, { memberId: a.id, walletVersion: 0, operationId: crypto.randomUUID(), mode: "set", amountCents: 1_400_000 }, "issuer", at);
+  adjustGameCredits(club, { memberId: a.id, walletVersion: 0, operationId: crypto.randomUUID(), mode: "set", amountCents: 1_000_000 }, "issuer", at);
   const command = parseCreditExchange({ month, direction: CREDITS_TO_POINTS, rate: CREDIT_EXCHANGE_RATE, operationId: crypto.randomUUID(), units: 500 });
+  assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, rate: "700000-25-20" }, at), /Tỷ lệ đổi đã thay đổi/);
   assert.throws(() => exchangeMonthlyCredits(club, admin, command, at), /thành viên/);
   const receipt = exchangeMonthlyCredits(club, a, command, at);
   assert.ok("spentCents" in receipt);
-  assert.equal(receipt.spentCents, 700_000);
-  assert.equal(receipt.pointCents, 20);
-  assert.equal(creditWalletBalance(club, a.id), 700_000);
+  assert.equal(receipt.spentCents, 500_000);
+  assert.equal(receipt.pointCents, 22.5);
+  assert.equal(creditWalletBalance(club, a.id), 500_000);
   assert.deepEqual(exchangeMonthlyCredits(structuredClone(club), a, command, at + 1), receipt);
   assert.throws(() => exchangeMonthlyCredits(club, b, command, at), /đã được sử dụng/);
   exchangeMonthlyCredits(club, a, { ...command, operationId: crypto.randomUUID() }, at);
   assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, operationId: crypto.randomUUID() }, at), /không đủ credits/);
   assert.equal(creditWalletBalance(club, a.id), 0);
-  assert.equal(scoreFor(club, a.id, month).activityPoints.special, 1.1);
-  assert.equal(scoreFor(club, a.id, month).points, 1.05);
+  assert.equal(scoreFor(club, a.id, month).activityPoints.special, 1.15);
+  assert.equal(scoreFor(club, a.id, month).points, 1.1);
   assert.equal(weeklyScoreFor(club, a.id, week).points, 0.3);
-  assert.equal(semesterScores(club, month, month).rows.find(row => row.memberId === a.id)?.points, 1.05);
+  assert.equal(semesterScores(club, month, month).rows.find(row => row.memberId === a.id)?.points, 1.1);
   const { buffer } = await makeReport(club, month);
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(buffer as any);
   const sheet = book.worksheets[0];
   const headers = sheet.getRow(3).values as (string | undefined)[];
-  assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm riêng")).value, 1.1);
+  assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm riêng")).value, 1.15);
   assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm trừ")).value, 0.05);
   const next = new Date(month + "-01T12:00:00+07:00");
   next.setUTCMonth(next.getUTCMonth() + 1);
@@ -142,21 +143,18 @@ test("7000-credit exchanges keep awarding 0.20 points after the previous two-exc
   assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, month: nextMonth, operationId: crypto.randomUUID() }, next.getTime()), /không đủ credits/);
 });
 
-test("Exchanging and an active Cupid partner do not renew a player's inactivity interval", () => {
+test("Buying points from a Cupid wallet charges the shared balance once and awards points to the purchaser", () => {
   const { club, a, b, at, month } = fixture();
-  settleGameInactivity(club, at);
   activateCreditSharing(club, at);
   const consent = { consentVersion: sharingConsentVersion, acceptedGuide: true };
   applySharingAction(club, a, "inviteCupid", { ...consent, memberId: b.id, cupidTag: "CungChoi" }, at);
   applySharingAction(club, b, "answerSharingInvite", { ...consent, id: club.sharing!.invites[0].id, accept: true }, at + 1);
   const command = parseCreditExchange({ month, direction: CREDITS_TO_POINTS, rate: CREDIT_EXCHANGE_RATE, operationId: crypto.randomUUID() });
-  exchangeMonthlyCredits(club, a, command, at + 2);
-  assert.equal(creditWalletBalance(club, a.id), 650_000);
-  assert.equal(creditWalletBalance(club, b.id), 650_000);
-  applyCoinFlip(club, a.id, { kind: "flip", id: crypto.randomUUID(), stake: 2, pick: "one", walletVersion: gamesView(club, a.id, 0).wallet.version }, "two", at + 3);
-  settleGameInactivity(club, at + GAME_INACTIVITY_MS);
-  assert.equal(creditWalletBalance(club, a.id), 624_900);
-  assert.equal(creditWalletBalance(club, b.id), 624_900);
-  assert.equal(gamesView(club, a.id, 0).gameInactivityCharge, undefined);
-  assert.deepEqual(gamesView(club, b.id, 0).gameInactivityCharge, { at: at + GAME_INACTIVITY_MS, amountCents: 50_000, shared: true });
+  const receipt = exchangeMonthlyCredits(club, a, command, at + 2);
+  assert.equal(creditWalletBalance(club, a.id), 750_000);
+  assert.equal(creditWalletBalance(club, b.id), 750_000);
+  assert.equal(scoreFor(club, a.id, month).activityPoints.special, 0.225);
+  assert.equal(scoreFor(club, b.id, month).activityPoints.special, 0);
+  assert.deepEqual(exchangeMonthlyCredits(club, a, command, at + 3), receipt);
+  assert.equal(creditWalletBalance(club, a.id), 750_000);
 });

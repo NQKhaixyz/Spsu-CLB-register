@@ -4,7 +4,7 @@ import { applyAction, type Identity } from "../lib/actions";
 import { createClub, syncWeeks, type Member } from "../lib/club";
 import {
   adjustGameCredits, applyCoinFlip, applyGameCommand, creditRecipients, creditsRanking, drawWheelFactor, formatCredits, gamesView, parseCreditAdjustment,
-  GAME_INACTIVITY_MS, parseCreditAmount, parseGameCommand, settleGameInactivity,
+  clearLegacyInactivity, parseCreditAmount, parseGameCommand,
   wheelFactorForRoll, WHEEL_FACTORS, WHEEL_REFUND_EVERY, wheelNetCents, xoBoard, xoWinningLine, XO_BOARD_SIZE,
   type CoinFlipCommand, type GameCommand, type Mark, type WheelFactor,
 } from "../lib/games";
@@ -73,50 +73,23 @@ test("Coinflip uses the game wallet, returns 1.9 times the stake on wins and set
   assert.throws(() => applyCoinFlip(club, host.id, { ...next, id: crypto.randomUUID(), walletVersion: 3, stake: 10_000 }, "two", 16), /vượt số credits/);
 });
 
-test("Three days without actual gameplay costs 500 credits once per interval and can never overdraw", () => {
-  const { club, owner, host, guest, spectator, view } = fixture();
-  const first = Date.parse("2026-11-28T15:00:00+07:00");
-  const due = first + GAME_INACTIVITY_MS;
-  club.games = { wallets: {}, rooms: [], inactivityWeek: { week: "2026-11-16", memberIds: [owner.id] } };
-  assert.equal(settleGameInactivity(club, first), true);
-  assert.equal(club.games.inactivityWeek, undefined);
-  assert.equal(view(owner.id).wallet.balanceCents, 1_000_000);
-  adjustGameCredits(club, { operationId: crypto.randomUUID(), memberId: spectator.id, mode: "set", amountCents: 25_000, walletVersion: 0 },
-    "issuer", first + 10);
-  applyCoinFlip(club, host.id, { kind: "flip", id: crypto.randomUUID(), stake: 1, pick: "one", walletVersion: 0 }, "two", due - 1);
-  applyGameCommand(club, guest.id, { kind: "spin", id: spinId, stake: 1, walletVersion: 0 }, due - 1, 1);
-  assert.equal(settleGameInactivity(club, due - 1), false);
-  assert.equal(settleGameInactivity(club, due), true);
-  assert.equal(view(host.id).wallet.balanceCents, 999_900);
+test("Retiring expired inactivity schedules leaves existing wallet balances and versions intact", () => {
+  const { club, host, guest, view } = fixture();
+  const dueAt = Date.now() - 1_000;
+  const hostWallet = { balanceCents: 950_000, version: 7, spins: [],
+    gameInactivityCharge: { at: dueAt, amountCents: 50_000 } };
+  const legacy = { wallets: { [host.id]: hostWallet }, rooms: [],
+    inactivityDue: { [host.id]: dueAt, [guest.id]: dueAt },
+    inactivityWeek: { week: "2026-11-16", memberIds: [guest.id] } };
+  club.games = legacy;
+  assert.equal(clearLegacyInactivity(club.games), true);
+  assert.equal(Object.hasOwn(legacy, "inactivityDue"), false);
+  assert.equal(Object.hasOwn(legacy, "inactivityWeek"), false);
+  assert.equal(Object.hasOwn(hostWallet, "gameInactivityCharge"), false);
+  assert.equal(view(host.id).wallet.balanceCents, 950_000);
+  assert.equal(view(host.id).wallet.version, 7);
   assert.equal(view(guest.id).wallet.balanceCents, 1_000_000);
-  assert.equal(view(owner.id).wallet.balanceCents, 950_000);
-  assert.deepEqual(view(owner.id).gameInactivityCharge, { at: due, amountCents: 50_000 });
-  assert.equal(view(spectator.id).wallet.balanceCents, 0);
-  assert.deepEqual(view(spectator.id).gameInactivityCharge, { at: due, amountCents: 25_000 });
-  assert.equal(settleGameInactivity(structuredClone(club), due + 10), false);
-  assert.equal(settleGameInactivity(club, due + GAME_INACTIVITY_MS), true);
-  assert.equal(view(guest.id).wallet.balanceCents, 950_000);
-  assert.equal(view(owner.id).wallet.balanceCents, 900_000);
-});
-
-test("XO gameplay resets only the player who moved and paused accounts get a new interval on return", () => {
-  const { club, host, guest, spectator, view } = fixture();
-  const at = Date.now();
-  settleGameInactivity(club, at);
-  const stake = 10;
-  applyGameCommand(club, host.id, { kind: "create", id: roomId, stake, walletVersion: 0 }, at + 10);
-  applyGameCommand(club, guest.id, { kind: "join", id: roomId, stake, walletVersion: 0 }, at + 20);
-  applyGameCommand(club, host.id, { kind: "move", id: roomId, cell: 0, turn: 0 }, at + 30);
-  spectator.active = false;
-  const due = at + GAME_INACTIVITY_MS;
-  settleGameInactivity(club, due);
-  assert.equal(view(host.id).wallet.balanceCents, 999_000);
-  assert.equal(view(guest.id).wallet.balanceCents, 949_000);
-  assert.equal(club.games?.inactivityDue?.[spectator.id], undefined);
-  spectator.active = true;
-  settleGameInactivity(club, due + 10);
-  assert.equal(club.games?.inactivityDue?.[spectator.id], due + 10 + GAME_INACTIVITY_MS);
-  assert.equal(view(spectator.id).wallet.balanceCents, 1_000_000);
+  assert.equal(clearLegacyInactivity(structuredClone(club.games)), false);
 });
 
 test("Credits ranking includes active accounts, shares ranks for equal balances, and reflects game settlements", () => {

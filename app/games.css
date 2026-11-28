@@ -89,7 +89,7 @@
   border-radius: 10px;
   padding: 10px 12px;
 }
-.games-inactivity-charge { margin-block: 0 14px; }
+.games-cupid-note { margin-block: 0 14px; }
 .credit-exchange-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .credit-exchange-grid .field { margin-block: 0; }
 .credit-exchange-grid .btn { justify-self: start; }
