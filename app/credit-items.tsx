@@ -19,14 +19,13 @@ function countdown(remainingMs: number) {
 
 function itemResult(receipt: CreditItemReceipt) {
   if (receipt.kind === "shield") return "Đã bật khiên";
-  if (receipt.outcome === "blocked") return "Đã bị chặn";
   return "Nhận " + formatCredits(receipt.takenCents) + " credits";
 }
 
 function itemDetail(receipt: CreditItemReceipt) {
   const cost = "Phí " + formatCredits(receipt.costCents) + " credits";
   if (receipt.kind === "shield") return cost;
-  return [receipt.percent === undefined ? "" : "Tỷ lệ " + receipt.percent + "%", cost,
+  return ["Tỷ lệ " + receipt.percent + "%", cost,
     receipt.repaidCents ? "Đã trả nợ " + formatCredits(receipt.repaidCents) + " credits" : ""].filter(Boolean).join(" · ");
 }
 
@@ -207,7 +206,7 @@ export default function CreditItems() {
             </select>
           </Field>
           {confirm?.kind === "hammer" ? <div className="credit-item-confirm" role="group" aria-label="Xác nhận dùng búa">
-            <p>Đập {selected?.name ?? "mục tiêu đã chọn"} với phí 1.500 credits? Phí vẫn tính khi gặp khiên hoặc nhận 0 credits</p>
+            <p>Đập {selected?.name ?? "mục tiêu đã chọn"} với phí 1.500 credits? Phí vẫn tính khi nhận 0 credits</p>
             <div className="credit-item-actions">
               <Button disabled={disabled || !selected} onClick={() => void buy(confirm)}>Xác nhận đập</Button>
               <Button variant="secondary" onClick={() => setConfirm(undefined)}>Hủy</Button>

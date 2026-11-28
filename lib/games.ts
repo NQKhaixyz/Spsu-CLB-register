@@ -73,11 +73,14 @@ export type CreditItemCommand = { operationId: string; walletVersion: number } &
   | { kind: "shield"; quotedCostCents: number }
   | { kind: "hammer"; targetMemberId: string }
 );
-export type CreditItemResult = { at: number; costCents: number } & (
+type CreditItemPurchase = { at: number; costCents: number };
+type HammerPurchase = { kind: "hammer"; takenCents: number; repaidCents: number };
+type DisplayedCreditItemResult = CreditItemPurchase & (
   | { kind: "shield"; expiresAt: number }
-  | { kind: "hammer"; outcome: "blocked" | "empty" | "hit"; percent?: number; takenCents: number; repaidCents: number }
+  | (HammerPurchase & { outcome: "empty" | "hit"; percent: number })
 );
-export type CreditItemReceipt = CreditItemResult & { id: string; targetName?: string };
+export type CreditItemResult = DisplayedCreditItemResult | (CreditItemPurchase & HammerPurchase & { outcome: "blocked" });
+export type CreditItemReceipt = DisplayedCreditItemResult & { id: string; targetName?: string };
 export type CreditItemsView = {
   revision: number;
   serverNow: number;

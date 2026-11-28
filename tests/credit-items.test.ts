@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createClub, type Member } from "../lib/club";
 import { pendingCreditEntries } from "../lib/credit-history";
+import { creditItemReceiptView, savedCreditItemView } from "../lib/credit-item-receipts";
 import {
   adjustGameCredits, applyCreditItemCommand, applyCreditLoanCommand, creditItemsView, creditLoanInterestCents,
   creditLoanView, creditsRanking, drawHammerPercent, gamesView, HAMMER_PRICE_CENTS, parseCreditItemCommand, SHIELD_DURATION_MS,
@@ -61,6 +62,21 @@ test("Shield rounds the price up, blocks multiple paid hammer attempts and expir
   assert.equal(view(b).balanceCents, "400000");
   assert.equal(pendingCreditEntries(club.games)?.filter(entry => entry.kind === "shieldFee").length, 1);
   assert.equal(shield(b, at + SHIELD_DURATION_MS).costCents, 80_000);
+});
+
+test("A shielded strike and an ordinary 0% strike return the same receipt, including saved receipts", () => {
+  const { club, a, b, shield, hammer } = fixture();
+  const ordinary = hammer(a, b, 0);
+  shield(b);
+  const blocked = hammer(a, b, 50);
+  const id = "hammer-receipt";
+  const expected = {
+    id, targetName: b.name, kind: "hammer", at, costCents: HAMMER_PRICE_CENTS,
+    takenCents: 0, repaidCents: 0, outcome: "empty", percent: 0,
+  };
+  assert.deepEqual(creditItemReceiptView(club, id, ordinary, b.id), expected);
+  assert.deepEqual(creditItemReceiptView(club, id, blocked, b.id), expected);
+  assert.deepEqual(savedCreditItemView(club, { id, targetId: b.id, result: JSON.stringify(blocked) }), expected);
 });
 
 test("A hammer charges for zero, floors a half-credit result and accepts only eligible wallets with sufficient funds", () => {

@@ -53,8 +53,13 @@ export function readCreditItemReceipt(db: D1Database, operationId: string) {
 }
 
 export function creditItemReceiptView(club: Club, id: string, result: CreditItemResult, targetId?: string | null): CreditItemReceipt {
+  if (result.kind === "shield") return { ...result, id };
   const targetName = targetId ? club.members.find(member => member.id === targetId)?.name : undefined;
-  return { ...result, id, targetName };
+  const blocked = result.outcome === "blocked";
+  return {
+    id, targetName, kind: "hammer", at: result.at, costCents: result.costCents, takenCents: result.takenCents,
+    repaidCents: result.repaidCents, outcome: blocked ? "empty" : result.outcome, percent: blocked ? 0 : result.percent,
+  };
 }
 
 export function savedCreditItemView(club: Club, row: ReceiptRow) {
