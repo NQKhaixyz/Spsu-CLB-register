@@ -445,6 +445,7 @@
   object-fit: cover;
   object-position: 48% 35%;
 }
+:is(.coinflip-face, .coinflip-picks) img[data-side="two"] { object-position: left center; }
 .coinflip-outcome { display: grid; gap: 3px; min-height: 3rem; text-align: center; color: var(--muted); }
 .coinflip-outcome strong { font-size: 1.2rem; color: var(--ink); }
 .coinflip-outcome [data-result] { font-weight: 720; }

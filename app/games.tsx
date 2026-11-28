@@ -21,7 +21,7 @@ const coinDuration = 5_000;
 const gameLabels = { coinflip: "Coinflip", xo: "XO", wheel: "Vòng quay may mắn" } as const;
 const coinFaces = {
   one: { label: "Mặt 1", src: "/games/coinflip/mat-1.webp" },
-  two: { label: "Mặt 2", src: "/games/coinflip/mat-2.webp" },
+  two: { label: "Mặt 2", src: "/games/coinflip/dmn.jpg" },
 } as const;
 const wheelSectorCount = WHEEL_FACTORS.length;
 const wheelSectorAngle = 360 / wheelSectorCount;
