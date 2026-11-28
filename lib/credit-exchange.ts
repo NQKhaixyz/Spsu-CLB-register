@@ -14,13 +14,12 @@ const exchangeNetRate = (100 - CREDIT_EXCHANGE_FEE_PERCENT) / 100;
 export const CREDIT_EXCHANGE_AWARD_CENTS = CREDIT_EXCHANGE_BASE_POINT_CENTS * exchangeNetRate;
 export const CREDITS_PER_POINT_UNIT_CENTS = CREDIT_EXCHANGE_COST_CENTS * POINT_EXCHANGE_UNIT_CENTS /
   CREDIT_EXCHANGE_BASE_POINT_CENTS * exchangeNetRate;
-export const CREDIT_EXCHANGE_MONTHLY_LIMIT = 2;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const maxUnits = Math.floor(Number.MAX_SAFE_INTEGER / CREDITS_PER_POINT_UNIT_CENTS);
 
 // Stored units have always meant 0.05 points, including historical exchanges.
 export type MonthlyCreditUse = { memberId: string; month: string; units: number };
-export type MonthlyCreditAward = { memberId: string; month: string; count: number; pointCents: number };
+export type MonthlyCreditAward = { memberId: string; month: string; pointCents: number };
 type ExchangeReceipt = { memberId: string; month: string; operationId: string; at: number; balanceChangeCents: number };
 export type CreditExchangeReceipt = ExchangeReceipt & (
   | { units: number; earnedCents: number }
@@ -53,7 +52,6 @@ function exchangeUnits(points: number) {
 
 export function creditExchangeView(club: Club, member: Member, date = today()) {
   const month = date.slice(0, 7);
-  const count = club.monthlyCreditAwards?.find(row => row.memberId === member.id && row.month === month)?.count ?? 0;
   const dates = [...club.weeks.map(week => week.meetingDate), ...(club.manualActivities ?? []).map(row => row.date),
     ...(club.activityRegistrations ?? []).map(row => row.date), ...(club.pointDeductions ?? []).map(row => row.date)];
   const months = new Set([month, ...club.schedules.map(schedule => schedule.month), ...dates.map(day => day.slice(0, 7)),
@@ -66,7 +64,6 @@ export function creditExchangeView(club: Club, member: Member, date = today()) {
   }) : [];
   return {
     month, points: availableMonths.find(row => row.month === month)?.points ?? 0,
-    remaining: Math.max(0, CREDIT_EXCHANGE_MONTHLY_LIMIT - count),
     balanceCents: creditWalletBalance(club, member.id),
     cupid: !!cupidCreditPartnerId(club, member.id),
     months: availableMonths,
@@ -93,15 +90,11 @@ export function exchangeMonthlyCredits(club: Club, member: Member, command: Cred
     if (month !== date.slice(0, 7)) throw new GameRuleError("Chỉ cộng điểm đổi từ credits vào tháng hiện tại", 409);
     const awards = club.monthlyCreditAwards ??= [];
     const previous = awards.find(row => row.memberId === member.id && row.month === month);
-    if ((previous?.count ?? 0) >= CREDIT_EXCHANGE_MONTHLY_LIMIT)
-      throw new GameRuleError(`Bạn đã dùng hết ${CREDIT_EXCHANGE_MONTHLY_LIMIT} lượt đổi trong tháng này`, 409);
     const spentCents = CREDIT_EXCHANGE_COST_CENTS;
     const pointCents = CREDIT_EXCHANGE_AWARD_CENTS;
     const wallet = spendGameCredits(club, member.id, spentCents, "Đổi credits lấy điểm " + label, at);
-    if (previous) {
-      previous.count += 1;
-      previous.pointCents += pointCents;
-    } else awards.push({ memberId: member.id, month, count: 1, pointCents });
+    if (previous) previous.pointCents += pointCents;
+    else awards.push({ memberId: member.id, month, pointCents });
     receipt = { operationId, memberId: member.id, month, at, pointCents, spentCents, balanceChangeCents: wallet.balanceCents - before };
   } else {
     const { units } = command;

@@ -3,7 +3,7 @@
 import { Coins } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CREDITS_PER_POINT_UNIT_CENTS, CREDITS_TO_POINTS, CREDIT_EXCHANGE_AWARD_CENTS, CREDIT_EXCHANGE_BASE_POINT_CENTS,
-  CREDIT_EXCHANGE_COST_CENTS, CREDIT_EXCHANGE_FEE_PERCENT, CREDIT_EXCHANGE_MONTHLY_LIMIT, CREDIT_EXCHANGE_RATE,
+  CREDIT_EXCHANGE_COST_CENTS, CREDIT_EXCHANGE_FEE_PERCENT, CREDIT_EXCHANGE_RATE,
   POINT_EXCHANGE_UNIT_CENTS, POINTS_TO_CREDITS,
   type creditExchangeView, type CreditExchangeCommand, type CreditExchangeReceipt } from "../lib/credit-exchange";
 import { monthLabel } from "../lib/club";
@@ -30,7 +30,7 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
   const cents = parseCreditAmount(amount);
   const units = cents && cents % POINT_EXCHANGE_UNIT_CENTS === 0 ? cents / POINT_EXCHANGE_UNIT_CENTS : 0;
   const canBuyCredits = !!selected && units > 0 && units <= selected.units;
-  const canBuyPoints = !!view && view.remaining > 0 && view.balanceCents >= CREDIT_EXCHANGE_COST_CENTS;
+  const canBuyPoints = !!view && view.balanceCents >= CREDIT_EXCHANGE_COST_CENTS;
 
   useEffect(() => {
     const control = new AbortController();
@@ -118,9 +118,8 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
         <h2>Credits sang điểm tháng</h2>
         <p className="games-caption">Đổi {price} credits · Cộng {award} vào Điểm riêng sau phí</p>
         <p className="games-caption">{monthLabel(view.month)} · Điểm hiện tại <strong>{formatScore(view.points)}</strong></p>
-        <p className="games-caption">Còn <strong>{view.remaining}/{CREDIT_EXCHANGE_MONTHLY_LIMIT} lượt đổi</strong> trong tháng</p>
         {view.cupid && <p className="games-caption">Credits sẽ trừ từ ví Cupid</p>}
-        {view.remaining > 0 && view.balanceCents < CREDIT_EXCHANGE_COST_CENTS && <p className="games-caption">Cần {price} credits để đổi</p>}
+        {!canBuyPoints && <p className="games-caption">Cần {price} credits để đổi</p>}
         <Button type="submit" disabled={!canBuyPoints || busy || !!retry}>Đổi {price} credits lấy điểm</Button>
       </form>
     </div>}

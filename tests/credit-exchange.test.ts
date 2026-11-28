@@ -104,11 +104,13 @@ test("A monthly exchange debits once and reconciles the monthly, semester and Ex
   assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm trừ")).value, 0.1);
 });
 
-test("Each 7000-credit exchange awards 0.20 special points after fees and only two redemptions count per Vietnam month", async () => {
+test("7000-credit exchanges keep awarding 0.20 points after the previous two-exchange limit", async () => {
   const { club, admin, a, b, week, month, at, addPoint } = fixture();
   addPoint("special", 0.3);
   // Archived redemptions keep their original deduction in the same month.
   club.monthlyCreditUses = [{ memberId: a.id, month, units: 1 }];
+  const previousAwards = [{ memberId: a.id, month, count: 2, pointCents: 40 }];
+  club.monthlyCreditAwards = previousAwards;
   adjustGameCredits(club, { memberId: a.id, walletVersion: 0, operationId: crypto.randomUUID(), mode: "set", amountCents: 1_400_000 }, "issuer", at);
   const command = parseCreditExchange({ month, direction: CREDITS_TO_POINTS, rate: CREDIT_EXCHANGE_RATE, operationId: crypto.randomUUID(), units: 500 });
   assert.throws(() => exchangeMonthlyCredits(club, admin, command, at), /thành viên/);
@@ -120,24 +122,22 @@ test("Each 7000-credit exchange awards 0.20 special points after fees and only t
   assert.deepEqual(exchangeMonthlyCredits(structuredClone(club), a, command, at + 1), receipt);
   assert.throws(() => exchangeMonthlyCredits(club, b, command, at), /đã được sử dụng/);
   exchangeMonthlyCredits(club, a, { ...command, operationId: crypto.randomUUID() }, at);
-  assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, operationId: crypto.randomUUID() }, at), /hết 2 lượt/);
-  assert.equal(creditExchangeView(club, a).remaining, 0);
+  assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, operationId: crypto.randomUUID() }, at), /không đủ credits/);
   assert.equal(creditWalletBalance(club, a.id), 0);
-  assert.equal(scoreFor(club, a.id, month).activityPoints.special, 0.7);
-  assert.equal(scoreFor(club, a.id, month).points, 0.65);
+  assert.equal(scoreFor(club, a.id, month).activityPoints.special, 1.1);
+  assert.equal(scoreFor(club, a.id, month).points, 1.05);
   assert.equal(weeklyScoreFor(club, a.id, week).points, 0.3);
-  assert.equal(semesterScores(club, month, month).rows.find(row => row.memberId === a.id)?.points, 0.65);
+  assert.equal(semesterScores(club, month, month).rows.find(row => row.memberId === a.id)?.points, 1.05);
   const { buffer } = await makeReport(club, month);
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(buffer as any);
   const sheet = book.worksheets[0];
   const headers = sheet.getRow(3).values as (string | undefined)[];
-  assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm riêng")).value, 0.7);
+  assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm riêng")).value, 1.1);
   assert.equal(sheet.getRow(4).getCell(headers.indexOf("Điểm trừ")).value, 0.05);
   const next = new Date(month + "-01T12:00:00+07:00");
   next.setUTCMonth(next.getUTCMonth() + 1);
   const nextMonth = today(next).slice(0, 7);
-  assert.equal(creditExchangeView(club, a, today(next)).remaining, 2);
   assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, operationId: crypto.randomUUID() }, next.getTime()), /tháng hiện tại/);
   assert.throws(() => exchangeMonthlyCredits(club, a, { ...command, month: nextMonth, operationId: crypto.randomUUID() }, next.getTime()), /không đủ credits/);
 });
