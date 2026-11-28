@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { GameRuleError, adjustGameCredits, creditRecipients, parseCreditAdjustment } from "../../../lib/games";
-import { getCreditIssuer, loginCreditIssuer, logoutCreditIssuer, sessionCookie } from "../../../lib/native-auth";
+import { changeCreditIssuerPassword, getCreditIssuer, loginCreditIssuer, logoutCreditIssuer, sessionCookie } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
 import { readBody, verifyOrigin } from "../../../lib/photo-upload";
 import { readState, writeState } from "../../../lib/store";
@@ -47,6 +47,10 @@ export async function POST(request: Request) {
     }
     if (action === "logout") {
       await logoutCreditIssuer(request);
+      return json({ ok: true }, 200, sessionCookie(request, "", 0, "credit-issuer"));
+    }
+    if (action === "password") {
+      await changeCreditIssuerPassword(request, input);
       return json({ ok: true }, 200, sessionCookie(request, "", 0, "credit-issuer"));
     }
     const issuer = await getCreditIssuer(request);

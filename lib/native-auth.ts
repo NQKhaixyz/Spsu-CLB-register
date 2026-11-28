@@ -134,6 +134,26 @@ export async function logoutCreditIssuer(request: Request) {
   }
 }
 
+export async function changeCreditIssuerPassword(request: Request, data: Record<string, unknown>) {
+  const issuer = await getCreditIssuer(request);
+  if (!issuer) throw new AuthError("Vui lòng đăng nhập tài khoản cấp credits.", 401);
+  await attempt(request, "credit-issuer-password", 12);
+  const current = validatePassword(data.currentPassword);
+  const password = validatePassword(data.password);
+  const account = await db().prepare("SELECT password_hash FROM auth_accounts WHERE id=? AND user_id=?")
+    .bind(issuer.id, creditIssuer.userId).first<Pick<Account, "password_hash">>();
+  if (!account || !await verifyPassword(current, account.password_hash))
+    throw new AuthError("Mật khẩu hiện tại chưa đúng.", 401);
+  const nextHash = await hashPassword(password);
+  const result = await db().batch([
+    db().prepare("UPDATE auth_accounts SET password_hash=? WHERE id=? AND user_id=? AND password_hash=?")
+      .bind(nextHash, issuer.id, creditIssuer.userId, account.password_hash),
+    db().prepare("DELETE FROM auth_sessions WHERE account_id=? AND EXISTS(SELECT 1 FROM auth_accounts WHERE id=? AND password_hash=?)")
+      .bind(issuer.id, issuer.id, nextHash),
+  ]);
+  if (!result[0].meta.changes) throw new AuthError("Mật khẩu vừa thay đổi. Vui lòng đăng nhập lại.", 409);
+}
+
 async function issueSession(accountId: string) {
   const token = randomToken();
   await db().batch([
