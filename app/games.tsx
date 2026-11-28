@@ -6,10 +6,11 @@ import {
   COIN_SIDES, COIN_WIN_PAYOUT_CENTS, formatCredits, GAME_RULES_VERSION,
   isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY, WHEEL_REFUND_PERCENT,
   xoPrizeCents, xoSize, xoWinLength, XO_BOARD_SIZE,
-  type CoinFlipCommand, type CoinSide, type GameCommand, type GamesResponse, type GamesView, type OpenXoRoom,
+  type CoinFlipCommand, type CoinSide, type GameCommand, type GamesCommand, type GamesResponse, type GamesView, type OpenXoRoom,
   type WheelFactor, type WheelSpin, type XoRoom,
 } from "../lib/games";
 import { MemberName, useMemberIdentity } from "./member-identity";
+import BlackjackGame from "./blackjack";
 import { Avatar, Button, Dialog, Field } from "./ui";
 import XoBoard from "./xo-board";
 
@@ -18,7 +19,7 @@ const creditNumber = new Intl.NumberFormat("vi-VN");
 const spinTime = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const wheelDuration = 2_350;
 const coinDuration = 5_000;
-const gameLabels = { coinflip: "Coinflip", xo: "XO", wheel: "Vòng quay may mắn" } as const;
+const gameLabels = { coinflip: "Coinflip", blackjack: "Blackjack", xo: "XO", wheel: "Vòng quay may mắn" } as const;
 const coinFaces = {
   one: { label: "Mặt 1", src: "/games/coinflip/mat-1.webp" },
   two: { label: "Mặt 2", src: "/games/coinflip/dmn.jpg" },
@@ -43,7 +44,7 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
   const [view, setView] = useState<GamesView>();
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
-  const [retry, setRetry] = useState<GameCommand | CoinFlipCommand>();
+  const [retry, setRetry] = useState<GamesCommand>();
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
   const [motion, setMotion] = useState<{ spin: WheelSpin; angle: number; moving: boolean }>();
@@ -96,7 +97,7 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
     return () => clearTimeout(timer);
   }, [coinMotion]);
 
-  async function submit(command: GameCommand | CoinFlipCommand) {
+  async function submit(command: GamesCommand) {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
@@ -162,6 +163,8 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
     </div>}
     {!view && !loadError && <p className="games-loading" role="status"><LoaderCircle size={18} className="spin" aria-hidden="true" /> Đang tải trò chơi</p>}
     {view && tab === "coinflip" && <CoinFlipGame view={view} moving={coinMoving} disabled={busy || !!retry} onSubmit={submit} />}
+    {view && tab === "blackjack" && <BlackjackGame view={view.blackjack} walletVersion={view.wallet.version}
+      disabled={busy || !!retry} onSubmit={submit} />}
     {view && tab === "xo" && <XoGame view={view} memberId={memberId} disabled={busy || !!retry} onSubmit={submit} />}
     {view && tab === "wheel" && <WheelGame view={view} motion={motion} disabled={busy || !!retry} onSubmit={submit} />}
   </div>;

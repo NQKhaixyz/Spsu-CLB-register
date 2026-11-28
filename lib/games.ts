@@ -2,6 +2,11 @@ import type { Club } from "./club";
 import { recordCreditDebt, recordCreditEntry, type StoredCreditDebtKind, type CreditMovement, type PendingCreditEntry } from "./credit-history";
 import { activeSharingPeriod, type SharingPeriod } from "./sharing-types";
 import type { CreditExchangeReceipt } from "./credit-exchange";
+import {
+  BLACKJACK_MOVES, BLACKJACK_NATURAL_RETURN, BLACKJACK_WIN_RETURN, blackjackHandIndex, blackjackOptions,
+  blackjackTotalStake, dealBlackjack, playBlackjack, resolveBlackjack, shuffleBlackjackDeck,
+  type BlackjackCard, type BlackjackCommand, type BlackjackMove, type BlackjackResult, type BlackjackRound, type BlackjackView,
+} from "./blackjack";
 
 export const WHEEL_FACTORS = [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6] as const;
 export type WheelFactor = typeof WHEEL_FACTORS[number];
@@ -25,6 +30,9 @@ const hammerMaxPercent = 50;
 const winnerCentsPerCredit = 195;
 const coinWinCentsPerCredit = COIN_WIN_PAYOUT_CENTS - creditCents;
 const maxBalance = Number.MAX_SAFE_INTEGER;
+const blackjackWinCents = BLACKJACK_WIN_RETURN * creditCents;
+const blackjackNaturalCents = BLACKJACK_NATURAL_RETURN * creditCents;
+const maxBlackjackWager = Math.floor(maxBalance / blackjackNaturalCents);
 const recentCount = 5;
 const gameResultHistoryLimit = 10;
 const requestIdFormat = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -41,6 +49,10 @@ type Wallet = {
   hammersPurchased?: number;
   spins: WheelSpin[];
   flips?: CoinFlip[];
+  blackjack?: {
+    active?: BlackjackRound;
+    recent: (BlackjackResult & { moves: BlackjackMove[] })[];
+  };
   wheelProgress?: WheelProgress;
   operatorGrants?: CreditAdjustmentReceipt[];
 };
@@ -149,6 +161,7 @@ export type GamesView = {
   ownRooms: XoRoom[];
   spins: WheelSpin[];
   flips: CoinFlip[];
+  blackjack: BlackjackView;
   cupidPartnerId?: string;
   wheelProgress: { spins: number; pendingRefundCents: number };
 };
@@ -164,6 +177,8 @@ export type GameCommand =
   | { kind: "spin"; id: string; stake: number; walletVersion: number }
   | { kind: "move"; id: string; cell: number; turn: number }
   | { kind: "cancel" | "surrender"; id: string };
+
+export type GamesCommand = GameCommand | CoinFlipCommand | BlackjackCommand;
 
 export class GameRuleError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -217,11 +232,21 @@ export function parseCreditItemCommand(input: unknown): CreditItemCommand {
   throw invalid();
 }
 
-export function parseGameCommand(body: unknown): GameCommand | CoinFlipCommand {
+export function parseGameCommand(body: unknown): GamesCommand {
   const invalid = () => new GameRuleError("Thao tác trò chơi không hợp lệ");
   if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
-  const { kind, id, stake, walletVersion, cell, turn, pick } = body as Record<string, unknown>;
+  const { kind, id, stake, walletVersion, cell, turn, pick, move } = body as Record<string, unknown>;
   if (typeof id !== "string" || !requestIdFormat.test(id)) throw invalid();
+  if (kind === "blackjackStart") {
+    if (!integerBetween(stake, 1, maxBlackjackWager)) throw new GameRuleError("Mức cược phải là số nguyên dương");
+    if (!integerBetween(walletVersion, 0, maxBalance)) throw invalid();
+    return { kind, id, stake, walletVersion };
+  }
+  if (kind === "blackjackMove") {
+    if (!integerBetween(turn, 0, 52) || !integerBetween(walletVersion, 0, maxBalance) ||
+        !BLACKJACK_MOVES.some(option => option === move)) throw invalid();
+    return { kind, id, turn, move: move as BlackjackMove, walletVersion };
+  }
   if (kind === "create" || kind === "join" || kind === "spin" || kind === "flip") {
     if (!integerBetween(stake, 1, Math.floor(maxBalance / (5 * creditCents))))
       throw new GameRuleError("Mức cược phải là số nguyên dương");
@@ -363,6 +388,8 @@ export function mergeCupidCredits(club: Club, period: SharingPeriod, at: number)
   const games: GamesState = club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
   const [one, other] = period.memberIds;
   if (!one || !other) return;
+  settleBlackjack(club, one, at, true);
+  settleBlackjack(club, other, at, true);
   const total = BigInt(walletFor(games, one).balanceCents) + BigInt(walletFor(games, other).balanceCents);
   const equal = Number(total / two);
   period.creditRemainder = Number(total % two) || undefined;
@@ -380,6 +407,8 @@ export function separateCupidCredits(club: Club, period: SharingPeriod, at: numb
   const games = club.games;
   const [one, other] = period.memberIds;
   if (!games || !one || !other) return;
+  settleBlackjack(club, one, at, true);
+  settleBlackjack(club, other, at, true);
   const balance = walletFor(games, one).balanceCents;
   period.endingCreditBalance = balance;
   const remainder = period.creditRemainder ?? 0;
@@ -638,7 +667,10 @@ function wheelRefundCents(netCredits = 0) {
 function reservedCredits(games: GamesState | undefined, memberId: string) {
   const room = liveRoomFor(games, memberId);
   const prize = room ? xoPrizeCents(room.stake) : 0;
-  return BigInt(prize) + BigInt(wheelRefundCents(walletFor(games, memberId).wheelProgress?.netCredits));
+  const wallet = walletFor(games, memberId);
+  const hand = wallet.blackjack?.active;
+  const blackjackPayout = hand ? blackjackTotalStake(hand) * blackjackWinCents : 0;
+  return BigInt(prize) + BigInt(blackjackPayout) + BigInt(wheelRefundCents(wallet.wheelProgress?.netCredits));
 }
 
 function creditHeadroom(club: Club, memberId: string) {
@@ -886,6 +918,119 @@ export function drawHammerPercent() {
   return drawUniformIndex(hammerMaxPercent + 1);
 }
 
+export function drawBlackjackDeck() {
+  return shuffleBlackjackDeck(drawUniformIndex);
+}
+
+function blackjackHeadroomPerCredit(club: Club, memberId: string, payout: number) {
+  // Reserve each player's gross payout even when their balance is shared.
+  return BigInt(payout * (creditPair(club, memberId) ? 2 : 1) - creditCents);
+}
+
+function maxBlackjackStake(club: Club, memberId: string) {
+  return Math.max(0, Math.min(
+    Math.floor(creditWalletBalance(club, memberId) / creditCents),
+    Number(creditHeadroom(club, memberId) / blackjackHeadroomPerCredit(club, memberId, blackjackNaturalCents)),
+    maxBlackjackWager,
+  ));
+}
+
+function canAddBlackjackStake(club: Club, memberId: string, round: BlackjackRound, stake: number) {
+  return stake * creditCents <= creditWalletBalance(club, memberId) &&
+    BigInt(blackjackTotalStake(round) + stake) * BigInt(blackjackWinCents) <= maxCreditBalance &&
+    BigInt(stake) * blackjackHeadroomPerCredit(club, memberId, blackjackWinCents) <= creditHeadroom(club, memberId);
+}
+
+function blackjackView(club: Club, memberId: string): BlackjackView {
+  const table = walletFor(club.games, memberId).blackjack;
+  const recent = (table?.recent ?? []).map(({ moves: _moves, ...result }) => result);
+  const round = table?.active;
+  if (!round) return { maxStake: maxBlackjackStake(club, memberId), recent };
+  const handIndex = blackjackHandIndex(round);
+  const { canDouble, canSplit } = blackjackOptions(round);
+  const canAfford = (canDouble || canSplit) && canAddBlackjackStake(club, memberId, round, round.hands[handIndex].stake);
+  return { maxStake: 0, recent, active: {
+    id: round.id, turn: round.moves.length, handIndex, dealerUpCard: round.dealer[0],
+    hands: round.hands.map(({ cards, stake }) => ({ cards, stake })),
+    canDouble: canDouble && canAfford, canSplit: canSplit && canAfford,
+  } };
+}
+
+function settleBlackjack(club: Club, memberId: string, at: number, autoStood = false) {
+  const wallet = walletFor(club.games, memberId);
+  const table = wallet.blackjack;
+  const round = table?.active;
+  if (!round) return;
+  const result = resolveBlackjack(round, at, creditCents);
+  let balance = wallet.balanceCents;
+  let repaidCents = 0;
+  if (result.payoutCents) {
+    const label = result.netCents === 0 ? "Hoàn cược" : "Trả thưởng";
+    const income = updateCreditIncome(club, memberId, at,
+      [{ kind: "blackjack", label: "Blackjack · " + label, changeCents: result.payoutCents }], result.netCents);
+    balance = income.wallet.balanceCents;
+    repaidCents = income.repaidCents;
+  }
+  delete table.active;
+  table.recent = [{
+    ...result, moves: round.moves, walletChangeCents: round.walletChangeCents + (balance - wallet.balanceCents),
+    ...(repaidCents ? { loanRepaymentCents: repaidCents } : {}),
+    ...(autoStood ? { autoStood: true as const } : {}),
+  }, ...table.recent].slice(0, gameResultHistoryLimit);
+}
+
+export function applyBlackjackCommand(club: Club, memberId: string, command: BlackjackCommand, at: number, deck?: BlackjackCard[]) {
+  if (!club.members.some(member => member.id === memberId && member.active))
+    throw new GameRuleError("Tài khoản đang tạm nghỉ", 403);
+  club.games ??= { rooms: [], wallets: Object.create(null) as GamesState["wallets"] };
+  const wallet = walletFor(club.games, memberId);
+  const table = wallet.blackjack ?? { recent: [] };
+  const active = table.active;
+  const previous = table.recent.find(result => result.id === command.id);
+  const round = active?.id === command.id ? active : undefined;
+  if (command.kind === "blackjackStart") {
+    const existing = round ?? previous;
+    if (existing) {
+      if (existing.stake !== command.stake) throw new GameRuleError("Ván này đã dùng mức cược khác", 409);
+      return;
+    }
+    if (active) throw new GameRuleError("Hãy hoàn tất ván Blackjack đang chơi", 409);
+    if (command.walletVersion !== wallet.version)
+      throw new GameRuleError("Số dư đã thay đổi, kiểm tra lại mức cược", 409);
+    if (!integerBetween(command.stake, 1, maxBlackjackStake(club, memberId)))
+      throw new GameRuleError("Mức cược vượt số credits có thể dùng");
+    if (!deck) throw new Error("Máy chủ chưa xáo bộ bài Blackjack");
+    const dealt = dealBlackjack(command.id, command.stake, deck);
+    const next = updateBalance(club, memberId, at,
+      [{ kind: "blackjack", label: "Blackjack · Đặt cược", changeCents: -command.stake * creditCents }]);
+    dealt.walletChangeCents = next.balanceCents - wallet.balanceCents;
+    table.active = dealt;
+    next.blackjack = table;
+    if (blackjackHandIndex(dealt) < 0) settleBlackjack(club, memberId, at);
+    return;
+  }
+  const played = (round ?? previous)?.moves[command.turn];
+  if (played === command.move) return;
+  if (!round || round.moves.length !== command.turn)
+    throw new GameRuleError("Ván đã đổi lượt hoặc đã kết thúc", 409);
+  if (command.move === "double" || command.move === "split") {
+    const { canDouble, canSplit } = blackjackOptions(round);
+    if (!(command.move === "double" ? canDouble : canSplit))
+      throw new GameRuleError("Tay bài hiện tại chưa thể thực hiện thao tác này", 409);
+    if (command.walletVersion !== wallet.version)
+      throw new GameRuleError("Số dư đã thay đổi, kiểm tra lại mức cược", 409);
+    const stake = round.hands[blackjackHandIndex(round)].stake;
+    if (!canAddBlackjackStake(club, memberId, round, stake))
+      throw new GameRuleError("Bạn không đủ credits để thêm cược");
+    const label = command.move === "double" ? "Gấp đôi" : "Tách bài";
+    const next = updateBalance(club, memberId, at,
+      [{ kind: "blackjack", label: "Blackjack · " + label, changeCents: -stake * creditCents }]);
+    round.walletChangeCents += next.balanceCents - wallet.balanceCents;
+  }
+  playBlackjack(round, command.move);
+  if (blackjackHandIndex(round) < 0) settleBlackjack(club, memberId, at);
+}
+
 function trimFinishedRooms(games: GamesState) {
   const counts = new Map<string, number>();
   games.rooms.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -929,6 +1074,7 @@ export function dropMemberFromGames(club: Club, memberId: string, erase = false,
   if (!games) return;
   const room = liveRoomFor(games, memberId);
   if (room) finishRoom(club, room, at, "cancelled", undefined, "unavailable");
+  if (!erase) settleBlackjack(club, memberId, at, true);
   if (erase) {
     delete games.wallets[memberId];
     games.rooms = games.rooms.filter(room => !isPlayer(room, memberId));
@@ -955,6 +1101,7 @@ export function gamesView(club: Club, memberId: string, revision: number, legacy
       .slice(0, recentCount),
     spins,
     flips: wallet.flips ?? [],
+    blackjack: blackjackView(club, memberId),
     cupidPartnerId: cupidCreditPartnerId(club, memberId),
     wheelProgress: { spins: wheelProgress?.spins ?? 0, pendingRefundCents: wheelRefundCents(wheelProgress?.netCredits) },
   };

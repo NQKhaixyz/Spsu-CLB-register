@@ -55,8 +55,8 @@ export function activateCreditSharing(club: Club, now: number) {
       if (group.kind !== "cupid" || period.memberIds.length !== 2 ||
         !period.memberIds.every(id => club.members.some(member => member.id === id && canJoinSharing(member)))) continue;
       const credits: SharingPeriod = { id: newId(), memberIds: [...period.memberIds], startedAt: now, asset: "credits" };
-      group.periods.push(credits);
       mergeCupidCredits(club, credits, now);
+      group.periods.push(credits);
     }
     state.invites = [];
     state.notices = state.notices.filter(notice => !notice.kind.startsWith("guild") && notice.kind !== "cupidInvite");
@@ -140,8 +140,8 @@ function answerInvite(club: Club, state: SharingState, me: Member, data: Record<
       const period: SharingPeriod = { id: newId(), memberIds, startedAt: now,
         ...(club.creditSharingSince !== undefined ? { asset: "credits" } : {}) };
       const group: SharingGroup = { id: invite.id, kind: "cupid", name: "Cupid", hashtag: invite.cupidTag, periods: [period] };
-      state.groups.push(group);
       if (period.asset === "credits") mergeCupidCredits(club, period, now);
+      state.groups.push(group);
       notify(state, memberIds, me.id, "cupidAccepted", group.id, now);
     } else {
       const group = state.groups.find(item => item.id === invite.groupId && item.kind === "guild");

@@ -148,6 +148,7 @@ type Tab =
   | "links"
   | "feedback"
   | "coinflip"
+  | "blackjack"
   | "exchange"
   | "creditLoans"
   | "creditItems"
@@ -174,7 +175,7 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
-const gameTabs: readonly Tab[] = ["coinflip", "xo", "wheel", "exchange", "creditLoans", "creditItems", "creditsRank"];
+const gameTabs: readonly Tab[] = ["coinflip", "blackjack", "xo", "wheel", "exchange", "creditLoans", "creditItems", "creditsRank"];
 const getForm = (e: FormEvent<HTMLFormElement>) => {
   e.preventDefault();
   return Object.fromEntries(new FormData(e.currentTarget));
@@ -303,10 +304,13 @@ export default function Workspace() {
     return () => clearTimeout(timer);
   }, [activeSession, currentMonday, currentMonth, load]);
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("tin");
+    const query = new URLSearchParams(window.location.search);
+    const id = query.get("tin");
     if (isBulletinId(id)) {
       setLinkedBulletin(id);
       setTab("bulletin");
+    } else if (query.get("game") === "blackjack") {
+      setTab("blackjack");
     }
   }, []);
   useEffect(() => {
@@ -518,6 +522,12 @@ export default function Workspace() {
   }
   const go = (next: Tab) => {
     if (next !== "bulletin") dismissBulletinLink();
+    if (next !== tab && (next === "blackjack" || tab === "blackjack")) {
+      const url = new URL(window.location.href);
+      if (next === "blackjack") url.searchParams.set("game", "blackjack");
+      else url.searchParams.delete("game");
+      window.history.replaceState(window.history.state, "", url);
+    }
     if (next === tab && (sidebarGroups.scoreboard.sections.includes(next) || sidebarGroups.activity.sections.includes(next))) void load();
     setFeedbackTarget(undefined);
     setSharingTarget(undefined);
@@ -724,6 +734,7 @@ export default function Workspace() {
     { id: "requests", label: isAdmin ? "Tạo sự kiện" : "Sự kiện", pending: activityPending },
   ] : inGames ? [
     { id: "coinflip", label: "Coinflip" },
+    { id: "blackjack", label: "Blackjack" },
     { id: "xo", label: "XO" },
     { id: "wheel", label: "Vòng quay may mắn" },
     ...(!isAdmin ? [{ id: "exchange" as const, label: "Đổi điểm tháng" }] : []),
@@ -3583,7 +3594,7 @@ export default function Workspace() {
               onSubmit={submitFeedback} onEdit={editFeedback} onRecall={recallFeedback} conversationActions={feedbackConversationActions}
               focusId={feedbackTarget?.id} focusPending={feedbackTarget !== loadedFeedbackTarget} focusError={loadError}
               onBack={() => go("feedback")} />
-          ) : activeTab === "coinflip" || activeTab === "xo" || activeTab === "wheel" ? (
+          ) : activeTab === "coinflip" || activeTab === "blackjack" || activeTab === "xo" || activeTab === "wheel" ? (
             <GamesPage key={me.id} tab={activeTab} memberId={me.id} />
           ) : activeTab === "exchange" ? (
             <CreditExchange key={me.id} onExchanged={() => { void load(); }} onOpenLoans={() => go("creditLoans")} />

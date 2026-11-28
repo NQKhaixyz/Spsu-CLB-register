@@ -12,6 +12,7 @@ import "./feedback.test";
 import "./sharing.test";
 import "./workspace-notifications.test";
 import "./games.test";
+import "./blackjack.test";
 import "./credit-exchange.test";
 import "./credit-loans.test";
 import "./credit-items.test";

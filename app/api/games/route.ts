@@ -1,4 +1,4 @@
-import { applyCoinFlip, applyGameCommand, creditsRanking, drawCoinSide, drawWheelFactor, GAME_RULES_VERSION, GameRuleError, gamesView, parseGameCommand, xoSize } from "../../../lib/games";
+import { applyBlackjackCommand, applyCoinFlip, applyGameCommand, creditsRanking, drawBlackjackDeck, drawCoinSide, drawWheelFactor, GAME_RULES_VERSION, GameRuleError, gamesView, parseGameCommand, xoSize } from "../../../lib/games";
 import { getNativeUserWithClub } from "../../../lib/native-auth";
 import { AuthError } from "../../../lib/password";
 import { readBody, verifyOrigin } from "../../../lib/photo-upload";
@@ -48,10 +48,15 @@ export async function POST(request: Request) {
       throw new GameRuleError("Tải bản mới của Nhịp Đội để tạo phòng XO 20 × 20", 409);
     const factor = command.kind === "spin" ? drawWheelFactor() : undefined;
     const side = command.kind === "flip" ? drawCoinSide() : undefined;
+    const deck = command.kind === "blackjackStart" ? drawBlackjackDeck() : undefined;
     const at = Date.now();
     const { club, revision, result } = await mutate(user.userId, current => {
       if (!current.members.some(member => member.id === user.member.id && member.userId === user.userId && member.active))
         throw new AuthError("Vui lòng đăng nhập để chơi", 401);
+      if (command.kind === "blackjackStart" || command.kind === "blackjackMove") {
+        applyBlackjackCommand(current, user.member.id, command, at, deck);
+        return {};
+      }
       if (!largeBoard && command.kind !== "spin" && current.games?.rooms.some(room => room.id === command.id && xoSize(room) !== 3))
         throw new GameRuleError("Tải bản mới của Nhịp Đội để chơi trên bàn 20 × 20", 409);
       return command.kind === "flip"
