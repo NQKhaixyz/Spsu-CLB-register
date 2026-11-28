@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Coins } from "lucide-react";
-import { formatCredits, parseCreditAmount, type CreditLoanCommand, type CreditLoanView } from "../lib/games";
+import {
+  CREDIT_LOAN_INTEREST_PERCENT, CREDIT_LOAN_LIMIT_CENTS, creditLoanInterestCents, formatCredits, parseCreditAmount,
+  type CreditLoanCommand, type CreditLoanView,
+} from "../lib/games";
 import { MemberName } from "./member-identity";
 import { Button, Field } from "./ui";
 
@@ -102,25 +105,33 @@ export default function CreditLoans({ memberId }: { memberId: string }) {
   const isCupid = !!view?.partnerId;
   const request = view?.request;
   const requestIsMine = request?.requestedBy === memberId;
+  const requestInterest = request?.interestCents ?? 0;
   const debt = BigInt(view?.debtCents ?? "0");
+  const loanLimit = BigInt(CREDIT_LOAN_LIMIT_CENTS);
+  const remainingLimit = debt < loanLimit ? loanLimit - debt : zero;
   const borrowCents = parseCreditAmount(borrowText);
   const repayCents = parseCreditAmount(repayText);
-  const canBorrow = !!view && !request && !!borrowCents;
+  const quotedInterest = borrowCents ? creditLoanInterestCents(borrowCents) : 0;
+  const quotedTotal = BigInt(borrowCents ?? 0) + BigInt(quotedInterest);
+  const overLimit = quotedTotal > remainingLimit;
+  const canBorrow = !!view && !request && !!borrowCents && !overLimit;
   const canRepay = !!view && !!repayCents && repayCents <= view.repayableCents;
   const canRepayAll = !!view && debt > zero && BigInt(view.repayableCents) === debt;
 
   function submitAmount(kind: "borrow" | "repay", amountCents: number) {
     if (!view || blocked) return;
-    void submit({ operationId: crypto.randomUUID(), kind, amountCents, walletVersion: view.walletVersion });
+    void submit({ operationId: crypto.randomUUID(), kind, amountCents, walletVersion: view.walletVersion,
+      interestCents: kind === "borrow" ? quotedInterest : undefined });
   }
 
   function decide(kind: "approve" | "decline" | "cancel") {
-    if (request && !blocked) void submit({ operationId: crypto.randomUUID(), kind, requestId: request.id });
+    if (request && !blocked) void submit({ operationId: crypto.randomUUID(), kind, requestId: request.id,
+      interestCents: kind === "approve" ? requestInterest : undefined });
   }
 
   return <section className="games-page" aria-label="Vay và trả nợ credits">
     <div className="games-heading">
-      <div><h1>Vay credits</h1><p>Lãi suất 0% · Trả hết nợ để đổi credits sang điểm</p></div>
+      <div><h1>Vay credits</h1><p>Lãi {CREDIT_LOAN_INTEREST_PERCENT}% tính một lần · Trả hết nợ để đổi credits sang điểm</p></div>
       {view && <div className="credit-loan-summary">
         <div className="games-wallet"><Coins size={20} aria-hidden="true" />
           <div><span>{isCupid ? "Số dư ví chung" : "Số dư credits"}</span><strong>{formatCredits(BigInt(view.balanceCents))}</strong></div></div>
@@ -141,6 +152,7 @@ export default function CreditLoans({ memberId }: { memberId: string }) {
           {requestIsMine ? "Bạn đã đề nghị vay " : <><MemberName memberId={request.requestedBy} /> đề nghị vay </>}
           <strong>{formatCredits(request.amountCents)} credits</strong> từ ví chung
         </p>
+        <p className="games-caption">Tiền lãi {formatCredits(requestInterest)} · Tổng phải trả {formatCredits(request.amountCents + requestInterest)} credits</p>
         <div className="credit-loan-actions">
           {requestIsMine ? <Button variant="secondary" disabled={blocked} onClick={() => decide("cancel")}>Hủy đề nghị</Button> : <>
             <Button disabled={blocked} onClick={() => decide("approve")}>Đồng ý vay</Button>
@@ -154,11 +166,16 @@ export default function CreditLoans({ memberId }: { memberId: string }) {
           if (canBorrow && borrowCents) submitAmount("borrow", borrowCents);
         }}>
           <h2>Khoản vay</h2>
-          {isCupid && <p className="games-caption">Khoản vay ví Cupid cần cả hai xác nhận</p>}
+          <p className="games-caption">Dư nợ tối đa {formatCredits(loanLimit)} credits mỗi ví, gồm gốc và lãi</p>
+          {isCupid
+            ? <p className="games-caption">Hạn mức tính cả nợ chung và nợ riêng của hai người. Cả hai cần xác nhận khoản vay</p>
+            : <p className="games-caption">Hạn mức còn lại {formatCredits(remainingLimit)} credits</p>}
           <Field label="Số credits muốn vay">
             <input value={borrowText} onChange={event => setBorrowText(event.target.value)} inputMode="decimal"
-              placeholder="Ví dụ 5000" required disabled={blocked || !!request} />
+              placeholder="Ví dụ 5000" required disabled={blocked || !!request} aria-invalid={overLimit} />
           </Field>
+          {!!borrowCents && <p className="games-caption">Tiền lãi {formatCredits(quotedInterest)} · Tổng phải trả {formatCredits(quotedTotal)} credits</p>}
+          {overLimit && <p className="games-caption" role="status">Gốc và lãi vượt hạn mức còn lại</p>}
           <Button type="submit" disabled={blocked || !canBorrow}>{isCupid ? "Gửi đề nghị vay" : "Vay credits"}</Button>
         </form>
         <form className="games-card" aria-label="Trả nợ credits" onSubmit={event => {

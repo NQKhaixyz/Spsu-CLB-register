@@ -24,7 +24,7 @@ const scoreNoticeOperations = {
   deduct: "Trừ điểm",
   revoke: "Thu hồi điểm",
 } as const;
-const scoreDeltaText = (change: number) => (change > 0 ? "+" : "") + formatScore(change) + " điểm";
+const scoreDeltaText = (change: number) => (change < 0 ? "−" : change > 0 ? "+" : "") + formatScore(Math.abs(change)) + " điểm";
 
 export function notificationCopy(notice: InboxNotification) {
   if ("sharingId" in notice) return {
@@ -37,15 +37,20 @@ export function notificationCopy(notice: InboxNotification) {
     case "direct": return { title: notice.title, body: notice.body, icon: Mail };
     case "activity": {
       const score = notice.eventScore;
-      const title = score ? notice.title + " · " + scoreDeltaText(score.change ?? score.points) +
-        (score.current ? " hiện tại" : "") : notice.title;
+      const change = score?.change ?? score?.points;
+      const eventTitle = change !== undefined && change < 0 ? "Trừ điểm sự kiện" : notice.title;
+      const title = change === undefined ? eventTitle : eventTitle + " · " + scoreDeltaText(change) +
+        (score?.current ? " hiện tại" : "");
       return { title, body: notice.body, icon: CalendarDays };
     }
     case "bulletin": return { title: "Bài đăng mới", body: notice.postTitle, icon: Newspaper };
     case "score": {
       const action = notice.changes?.length === 1 ? scoreNoticeOperations[notice.changes[0].operation] : "Cập nhật điểm";
+      const changes = notice.changes?.map(item => item.change) ?? [notice.change];
+      const added = changes.reduce((sum, value) => sum + Math.max(0, value), 0);
+      const removed = changes.reduce((sum, value) => sum + Math.min(0, value), 0);
       return {
-        title: notice.change ? action + " · " + scoreDeltaText(notice.change) : action,
+        title: [action, ...[added, removed].filter(Boolean).map(scoreDeltaText)].join(" · "),
         body: "Tuần " + dateLabel(notice.week, true),
         icon: ClipboardList,
       };
@@ -63,20 +68,21 @@ export function notificationCopy(notice: InboxNotification) {
 
 export function NotificationDetail({ notice }: { notice: InboxNotification }) {
   if (notice.kind === "activity" && notice.eventScore) {
-    const { eventName, rounds, change, points } = notice.eventScore;
+    const { eventName, rounds, points } = notice.eventScore;
     return <dl className="notification-event-details">
       <div><dt>Hạng mục</dt><dd>{activityLabels.event}</dd></div>
       <div><dt>Tên sự kiện</dt><dd>{eventName}</dd></div>
-      {rounds !== undefined && <div><dt>Số lượt đã duyệt</dt><dd>{formatScore(rounds)} lượt</dd></div>}
-      {change !== undefined && <div><dt>Điểm sự kiện sau cập nhật</dt><dd>{formatScore(points)} điểm</dd></div>}
+      {rounds !== undefined && <div><dt>Số lần tham gia được duyệt</dt><dd>{formatScore(rounds)} lần</dd></div>}
+      <div><dt>Điểm sự kiện ghi nhận</dt><dd>{formatScore(points)} điểm</dd></div>
     </dl>;
   }
   return <>
     <p className="notification-detail-body">{notificationCopy(notice).body}</p>
     {notice.kind === "score" && !!notice.changes?.length && <ul className="notification-score-changes">
-      {notice.changes.map(({ operation, category, detail, change }, index) => <li key={index}>
+      {notice.changes.map(({ operation, category, detail, reason, change }, index) => <li key={index}>
         <b>{scoreNoticeOperations[operation]} {scoreDeltaText(change)}</b>
         <span>{category}{detail ? " · " + detail : ""}</span>
+        {reason && <span><strong>Lý do</strong> {reason}</span>}
       </li>)}
     </ul>}
   </>;

@@ -48,7 +48,7 @@ export function ProfileCreditHistory({ memberId }: { memberId: string }) {
       const response = await fetch("/api/games/history?" + params, { signal, cache: "no-store" });
       const next = await response.json() as CreditHistoryPage & { error?: string };
       if (!response.ok) throw new Error(next.error || "Chưa tải được lịch sử credits");
-      if (!signal?.aborted) setPage(previous => before === undefined || !previous ? next
+      if (!signal?.aborted) setPage(previous => before === undefined || !previous || previous.recordedSince !== next.recordedSince ? next
         : { ...previous, before: next.before, entries: [...previous.entries, ...next.entries] });
     } catch (reason) {
       if (!signal?.aborted) setError(reason instanceof Error ? reason.message : "Chưa tải được lịch sử credits");

@@ -1,4 +1,4 @@
-import { recordedEventQuantity } from "./activity";
+import { allowsMultipleEventRounds, recordedEventQuantity } from "./activity";
 import {
   dateLabel, dutyNames, isRosterMember, isShiftPublished, rosterAssignments, adminMemberIds, statusNames, today,
   weekId, type Club, type Member, type Schedule, type Shift,
@@ -43,7 +43,7 @@ function changedActivityNotice(item: ActivitySnapshot, previous?: ActivitySnapsh
   const { approved, score } = eventDecision;
   if (!prior?.approved) {
     if (!approved) return notice;
-    const title = score.rounds === 0 ? notice.title : "Sự kiện đã duyệt";
+    const title = notice.title === "Kết quả sự kiện đã cập nhật" ? "Sự kiện đã duyệt" : notice.title;
     return { ...notice, title, eventScore: score };
   }
   const change = roundSharingScore(score.points - prior.score.points);
@@ -64,7 +64,7 @@ function eventSnapshot(club: Club, eventId: string, onlyMember: unknown, eligibl
   }
   return [...people].flatMap(([memberId, allRows]) => {
     const rows = allRows.filter(row => !row.supersededBy && row.status !== "withdrawn").sort((a, b) => a.id.localeCompare(b.id));
-    if (!rows.length) return [];
+    if (!rows.length && !individualEventActions.has(action)) return [];
     const approved = recordedEventQuantity(rows);
     const hasDecision = rows.some(row => row.status === "confirmed");
     const declined = rows.filter(row => row.status === "declined").length;
@@ -75,8 +75,10 @@ function eventSnapshot(club: Club, eventId: string, onlyMember: unknown, eligibl
       : [hasDecision ? approved + " lượt được duyệt" : "", declined ? declined + " lượt không được duyệt" : "",
         waiting ? waiting + " lượt đang chờ" : ""];
     const body = [event.name, ...details].filter(Boolean).join(" · ");
-    const eventDecision = !event.cancelledAt && individualEventActions.has(action)
-      ? { approved: hasDecision, score: eventNoticeScore(club, event, rows, approved) } : undefined;
+    const eventDecision = event.scoringMode !== "perRound" && !allowsMultipleEventRounds(event) ? {
+      approved: !event.cancelledAt && hasDecision,
+      score: eventNoticeScore(club, event, event.cancelledAt ? [] : rows, event.cancelledAt ? 0 : approved),
+    } : undefined;
     return [{
       key: memberId, fingerprint: JSON.stringify([
         event.cancelledAt != null, event.name, event.startDate, event.endDate, event.startTime, event.endTime,
@@ -134,15 +136,20 @@ export function captureWorkspaceNotifications(
 ) {
   if (!actor?.active || actor.role !== "admin") return;
   const event = eventContext(club, action, data);
-  const scoreRecipient = action === "saveManualActivity" && (data.kind === "committee" || data.kind === "special") &&
+  const writesScore = action === "deductPoints" || (action === "saveManualActivity" && (data.kind === "committee" || data.kind === "special"));
+  const scoreRecipient = writesScore &&
     typeof data.memberId === "string" ? data.memberId : undefined;
+  const scoreMember = action === "cancelPointDeduction"
+    ? club.pointDeductions?.find(row => row.id === data.id)?.memberId : scoreRecipient;
   const tracksDuty = dutyActions.has(action) && !(action === "shift" &&
     data.result === undefined && data.late === undefined && data.replacementId === undefined);
-  const tracksStatus = (event && action !== "saveEventContribution") || meetingActions.has(action);
-  if (!scoreRecipient && !tracksDuty && !tracksStatus) return;
+  const roundDecision = event && (event.event.scoringMode === "perRound" || allowsMultipleEventRounds(event.event)) &&
+    individualEventActions.has(action);
+  const tracksStatus = (event && !roundDecision) || meetingActions.has(action);
+  if (!scoreMember && !tracksDuty && !tracksStatus) return;
 
   const eligible = new Set(club.members.filter(member => member.active && isRosterMember(member)).map(member => member.id));
-  const before = scoreRecipient && eligible.has(scoreRecipient) ? captureScoreItems(club, scoreRecipient) : undefined;
+  const before = scoreMember && eligible.has(scoreMember) ? captureScoreItems(club, scoreMember) : undefined;
 
   const matchesDuty = dutyScope(action, data, now);
   const oldDuty = tracksDuty ? dutySnapshot(club, eligible, matchesDuty) : undefined;
@@ -152,9 +159,9 @@ export function captureWorkspaceNotifications(
 
   return () => {
     const notices: ActivityNoticeDraft[] = [];
-    if (before && scoreRecipient) notices.push(...scoreItemNotices(before, captureScoreItems(club, scoreRecipient)));
+    if (before && scoreMember) notices.push(...scoreItemNotices(before, captureScoreItems(club, scoreMember)));
     if (tracksStatus) {
-      for (const item of getActivity()) {
+    for (const item of tracksStatus ? getActivity() : []) {
         const previous = oldActivity.get(item.key);
         if (previous?.fingerprint !== item.fingerprint) notices.push(changedActivityNotice(item, previous));
       }

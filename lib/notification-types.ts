@@ -6,6 +6,7 @@ export type ScoreNoticeChange = {
   operation: "add" | "deduct" | "revoke";
   category: string;
   detail?: string;
+  reason?: string;
   change: number;
 };
 type ScoreUpdate = { kind: "score"; week: string; change: number; changes?: ScoreNoticeChange[] };

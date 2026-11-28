@@ -17,6 +17,8 @@ export const WHEEL_REFUND_PERCENT = 19;
 
 const startingBalance = 1_000_000;
 const creditCents = 100;
+export const CREDIT_LOAN_LIMIT_CENTS = 1_000_000 * creditCents;
+export const CREDIT_LOAN_INTEREST_PERCENT = 20;
 const winnerCentsPerCredit = 195;
 const coinWinCentsPerCredit = COIN_WIN_PAYOUT_CENTS - creditCents;
 const maxBalance = Number.MAX_SAFE_INTEGER;
@@ -56,8 +58,8 @@ export type CreditAdjustmentCommand = {
 };
 export type CreditRecipient = { memberId: string; name: string; balanceCents: number; walletVersion: number; identifier?: string; partnerName?: string };
 export type CreditAdjustmentResult = { memberId: string; name: string; balanceCents: number; walletVersion: number; receipt: CreditAdjustmentReceipt };
-export type CreditLoanRequest = { id: string; requestedBy: string; amountCents: number };
-export type CreditLoanCommand = { operationId: string } & (
+export type CreditLoanRequest = { id: string; requestedBy: string; amountCents: number; interestCents?: number };
+export type CreditLoanCommand = { operationId: string; interestCents?: number } & (
   | { kind: "borrow" | "repay"; amountCents: number; walletVersion: number }
   | { kind: "approve" | "decline" | "cancel"; requestId: string }
 );
@@ -159,16 +161,17 @@ export function parseCreditAdjustment(data: Record<string, unknown>): CreditAdju
 export function parseCreditLoanCommand(input: unknown): CreditLoanCommand {
   const invalid = () => new GameRuleError("Thao tác vay hoặc trả nợ không hợp lệ");
   if (!input || typeof input !== "object" || Array.isArray(input)) throw invalid();
-  const { operationId, kind, amountCents, walletVersion, requestId } = input as Record<string, unknown>;
+  const { operationId, kind, amountCents, walletVersion, requestId, interestCents } = input as Record<string, unknown>;
   if (typeof operationId !== "string" || !requestIdFormat.test(operationId)) throw invalid();
+  if (interestCents !== undefined && !integerBetween(interestCents, 0, maxBalance)) throw invalid();
   if (kind === "borrow" || kind === "repay") {
     if (!integerBetween(amountCents, 1, maxBalance)) throw new GameRuleError("Nhập số credits hợp lệ lớn hơn 0");
     if (!integerBetween(walletVersion, 0, maxBalance)) throw invalid();
-    return { operationId, kind, amountCents, walletVersion };
+    return { operationId, kind, amountCents, walletVersion, interestCents };
   }
   if ((kind === "approve" || kind === "decline" || kind === "cancel") &&
       typeof requestId === "string" && requestIdFormat.test(requestId))
-    return { operationId, kind, requestId };
+    return { operationId, kind, requestId, interestCents };
   throw invalid();
 }
 
@@ -397,6 +400,10 @@ export function parseCreditAmount(text: string) {
   return Number.isSafeInteger(cents) ? cents : undefined;
 }
 
+export function creditLoanInterestCents(principalCents: number) {
+  return Number((BigInt(principalCents) * BigInt(CREDIT_LOAN_INTEREST_PERCENT) + BigInt(50)) / BigInt(100));
+}
+
 export function creditsRanking(club: Club, revision: number): CreditsRanking {
   const sorted = club.members
     .filter(member => canReceiveCredits(club, member))
@@ -582,15 +589,20 @@ function creditHeadroom(club: Club, memberId: string) {
   return two * (maxCreditBalance - (reserve > partnerReserve ? reserve : partnerReserve)) - total;
 }
 
-function checkLoanHeadroom(club: Club, memberId: string, amountCents: number) {
+function checkLoanHeadroom(club: Club, memberId: string, amountCents: number, interestCents: number) {
   if (BigInt(amountCents) > creditHeadroom(club, memberId))
     throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
+  const pair = creditPair(club, memberId);
+  const debt = personalLoanDebt(club.games, memberId) + sharedLoanDebt(pair?.period) +
+    (pair ? personalLoanDebt(club.games, pair.partnerId) : zero);
+  if (debt + BigInt(amountCents) + BigInt(interestCents) > BigInt(CREDIT_LOAN_LIMIT_CENTS))
+    throw new GameRuleError(`Khoản vay vượt hạn mức dư nợ ${formatCredits(CREDIT_LOAN_LIMIT_CENTS)} credits của ví`, 409);
 }
 
-function drawCreditLoan(club: Club, memberId: string, amountCents: number, period: SharingPeriod | undefined, at: number) {
-  checkLoanHeadroom(club, memberId, amountCents);
-  const wallet = updateBalance(club, memberId, at, [{ kind: "loan", label: "Vay credits", changeCents: amountCents }]);
-  const added = BigInt(amountCents);
+function drawCreditLoan(club: Club, memberId: string, amountCents: number, interestCents: number, period: SharingPeriod | undefined, at: number) {
+  const label = interestCents ? `Vay credits · Lãi ${formatCredits(interestCents)} credits` : "Vay credits";
+  const wallet = updateBalance(club, memberId, at, [{ kind: "loan", label, changeCents: amountCents }]);
+  const added = BigInt(amountCents) + BigInt(interestCents);
   if (period) period.loanDebtCents = (sharedLoanDebt(period) + added).toString();
   else wallet.loanDebtCents = (BigInt(wallet.loanDebtCents ?? "0") + added).toString();
 }
@@ -605,7 +617,7 @@ function repayCreditLoan(club: Club, memberId: string, amountCents: number, pair
 }
 
 function sameLoanCommand(one: CreditLoanCommand, other: CreditLoanCommand) {
-  if (one.kind !== other.kind) return false;
+  if (one.kind !== other.kind || one.interestCents !== other.interestCents) return false;
   if ("amountCents" in one && "amountCents" in other)
     return one.amountCents === other.amountCents && one.walletVersion === other.walletVersion;
   return "requestId" in one && "requestId" in other && one.requestId === other.requestId;
@@ -632,12 +644,17 @@ export function applyCreditLoanCommand(club: Club, memberId: string, command: Cr
       throw new GameRuleError("Ví vừa thay đổi. Kiểm tra số dư rồi thử lại", 409);
     if (command.kind === "repay") {
       repayCreditLoan(club, memberId, command.amountCents, pair, at);
-    } else if (pair) {
-      if (pair.period.loanRequest) throw new GameRuleError("Ví Cupid đang có đề nghị vay chờ xác nhận", 409);
-      checkLoanHeadroom(club, memberId, command.amountCents);
-      pair.period.loanRequest = { id: command.operationId, requestedBy: memberId, amountCents: command.amountCents };
     } else {
-      drawCreditLoan(club, memberId, command.amountCents, undefined, at);
+      const interest = creditLoanInterestCents(command.amountCents);
+      if (command.interestCents !== interest)
+        throw new GameRuleError("Điều kiện vay vừa đổi. Tải lại để xem tiền lãi trước khi vay", 409);
+      checkLoanHeadroom(club, memberId, command.amountCents, interest);
+      if (pair) {
+        if (pair.period.loanRequest) throw new GameRuleError("Ví Cupid đang có đề nghị vay chờ xác nhận", 409);
+        pair.period.loanRequest = { id: command.operationId, requestedBy: memberId, amountCents: command.amountCents, interestCents: interest };
+      } else {
+        drawCreditLoan(club, memberId, command.amountCents, interest, undefined, at);
+      }
     }
   } else {
     const request = pair?.period.loanRequest;
@@ -645,7 +662,13 @@ export function applyCreditLoanCommand(club: Club, memberId: string, command: Cr
       throw new GameRuleError("Đề nghị vay đã được xử lý hoặc ví Cupid đã thay đổi", 409);
     const authorized = command.kind === "cancel" ? request.requestedBy === memberId : request.requestedBy === pair.partnerId;
     if (!authorized) throw new GameRuleError("Tài khoản này không thể xử lý đề nghị", 403);
-    if (command.kind === "approve") drawCreditLoan(club, memberId, request.amountCents, pair.period, at);
+    if (command.kind === "approve") {
+      const interest = request.interestCents ?? 0;
+      if ((command.interestCents ?? 0) !== interest)
+        throw new GameRuleError("Tải lại đề nghị để xem tiền lãi trước khi xác nhận", 409);
+      checkLoanHeadroom(club, memberId, request.amountCents, interest);
+      drawCreditLoan(club, memberId, request.amountCents, interest, pair.period, at);
+    }
     delete pair.period.loanRequest;
   }
   (games.loanOperations ??= []).push({ memberId, command, requestedCupidLoan });
