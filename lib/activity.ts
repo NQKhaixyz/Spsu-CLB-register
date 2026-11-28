@@ -235,13 +235,22 @@ export function activityPointsFor(club: Club, row: ActivityPointRow & { quantity
   return row.kind === "event" ? eventQuantityPoints(unit, row.quantity) : row.quantity * unit;
 }
 
+export function activeScoreCommittee(committee?: StoredCommitteeKind): CommitteeKind | undefined {
+  return committee === "dh" ? "cs" : isCommitteeKind(committee) ? committee : undefined;
+}
+
 export function activityName(club: Club, row: { kind: ActivityKind; eventId?: string; committee?: StoredCommitteeKind }) {
   if (row.kind === "committee") {
-    if (isCommitteeKind(row.committee)) return committeeLabels[row.committee];
-    if (row.committee === "dh") return committeeLabels.cs;
+    const committee = activeScoreCommittee(row.committee);
+    if (committee) return committeeLabels[committee];
   }
   if (row.kind === "event") return eventForActivity(club, row)?.name ?? "Sự kiện";
   return activityLabels[row.kind];
+}
+
+export function editableManualActivities(club: Club, memberId: string, week: string, kind: ManualActivityKind, locked: ReadonlySet<string>) {
+  return (club.manualActivities ?? []).filter(row => row.memberId === memberId && row.week === week && row.kind === kind &&
+    !row.individual && !locked.has(sharingSourceKey("manual", row.id)));
 }
 export function creditedActivities(club: Club) {
   const eventIds = new Set((club.events ?? []).filter(event => !event.cancelledAt).map(event => event.id));
@@ -694,7 +703,7 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
   }
   const rows = club.manualActivities ??= [];
   const individual = data.individual === true ? true : undefined;
-  const locked = new Set(club.sharing?.locked.map(entry => entry.sourceKey));
+  const locked = new Set(club.sharing?.locked.map(entry => entry.sourceKey).filter(key => key !== undefined));
   const replay = typeof data.entryId === "string" ? rows.find(row => row.id === data.entryId) : undefined;
   const note = text(data.note);
   if (replay) {
@@ -704,8 +713,12 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
       replay.individual === individual && replay.note === note, "Khoản điểm đã được lưu với nội dung khác. Tải lại trang.");
     return true;
   }
-  const old = individual ? undefined : rows.find(r => r.memberId === member.id && r.week === week && r.kind === kind &&
-    !r.individual && !locked.has(sharingSourceKey("manual", r.id)));
+  const editable = individual ? [] : editableManualActivities(club, member.id, week, kind, locked);
+  if (kind === "committee" && !committee)
+    requireValue(editable.length <= 1, "Chọn ban và nhập 0 điểm để bỏ điểm của ban đó.");
+  const old = kind === "committee" && committee
+    ? editable.find(row => activeScoreCommittee(row.committee) === committee)
+    : editable[0];
   requireValue(data.previousEntryId === undefined || data.previousEntryId === (old?.id ?? null),
     "Khoản điểm vừa thay đổi hoặc đã chốt. Tải lại trước khi nhập điểm.");
   const time = manualPointTime(data.time, old?.date === date ? old.time : undefined);

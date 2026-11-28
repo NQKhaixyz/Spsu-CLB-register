@@ -942,17 +942,31 @@ test("Settings preserve old committee rates without accepting new committee coef
  applyAction(c,admin,"settings",{rule:{month:"2099-12",A:10,B:10,C:5,D:5}});
  assert.deepEqual(c.rules.at(-1)?.committees,committees);
 });
-test("BĐH enters exact committee points once per member/week, replacing or clearing the previous score",()=>{
+test("BĐH saves equal points independently per committee and edits only the selected weekly score",()=>{
  const c=fixture(),old=weekId();c.rules[0].committees={dh:10,cm:8.5,tt:6,sk:4,hc:2};
  const data={week:old,date:today(),memberId:"a1",kind:"committee",committee:"cm",points:12.75,quantity:999};
+ c.members[1].committees = [...committeeKinds];
  assert.throws(()=>applyAction(c,user,"saveManualActivity",data),/BĐH/);
  for(const committee of ["unknown","hc","dh",null,undefined,7])assert.throws(()=>applyAction(c,admin,"saveManualActivity",{...data,committee}),/Chọn một trong/);
  for(const points of [undefined,-1,NaN,Infinity,100001,1.123,"5"])assert.throws(()=>applyAction(c,admin,"saveManualActivity",{...data,points}),/Điểm theo ban/);
- for(const committee of committeeKinds){applyAction(c,admin,"saveManualActivity",{...data,committee});assert.equal(weeklyScoreFor(c,"a1",old).activityCounts.committee,12.75);}
- applyAction(c,admin,"saveManualActivity",{...data,points:4.5});applyAction(c,admin,"saveManualActivity",{...data,points:4.5});
- assert.equal(c.manualActivities?.length,1);assert.equal(weeklyScoreFor(c,"a1",old).points,4.5);
+ const first={...data,entryId:"committee-cm-equal",previousEntryId:null};
+ const second={...data,committee:"tt",entryId:"committee-tt-equal",previousEntryId:null};
+ applyAction(c,admin,"saveManualActivity", first);
+ assert.throws(()=>applyAction(c,admin,"saveManualActivity",{...second,previousEntryId:first.entryId}),/vừa thay đổi/);
+ applyAction(c,admin,"saveManualActivity",second);
+ applyAction(c,admin,"saveManualActivity",second);
+ assert.deepEqual(c.manualActivities?.map(row=>[row.id,row.committee,row.points]), [
+   [first.entryId,"cm",12.75], [second.entryId,"tt",12.75],
+ ]);
+ assert.equal(weeklyScoreFor(c,"a1",old).activityCounts.committee,25.5);
+ assert.equal(scoreFor(c,"a1",data.date.slice(0,7)).activityPoints.committee,25.5);
+ applyAction(c,admin,"saveManualActivity",{...data,entryId:"committee-edit-cm",previousEntryId:first.entryId,points:4.5});
+ assert.equal(weeklyScoreFor(c,"a1",old).points,17.25);
+ assert.throws(()=>applyAction(c,admin,"saveManualActivity",{...data,committee:""}),/Chọn ban và nhập 0/);
+ applyAction(c,admin,"saveManualActivity",{...data,entryId:"committee-clear-cm",previousEntryId:first.entryId,points:0});
+ assert.equal(weeklyScoreFor(c,"a1",old).points,12.75);
+ assert.equal(c.manualActivities?.find(row=>row.id===second.entryId)?.points,12.75);
  const before=structuredClone(c.manualActivities);syncWeeks(c,addDays(old,7));assert.deepEqual(c.manualActivities,before);assert.equal(activityScoreFor(c,"a1",addDays(old,7),true).activityTotal,0);
- applyAction(c,admin,"saveManualActivity",{...data,committee:""});assert.equal(weeklyScoreFor(c,"a1",old).points,0);
 });
 test("Legacy committee scores keep their original monthly rates until explicitly updated",()=>{
  const c=fixture(),week="2026-10-26";syncWeeks(c,week);if(!c.weeks.some(w=>w.id===week))c.weeks.push({...c.weeks[0],id:week,meetingDate:"",entries:[]});
@@ -969,6 +983,25 @@ test("Legacy committee scores keep their original monthly rates until explicitly
  assert.equal(scoreFor(c,"a1","2026-10").activityTotal,3);
  assert.equal(scoreFor(c,"a2","2026-11").activityTotal,5.5);
  const v=workspaceView(c,user,1);assert.ok(!JSON.stringify(v).includes("old-november"));assert.equal(v.weeklyScores.find(s=>s.week===week&&s.memberId==="a2")?.points,5.5);
+});
+test("Equal committee scores across a month boundary keep their own dates and count in the semester", () => {
+  const c = fixture(), week = "2026-10-26";
+  if (!c.weeks.some(row => row.id === week)) c.weeks.push({ ...c.weeks[0], id: week, meetingDate: "", entries: [] });
+  c.rules[0].committees = { dh: 2.25 };
+  c.manualActivities = [{ id: "old-operations-score", memberId: "a1", kind: "committee", committee: "dh",
+    week, date: "2026-10-31", quantity: 1, note: "", updatedAt: "", updatedBy: "a0" }];
+  const data = { memberId: "a1", kind: "committee", points: 2.25, week };
+  applyAction(c,admin,"saveManualActivity",{ ...data, date: "2026-11-01", committee: "sk", previousEntryId: null });
+  assert.equal(weeklyScoreFor(c,"a1",week).activityPoints.committee,4.5);
+  assert.equal(scoreFor(c,"a1","2026-10").activityPoints.committee,2.25);
+  assert.equal(scoreFor(c,"a1","2026-11").activityPoints.committee,2.25);
+  assert.deepEqual(semesterScores(c,"2026-10","2026-11").rows.find(row=>row.memberId==="a1")?.byMonth,
+    { "2026-10": 2.25, "2026-11": 2.25 });
+  applyAction(c,admin,"saveManualActivity",{ ...data, date: "2026-10-31", committee: "cs", points: 3,
+    previousEntryId: "old-operations-score" });
+  assert.equal(c.manualActivities.length,2);
+  assert.equal(c.manualActivities[0].points,3);
+  assert.equal(weeklyScoreFor(c,"a1",week).activityPoints.committee,5.25);
 });
 test("Retired activity rows are preserved in storage and excluded from weekly scores and Excel",async()=>{
  const c=fixture(),date=today(),week=weekId();
@@ -1004,12 +1037,14 @@ test("Retiring a committee keeps its awarded points in weekly, monthly and Excel
 test("Excel reports direct special and committee points, with the selected ban and no per-visit figures for committee points",async()=>{
  const c=fixture();c.rules[0].committees={dh:10,cm:8.5,tt:6,sk:4,hc:2};const data={memberId:"a1",week:weekId(),date:today()};
  applyAction(c,admin,"saveManualActivity",{...data,kind:"special",points:7.5});applyAction(c,admin,"saveManualActivity",{...data,kind:"committee",committee:"cm",points:13.25});
+ applyAction(c,admin,"saveManualActivity",{...data,kind:"committee",committee:"tt",points:13.25});
  const {buffer}=await makeReport(c,today().slice(0,7)),book=new ExcelJS.Workbook();await book.xlsx.load(buffer as any);
  const summary=book.getWorksheet("Tổng hợp tháng")!,detail=book.getWorksheet("Chi tiết hoạt động")!,rules=book.getWorksheet("Quy tắc điểm")!;
  const headers=summary.getRow(3).values as string[];
- assert.equal(summary.getCell(4,headers.indexOf("Điểm riêng")).value,7.5);assert.equal(summary.getCell(4,headers.indexOf("Điểm theo ban")).value,13.25);assert.equal(summary.getCell("I4").value,20.75);
+ assert.equal(summary.getCell(4,headers.indexOf("Điểm riêng")).value,7.5);assert.equal(summary.getCell(4,headers.indexOf("Điểm theo ban")).value,26.5);assert.equal(summary.getCell("I4").value,34);
  assert.ok(!headers.some(h=>h?.includes("Hoạt động C2")||h?.includes("Hoạt động dự án")));
- const rows:number[]=[];detail.eachRow((r,i)=>{if(i>3)rows.push(Number(r.getCell(8).value));});assert.deepEqual(rows,[7.5,13.25]);assert.equal(detail.getCell("E5").value,"Chuyên môn");
+ const rows:number[]=[];detail.eachRow((r,i)=>{if(i>3)rows.push(Number(r.getCell(8).value));});assert.deepEqual(rows,[7.5,13.25,13.25]);
+ assert.equal(detail.getCell("E5").value,"Chuyên môn");assert.equal(detail.getCell("E6").value,"Truyền thông");
  assert.equal(detail.getCell("F5").text,"");assert.equal(detail.getCell("G5").text,"");
  const ruleLabels:string[]=[];rules.eachRow((r,i)=>{if(i>3)ruleLabels.push(String(r.getCell(1).value));});
  assert.ok(ruleLabels.includes("Điểm theo ban"));assert.ok(!ruleLabels.includes("Hoạt động C2"));assert.ok(!ruleLabels.includes("Hoạt động dự án"));

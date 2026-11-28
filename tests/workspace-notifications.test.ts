@@ -9,6 +9,7 @@ import { dismissMemberNotification, memberNotificationsFor, markMemberNotificati
 import { removeEventNotices, workspaceNotificationsFor, markWorkspaceNotificationRead } from "../lib/workspace-notifications";
 import { workspaceView } from "../lib/workspace-view";
 import { settleRoundEventNotices } from "../lib/round-event-notifications";
+import { captureScoreItems, scoreItemNotices } from "../lib/score-notice-details";
 
 function fixture() {
   const [admin, minh, other] = ["admin", "minh", "other"].map((id, index): Member => ({
@@ -85,16 +86,34 @@ test("Entering, repeating, and correcting points sends only real weekly changes 
     [["revoke", "Điểm riêng", -0.25]]);
 });
 
-test("Moving points to another committee records both changes even when the total stays the same", () => {
+test("Equal scores from separate committees send separate additions and only revoke the selected committee", () => {
   const { club, admin, minh, run } = fixture();
   const points = { week: weekId(), date: today(), memberId: minh.id, kind: "committee", points: 2 };
   run(admin, "saveManualActivity", { ...points, committee: "tt" });
-  const previousIds = new Set(memberNotificationsFor(club, minh.id).map(notice => notice.id));
-  run(admin, "saveManualActivity", { ...points, committee: "sk", note: "Sửa ban thực hiện" });
-  const corrected = memberNotificationsFor(club, minh.id).find(notice => !previousIds.has(notice.id));
-  assert.ok(corrected?.kind === "score");
-  assert.equal(corrected.change, 0);
-  assert.deepEqual(corrected.changes?.map(({ category, detail, change }) => [category, detail, change]), [
+  run(admin, "saveManualActivity", { ...points, committee: "sk" });
+  run(admin, "saveManualActivity", { ...points, committee: "sk" });
+  run(admin, "saveManualActivity", { ...points, committee: "sk", points: 0 });
+  const notices = memberNotificationsFor(club, minh.id).filter(notice => notice.kind === "score");
+  assert.equal(notices.length, 3);
+  const changes = notices.flatMap(notice=>notice.changes ?? []).map(({ operation, category, detail, change }) =>
+    [operation, category, detail, change]).sort();
+  assert.deepEqual(changes, [
+    ["add", "Điểm theo ban", "Sự kiện", 2],
+    ["add", "Điểm theo ban", "Truyền thông", 2],
+    ["revoke", "Điểm theo ban", "Sự kiện", -2],
+  ]);
+  assert.equal(activityScoreFor(club, minh.id, points.week, true).activityPoints.committee, 2);
+});
+
+test("Changing the category of an existing score records both sides of a change with zero net points", () => {
+  const { club, admin, minh, run } = fixture();
+  const points = { week: weekId(), date: today(), memberId: minh.id, kind: "committee", points: 2, committee: "tt" };
+  run(admin, "saveManualActivity", points);
+  const before = captureScoreItems(club, minh.id);
+  club.manualActivities![0].committee = "sk";
+  const [notice] = scoreItemNotices(before, captureScoreItems(club, minh.id));
+  assert.equal(notice.change, 0);
+  assert.deepEqual(notice.changes?.map(({ category, detail, change }) => [category, detail, change]), [
     ["Điểm theo ban", "Truyền thông", -2], ["Điểm theo ban", "Sự kiện", 2],
   ]);
 });

@@ -2,10 +2,15 @@
 import { CalendarDays, ChevronDown, MapPin, Paperclip, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
-import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, defaultEventPoints, eventQuantityPoints, eventRoundRegistration, recordedEventQuantity, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, eventScheduleLabel, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
+import {
+  activeScoreCommittee, activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, defaultEventPoints,
+  editableManualActivities, eventDescriptionLimit, eventForActivity, eventLocationLimit, eventQuantityPoints, eventRoundRegistration,
+  eventScheduleLabel, isEventOpen, manualKinds, recordedEventQuantity, registrationStatusLabel, visibleActivityKinds,
+  type ActivityRegistration, type ClubEvent, type ManualActivity, type ManualActivityKind,
+} from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
-import { sharingKinds, sharingScoreLabels, sharingSourceKey } from "../lib/sharing-types";
+import { sharingKinds, sharingScoreLabels } from "../lib/sharing-types";
 import { EvidencePanel } from "./duty-evidence";
 import { Avatar, Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
 import { MemberName, MemberOption } from "./member-identity";
@@ -587,52 +592,56 @@ type ManualFormProps = { club: Club; member: Member; committeeFilter: CommitteeF
   onClose: () => void; lockedManualKeys?: string[] };
 
 function ManualForm(props: ManualFormProps) {
-  const [kind,setKind]=useState<ManualActivityKind>(manualKinds[0]);
+  const [kind, setKind] = useState<ManualActivityKind>(manualKinds[0]);
+  const rows = editableManualActivities(props.club, props.member.id, props.week, kind, new Set(props.lockedManualKeys));
   return <><Field label="Mục điểm"><select value={kind} onChange={e=>setKind(e.target.value as ManualActivityKind)}>{manualKinds.map(k=><option key={k} value={k}>{activityLabels[k]}</option>)}</select></Field>
-    <ManualEntryForm key={kind} {...props} kind={kind} />
+    {kind === "committee" ? <CommitteeEntryForm {...props} rows={rows} /> : <ManualEntryForm key={kind} {...props} kind={kind} old={rows[0]} />}
   </>;
 }
-function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,onClose,lockedManualKeys}:ManualFormProps & {
-  kind: ManualActivityKind;
+
+function CommitteeEntryForm(props: ManualFormProps & { rows: ManualActivity[] }) {
+  const options = committeeKinds.map(committee => ({
+    committee, row: props.rows.find(row => activeScoreCommittee(row.committee) === committee),
+  }));
+  const [committee, setCommittee] = useState<CommitteeKind | "">(() => {
+    const assigned = memberCommittees(props.member);
+    if (isCommitteeKind(props.committeeFilter) && assigned.includes(props.committeeFilter)) return props.committeeFilter;
+    const saved = options.filter(option => option.row);
+    if (saved.length === 1) return saved[0].committee;
+    return assigned.length === 1 ? assigned[0] : "";
+  });
+  const selected = options.find(option => option.committee === committee);
+  return <>
+    <Field label="Ban">
+      <select name="committee" value={committee} onChange={event => setCommittee(event.target.value as CommitteeKind)}>
+        <option value="" disabled>Chọn ban để ghi điểm</option>
+        {options.map(({ committee: option, row }) => <option key={option} value={option}>
+          {committeeLabels[option]}{row ? ` · ${formatScore(activityPointsFor(props.club, row))} điểm` : ""}
+        </option>)}
+      </select>
+    </Field>
+    {selected && <ManualEntryForm key={selected.committee} {...props} kind="committee" committee={selected.committee} old={selected.row} />}
+  </>;
+}
+
+function ManualEntryForm({club,member,week,kind,busy,onAction,onClose,committee,old}:ManualFormProps & {
+  kind: ManualActivityKind; committee?: CommitteeKind; old?: ManualActivity;
 }) {
   const [entryId] = useState(uid);
-  const old = club.manualActivities?.find(r => r.memberId === member.id && r.week === week && r.kind === kind &&
-    !r.individual && !lockedManualKeys?.includes(sharingSourceKey("manual", r.id)));
-  const [date,setDate]=useState(old?.date??(week===weekId()?today():addDays(week,6)));
-  const direct=kind==="special", byCommittee=kind==="committee";
-  const retired = !!old?.committee && !isCommitteeKind(old.committee);
-  const [committee, setCommittee] = useState<CommitteeKind | "none" | "">(() => {
-    if (isCommitteeKind(old?.committee)) return old.committee;
-    if (retired) return "";
-    if (old) return "none";
-    const assigned = memberCommittees(member);
-    if (isCommitteeKind(committeeFilter) && assigned.includes(committeeFilter)) return committeeFilter;
-    if (assigned.length > 1) return "";
-    return assigned[0] ?? "none";
-  });
-  const existingPoints = old && (!byCommittee || retired || old.committee === committee) ? activityPointsFor(club, old) : undefined;
+  const [date, setDate] = useState(old?.date ?? (week === weekId() ? today() : addDays(week, 6)));
+  const direct = kind === "special", byCommittee = kind === "committee";
   return <form onSubmit={async e => {
     const f = formData(e);
     const value = direct || byCommittee
       ? { points: f.points === undefined ? undefined : Number(f.points) }
       : { quantity: Number(f.quantity) };
-    if (byCommittee && !committee) return;
-    if (byCommittee) f.committee = committee === "none" ? "" : committee;
-    if (await onAction("saveManualActivity", { ...f, ...value, kind, memberId: member.id, week, entryId,
+    if (await onAction("saveManualActivity", { ...f, ...value, kind, committee, memberId: member.id, week, entryId,
       previousEntryId: old?.id ?? null }, "Đã lưu điểm trong tuần", false)) onClose();
   }}>
-    {byCommittee ? (
-      <Field label="Ban">
-        <select name="committee" required value={committee} onChange={e => setCommittee(e.target.value as CommitteeKind | "none")}>
-          {(retired || !committee) && <option value="" disabled>{retired ? `${existingPoints} điểm đã ghi · Chọn ban để sửa` : "Chọn ban để ghi điểm"}</option>}
-          <option value="none">Không ghi điểm theo ban</option>
-          {committeeKinds.map(k => <option key={k} value={k}>{committeeLabels[k]}</option>)}
-        </select>
-      </Field>
-    ) : null}
-    {direct || (byCommittee && isCommitteeKind(committee)) ? (
-      <Field key={committee} label={byCommittee ? "Số điểm BĐH chấm" : "Điểm riêng trong tuần"}>
-        <input name="points" type="number" min={0} max={100000} step="0.01" defaultValue={existingPoints ?? (direct ? 0 : undefined)} required />
+    {direct || byCommittee ? (
+      <Field label={byCommittee ? "Số điểm BĐH chấm" : "Điểm riêng trong tuần"}>
+        <input name="points" type="number" inputMode="decimal" min={0} max={100000} step="0.01"
+          defaultValue={old ? activityPointsFor(club, old) : direct ? 0 : undefined} required />
       </Field>
     ) : null}
     {!direct && !byCommittee ? <Field label={kind === "initiative" ? "Số sáng kiến trong tuần" : "Số lượt đồng đẳng viên trong tuần"}><input name="quantity" type="number" min={0} max={10000} step={1} defaultValue={old?.quantity??0} required /></Field> : null}
@@ -640,7 +649,7 @@ function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,on
     <Field label="Giờ thực tế"><input name="time" type="time" defaultValue={old?.time} /></Field>
     <Field label="Ghi chú"><textarea name="note" defaultValue={old?.note??""} maxLength={500}/></Field>
     <p className="hint">{direct ? "Nhập trực tiếp số điểm riêng của tuần này. Giá trị mới thay thế số cũ, nhập 0 để bỏ điểm"
-      : byCommittee ? "Chọn ban và nhập số điểm của thành viên trong tuần này, để bỏ điểm đã ghi, chọn Không ghi điểm theo ban"
+      : byCommittee ? "Điểm được lưu riêng cho từng ban trong tuần. Nhập 0 để bỏ điểm của ban đang chọn"
       : "Lưu số lượt mới thay thế số cũ của mục này trong tuần, nhập 0 để bỏ điểm, điểm = số lượt × điểm/lượt trong cài đặt"}</p>
     <FormFooter onCancel={onClose} busy={busy}/>
   </form>;
