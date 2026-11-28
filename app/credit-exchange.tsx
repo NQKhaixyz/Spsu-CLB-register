@@ -8,7 +8,8 @@ import { CREDITS_PER_POINT_UNIT_CENTS, CREDITS_TO_POINTS, CREDIT_EXCHANGE_AWARD_
   type creditExchangeView, type CreditExchangeCommand, type CreditExchangeReceipt } from "../lib/credit-exchange";
 import { monthLabel } from "../lib/club";
 import { formatCredits, parseCreditAmount } from "../lib/games";
-import { formatScore } from "./scoreboard";
+import { formatScore } from "../lib/score-format";
+import { ScoreInput } from "./score-input";
 import { Button, Field } from "./ui";
 
 type ExchangeView = ReturnType<typeof creditExchangeView>;
@@ -126,7 +127,7 @@ export default function CreditExchange({ onExchanged, onOpenLoans }: { onExchang
         </Field>
         <p className="games-caption">Có thể đổi {formatScore(selected.units * POINT_EXCHANGE_UNIT_CENTS / 100)} điểm</p>
         <Field label="Số điểm muốn đổi">
-          <input value={amount} onChange={event => setAmount(event.target.value)} inputMode="decimal" required disabled={busy || !!retry} />
+          <ScoreInput value={amount} onChange={event => setAmount(event.currentTarget.value)} required disabled={busy || !!retry} />
         </Field>
         {canBuyCredits && <p className="games-caption">Nhận {formatCredits(units * CREDITS_PER_POINT_UNIT_CENTS)} credits sau phí</p>}
         {view.loan.debtCents !== "0" && <p className="games-caption">50% credits thực nhận được dùng để trả nợ, tối đa bằng dư nợ</p>}

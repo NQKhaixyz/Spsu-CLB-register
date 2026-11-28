@@ -7,6 +7,7 @@ import { committeeKinds, committeeLabels, memberCommittees, memberCommitteeNames
 import { availableDays, MemberProfileDialog } from "./member-profile";
 import { MemberIdentityContext, MemberName, MemberNames, MemberOption } from "./member-identity";
 import { rankScoreRows } from "../lib/score-ranks";
+import { formatScore, parseScoreInput } from "../lib/score-format";
 import { displayMessage } from "../lib/display-message";
 import { resolveFont } from "../lib/interface-fonts";
 import { sidebarTabs, sidebarTabLabels, teamSidebarOrder, type SidebarTab } from "../lib/workspace-navigation";
@@ -14,6 +15,7 @@ import { isMemberPosition, memberPositions, memberPositionLabels, memberRoleLabe
 import { FontSettings } from "./font-settings";
 import { AvatarEditor } from "./avatar-editor";
 import { MemberMonthlyScoreboard, Scoreboard, WeeklyScoreboard, type ScoreScope } from "./scoreboard";
+import { ScoreInput } from "./score-input";
 import SemesterScoreboard, { MemberSemesterScoreboard } from "./semester-scoreboard";
 import CreditsLeaderboard from "./credits-leaderboard";
 import Login from "./login";
@@ -184,15 +186,6 @@ const scoreRateFields = [
   ["D", "Trừ mỗi lượt đi muộn"],
   ["E", "Cộng mỗi phiếu điểm danh đạt"],
 ] as const;
-function parseScoreRate(value: FormDataEntryValue | undefined) {
-  const text = typeof value === "string" ? value.trim() : "";
-  return /^(?:\d+|\d*[.,]\d+)(?:e[+-]?\d+)?$/i.test(text)
-    ? Number(text.replace(",", "."))
-    : NaN;
-}
-function ScoreRateInput({ name, value }: { name: string; value: number }) {
-  return <input name={name} inputMode="decimal" defaultValue={String(value).replace(".", ",")} required />;
-}
 const digits = (number: number) => String(number).padStart(2, "0");
 
 export default function Workspace() {
@@ -2817,7 +2810,7 @@ export default function Workspace() {
           <Stat
             title="Lượt đạt phiếu điểm danh"
             value={total.reduce((a, s) => a + s.passed, 0)}
-            description={`Cộng ${rule.E} điểm mỗi phiếu đạt`}
+            description={`Cộng ${formatScore(rule.E)} điểm mỗi phiếu đạt`}
             icon={ClipboardCheck}
             color="amber"
           />
@@ -2838,7 +2831,7 @@ export default function Workspace() {
             <i>D</i> × đi muộn + <i>E</i> × phiếu điểm danh đạt + điểm sáng kiến + điểm đồng đẳng viên + điểm sự kiện + điểm theo ban + điểm riêng − điểm trừ − điểm đã đổi credits
           </strong>
           <span>
-            A = {rule.A} · B = {rule.B} · C = {rule.C} · D = {rule.D ?? 0} · E = {rule.E}
+            A = {formatScore(rule.A)} · B = {formatScore(rule.B)} · C = {formatScore(rule.C)} · D = {formatScore(rule.D ?? 0)} · E = {formatScore(rule.E)}
           </span>
           <button className="text-button" onClick={() => go("settings")}>
             Điều chỉnh <Settings2 size={14} />
@@ -2944,10 +2937,10 @@ export default function Workspace() {
               key={month + "-" + view?.revision}
               onSubmit={(e) => {
                 const f = getForm(e);
-                const coefficients = Object.fromEntries(scoreRateFields.map(([key]) => [key, parseScoreRate(f[key])]));
-                const activities = Object.fromEntries(ratedActivityKinds.map(k => [k, parseScoreRate(f["activity-" + k])]));
+                const coefficients = Object.fromEntries(scoreRateFields.map(([key]) => [key, parseScoreInput(f[key])]));
+                const activities = Object.fromEntries(ratedActivityKinds.map(k => [k, parseScoreInput(f["activity-" + k])]));
                 if (![...Object.values(coefficients), ...Object.values(activities)].every(value => value >= 0 && value <= 100000)) {
-                  notify("Nhập hệ số điểm từ 0 đến 100.000, ví dụ 0,25 hoặc 0.25", true);
+                  notify("Nhập hệ số điểm từ 0 đến 100000, ví dụ 0.25", true);
                   return;
                 }
                 act(
@@ -2970,7 +2963,7 @@ export default function Workspace() {
               <div className="rule-fields">
                 {scoreRateFields.map(([key, label]) => (
                   <Field key={key} label={`${key} · ${label}`}>
-                    <ScoreRateInput name={key} value={rule[key] ?? 0} />
+                    <ScoreInput name={key} defaultValue={rule[key] ?? 0} required />
                   </Field>
                 ))}
               </div>
@@ -2978,7 +2971,7 @@ export default function Workspace() {
               <div className="form-grid">
                 {ratedActivityKinds.map(k => (
                   <Field key={k} label={activityLabels[k]}>
-                    <ScoreRateInput name={`activity-${k}`} value={rule.activities?.[k] ?? 0} />
+                    <ScoreInput name={`activity-${k}`} defaultValue={rule.activities?.[k] ?? 0} required />
                   </Field>
                 ))}
               </div>
@@ -3284,7 +3277,7 @@ export default function Workspace() {
               <span>TỔNG ĐIỂM THÁNG</span>
               <strong>
                 {mine.points > 0 ? "+" : ""}
-                {mine.points}
+                {formatScore(mine.points)}
               </strong>
               <p>
                 {mine.completed} ca trực đủ · {mine.passed} lượt đạt phiếu điểm danh

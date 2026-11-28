@@ -7,7 +7,7 @@ import { dateLabel } from "../lib/club";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { sharingNoticeTitles } from "../lib/sharing-types";
 import { MemberName } from "./member-identity";
-import { formatScore } from "./scoreboard";
+import { formatScore } from "../lib/score-format";
 import type { WorkspaceNotificationState } from "./use-workspace-notifications";
 
 export const notificationClock = new Intl.DateTimeFormat("vi-VN", {

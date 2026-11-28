@@ -7,7 +7,7 @@ import type { Member } from "../lib/club";
 import { formatCredits } from "../lib/games";
 import { sharingConsentVersion, sharingRule, sharingTagText, type CupidTag, type PublicSharingGroup, type SharingView } from "../lib/sharing-types";
 import { MemberName, MemberOption, useMemberIdentity } from "./member-identity";
-import { formatScore } from "./scoreboard";
+import { formatScore } from "../lib/score-format";
 import { Avatar, Button, Dialog, Field, FormFooter } from "./ui";
 
 type SharingAction = (action: string, data: Record<string, unknown>, message: string, onError?: (message: string) => void) => Promise<boolean>;

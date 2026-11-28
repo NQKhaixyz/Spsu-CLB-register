@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { activityLabels, visibleActivityKinds } from "../lib/activity";
 import { addDays, dateLabel, monthLabel, type ScoreboardRow } from "../lib/club";
+import { formatScore } from "../lib/score-format";
 import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
 import { Avatar, Button, Empty, PanelHead } from "./ui";
 import { displayMessage } from "../lib/display-message";
@@ -20,8 +21,6 @@ type ScoreTier = NonNullable<ReturnType<typeof monthlyScoreTier>>;
 type ScoreTableRow = ScoreboardRow & { studentId?: string; avatarId?: string; lateDeduction?: number };
 type RankedScoreRow = ScoreTableRow & { rank?: number; tier?: ScoreTier };
 
-const numbers = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
-export const formatScore = (value: number) => numbers.format(value);
 const signedScore = (value: number) => (value > 0 ? "+" : "") + formatScore(value);
 
 const attendanceMetrics = {
@@ -201,7 +200,7 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
                 </td>)}
                 {visibleActivityKinds.map(kind => <td key={kind}
                   className={`score-numeric${!weekly && (kind === "initiative" || kind === "committee") ? " score-column-group-start" : ""}`}>
-                  {row.activityCounts[kind]}
+                  {formatScore(row.activityCounts[kind])}
                 </td>)}
                 {sharingColumns.map(kind => <td key={kind} className="score-numeric">{signedScore(row.sharingAdjustment?.[kind] ?? 0)}</td>)}
               </tr>;

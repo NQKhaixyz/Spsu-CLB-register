@@ -11,7 +11,7 @@ import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button } from "./ui";
 import { ProfileFeedback, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import { SharingProfileCard } from "./sharing-panel";
-import { formatScore } from "./scoreboard";
+import { formatScore } from "../lib/score-format";
 import { ProfileCreditHistory } from "./profile-credit-history";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];

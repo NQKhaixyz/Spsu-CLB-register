@@ -8,6 +8,7 @@ import { detachExpiredEventPhotos, eventEvidenceLink, eventEvidenceTarget, event
 import { eventPhotoKey, purgeExpiredEventPhotos } from "../lib/event-photo-storage";
 import { monthlyScoreboard, workspaceView } from "../lib/workspace-view";
 import { monthlyScoreTier, rankScoreRows } from "../lib/score-ranks";
+import { formatScore, parseScoreInput } from "../lib/score-format";
 import { publishedSemesterScores, semesterScores } from "../lib/semester-scores";
 import { makeReport } from "../lib/excel";
 import ExcelJS from "exceljs";
@@ -21,6 +22,15 @@ function fixture(){
 }
 
 const eventData=(id="event-test-1",points=6,startDate=today(),endDate=today())=>({id,name:"Ngày hội C2",points,startDate,endDate});
+
+test("Score display uses a decimal point and accepts both separators in existing score inputs", () => {
+  assert.deepEqual([1.25, -1.25, 0.125, 1234.5, 0.1 + 0.2].map(formatScore),
+    ["1.25", "-1.25", "0.125", "1234.5", "0.3"]);
+  for (const value of ["1.25", "1,25", "  1,25  "]) assert.equal(parseScoreInput(value), 1.25);
+  assert.equal(parseScoreInput(".25"), 0.25);
+  assert.equal(parseScoreInput("1e-5"), 0.00001);
+  for (const value of ["", "1,2.5", "-1.25", "0x10", null]) assert.ok(Number.isNaN(parseScoreInput(value)));
+});
 
 test("Score ranks are descending with deterministic ties and ten distinct monthly tiers", () => {
   const rows = [

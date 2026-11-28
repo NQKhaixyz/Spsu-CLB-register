@@ -27,7 +27,7 @@ export function FontSettings({ current, busy, onSave }: {
         <div className="font-preview" data-font={selected}>
           <span>Xem trước</span>
           <strong>Lịch trực của Đội</strong>
-          <p>Thứ Bảy · Ca sáng · 2,75 điểm</p>
+          <p>Thứ Bảy · Ca sáng · 2.75 điểm</p>
         </div>
         <Button type="submit" disabled={busy || selected === current}>
           <Check size={16} /> Lưu phông chữ

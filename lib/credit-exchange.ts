@@ -1,6 +1,7 @@
 import { dateLabel, monthLabel, reportMembers, scoreFor, today, type Club, type Member } from "./club";
 import { awardGameCredits, creditLoanStatus, creditWalletBalance, cupidCreditPartnerId, GameRuleError, spendGameCredits } from "./games";
 import { isNoticeId } from "./notification-types";
+import { formatScore } from "./score-format";
 import { sharingScoreBook } from "./sharing-scores";
 
 export const POINTS_TO_CREDITS = "points-to-credits";
@@ -42,7 +43,7 @@ export function parseCreditExchange(input: unknown): CreditExchangeCommand {
     throw new GameRuleError("Thông tin đổi điểm chưa hợp lệ");
   if (direction === CREDITS_TO_POINTS) return { month, operationId, direction, rate };
   if (direction !== POINTS_TO_CREDITS || typeof units !== "number" || !Number.isSafeInteger(units) || units < 1 || units > maxUnits)
-    throw new GameRuleError("Nhập số điểm dương theo bước 0,05");
+    throw new GameRuleError(`Nhập số điểm dương theo bước ${formatScore(POINT_EXCHANGE_UNIT_CENTS / 100)}`);
   return { month, operationId, direction, units, rate };
 }
 

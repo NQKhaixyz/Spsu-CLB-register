@@ -10,11 +10,12 @@ import {
 } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
+import { formatScore, parseScoreInput } from "../lib/score-format";
 import { sharingKinds, sharingScoreLabels } from "../lib/sharing-types";
 import { EvidencePanel } from "./duty-evidence";
 import { Avatar, Badge, Button, Dialog, Empty, Field, FormFooter, PanelHead } from "./ui";
 import { MemberName, MemberOption } from "./member-identity";
-import { formatScore } from "./scoreboard";
+import { ScoreInput } from "./score-input";
 import { EventRoundField } from "./event-round-field";
 import { BulletinText } from "./bulletin-text";
 import { TextEmphasisEditor } from "./text-emphasis-editor";
@@ -33,8 +34,7 @@ function eventPointsLabel(event: ClubEvent) {
 
 function ContributionField({ initial }: { initial?: number }) {
   return <Field label="Điểm đóng góp">
-    <input name="contributionPoints" type="number" inputMode="decimal" min={0} max={100000} step="0.01"
-      defaultValue={initial} required />
+    <ScoreInput name="contributionPoints" defaultValue={initial} required />
   </Field>;
 }
 
@@ -303,7 +303,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
       description={<>{activityName(club, contributionRow)} · <MemberName memberId={contributionRow.memberId} /></>} onClose={close} busy={busy}>
       <form onSubmit={async e => {
         const fields = formData(e);
-        if (await onAction("saveEventContribution", { id: contributionRow.id, contributionPoints: Number(fields.contributionPoints) },
+        if (await onAction("saveEventContribution", { id: contributionRow.id, contributionPoints: parseScoreInput(fields.contributionPoints) },
           "Đã cập nhật điểm đóng góp", false)) close();
       }}>
         <ContributionField initial={contributionRow.contributionPoints} />
@@ -315,7 +315,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
       <form onSubmit={async e => {
         const fields = formData(e);
         if (await onAction("reviewActivity", { id: review.row.id, confirmed: review.confirmed, reason: fields.reason,
-          contributionPoints: reviewContribution ? Number(fields.contributionPoints) : undefined },
+          contributionPoints: reviewContribution ? parseScoreInput(fields.contributionPoints) : undefined },
           "Đã cập nhật kết quả duyệt", false)) close();
       }}>
         <p className="dialog-copy">{review.confirmed
@@ -392,7 +392,7 @@ function AddParticipantDialog({ event, members, registrations, busy, onAction, o
         eventId: event.id, memberId: selected.id, reason: fields.reason,
         registrationId: multiple ? previous?.id ?? requestId : undefined,
         previousStatus: previous?.status, previousDecisionAt: previous?.reviewedAt ?? previous?.submittedAt,
-        contributionPoints: contribution ? Number(fields.contributionPoints) : undefined,
+        contributionPoints: contribution ? parseScoreInput(fields.contributionPoints) : undefined,
         ...(perRound ? { quantity: Number(roundQuantity), previousQuantity: recordedEventQuantity(memberRows) } : {}),
       }, `Đã ghi nhận ${selected.name} tham gia sự kiện`, false);
       if (ok) onClose();
@@ -510,7 +510,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
               <Button variant="secondary" aria-label={`Trừ điểm · ${m.name}`} disabled={busy} onClick={() => {setDeducting(true); setMember(m);}}>Trừ điểm</Button>
             </div> : null}</td>
             <td className="center">{score?.passed ?? 0}</td>
-            {visibleActivityKinds.map(k => <td className="center" key={k}>{score?.activityCounts[k] ?? 0}</td>)}
+            {visibleActivityKinds.map(k => <td className="center" key={k}>{formatScore(score?.activityCounts[k] ?? 0)}</td>)}
             {sharingColumns.map(kind => <td className="center" key={kind}>{formatScore(score?.sharingAdjustment?.[kind] ?? 0)}</td>)}
           </tr>;
         })}
@@ -518,7 +518,7 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
       {isAdmin && !members.length && <p className="activity-search" role="status">Không có thành viên phù hợp trong tuần này</p>}
     </section>
     {deductions.length ? <section className="panel"><PanelHead title={isAdmin?"Các khoản trừ điểm trong tuần":"Các khoản trừ điểm của tôi"} description="Điểm được trừ trực tiếp, lý do chỉ hiển thị cho BĐH và thành viên liên quan" />
-      <div className="activity-list">{deductions.map(r=><article className="activity-item" key={r.id}><div><strong><MemberName memberId={r.memberId} /> · {r.cancelledAt?"Đã hủy khoản trừ":`−${r.points} điểm`}</strong><p>{dateLabel(r.date,true)} · {r.reason}</p>{r.cancelReason?<p className="hint">Lý do hủy: {r.cancelReason}</p>:null}</div></article>)}</div>
+      <div className="activity-list">{deductions.map(r=><article className="activity-item" key={r.id}><div><strong><MemberName memberId={r.memberId} /> · {r.cancelledAt?"Đã hủy khoản trừ":`−${formatScore(r.points)} điểm`}</strong><p>{dateLabel(r.date,true)} · {r.reason}</p>{r.cancelReason?<p className="hint">Lý do hủy: {r.cancelReason}</p>:null}</div></article>)}</div>
     </section> : null}
     {member?<Dialog title={<>{deducting ? "Trừ điểm" : "Điểm BĐH nhập"} · <MemberName memberId={member.id} /></>}
       description={`Tuần ${dateLabel(week)} – ${dateLabel(addDays(week,6))}`} onClose={close} busy={busy}>
@@ -545,7 +545,7 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
     const message = event ? "Đã cập nhật sự kiện" : "Đã tạo sự kiện và mở đăng ký";
     if (await onAction(action, { ...fields, id: event?.id ?? id, requiresEvidence: fields.requiresEvidence === "on",
       scoringMode: scoreSource === "legacy" ? undefined : scoreSource === "individual" ? "contribution" : participation,
-      points: scoreSource === "shared" ? Number(sharedPoints) : undefined }, message, false)) onClose();
+      points: scoreSource === "shared" ? parseScoreInput(sharedPoints) : undefined }, message, false)) onClose();
   }}>
     <Field label="Tên sự kiện"><input name="name" defaultValue={event?.name} required minLength={2} maxLength={160} placeholder="Ví dụ: Hỗ trợ ngày hội sinh viên" autoFocus /></Field>
     <Field label="Địa điểm (không bắt buộc)"><input name="location" defaultValue={event?.location} maxLength={eventLocationLimit} /></Field>
@@ -567,8 +567,7 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
     </Field>
     {scoreSource === "shared" && <>
       <Field label="Mức điểm">
-        <input type="number" inputMode="decimal" min={0} max={100000} step="0.01" required
-          value={sharedPoints} onChange={e => setSharedPoints(e.target.value)} />
+        <ScoreInput value={sharedPoints} onChange={e => setSharedPoints(e.currentTarget.value)} required />
       </Field>
       <Field label="Cách tính theo lượt">
         <select value={participation} onChange={e => setParticipation(e.target.value as typeof participation)}>
@@ -633,14 +632,14 @@ function ManualEntryForm({club,member,week,kind,busy,onAction,onClose,committee,
   return <form onSubmit={async e => {
     const f = formData(e);
     const value = direct || byCommittee
-      ? { points: f.points === undefined ? undefined : Number(f.points) }
+      ? { points: parseScoreInput(f.points) }
       : { quantity: Number(f.quantity) };
     if (await onAction("saveManualActivity", { ...f, ...value, kind, committee, memberId: member.id, week, entryId,
       previousEntryId: old?.id ?? null }, "Đã lưu điểm trong tuần", false)) onClose();
   }}>
     {direct || byCommittee ? (
       <Field label={byCommittee ? "Số điểm BĐH chấm" : "Điểm riêng trong tuần"}>
-        <input name="points" type="number" inputMode="decimal" min={0} max={100000} step="0.01"
+        <ScoreInput name="points"
           defaultValue={old ? activityPointsFor(club, old) : direct ? 0 : undefined} required />
       </Field>
     ) : null}
@@ -660,8 +659,8 @@ function DeductionForm({club,member,week,busy,onAction,onClose}:{club:Club;membe
   const [cancelId,setCancelId] = useState<string|null>(null);
   const rows = (club.pointDeductions ?? []).filter(r=>r.memberId===member.id && r.week===week);
   return <>
-    <form onSubmit={async e=>{const f=formData(e);const form=e.currentTarget;if(await onAction("deductPoints",{...f,id,memberId:member.id,week,points:Number(f.points)},"Đã ghi nhận điểm trừ và lý do",false)){setId(uid());form.reset();}}}>
-      <Field label="Số điểm trừ"><input name="points" type="number" min="0.01" max={100000} step="0.01" required placeholder="Nhập số điểm cần trừ" /></Field>
+    <form onSubmit={async e=>{const f=formData(e);const form=e.currentTarget;if(await onAction("deductPoints",{...f,id,memberId:member.id,week,points:parseScoreInput(f.points)},"Đã ghi nhận điểm trừ và lý do",false)){setId(uid());form.reset();}}}>
+      <Field label="Số điểm trừ"><ScoreInput name="points" required placeholder="Nhập số điểm cần trừ" /></Field>
       <Field label="Ngày ghi nhận khoản trừ"><input name="date" type="date" min={week>member.joined?week:member.joined} max={addDays(week,6)} defaultValue={week===weekId()?today():addDays(week,6)} required /></Field>
       <Field label="Giờ thực tế"><input type="time" name="time" /></Field>
       <Field label="Lý do trừ điểm (bắt buộc)"><textarea name="reason" minLength={3} maxLength={500} required placeholder="Ghi rõ lý do trừ điểm" /></Field>
@@ -669,7 +668,7 @@ function DeductionForm({club,member,week,busy,onAction,onClose}:{club:Club;membe
       <FormFooter label="Trừ điểm" onCancel={onClose} busy={busy}/>
     </form>
     {rows.length ? <div className="deduction-history"><h3>Lịch sử trừ điểm trong tuần</h3>{rows.map(row=><div className="deduction-row" key={row.id}>
-      <strong>{row.cancelledAt?"Đã hủy":`−${row.points} điểm`} · {dateLabel(row.date)}</strong><p>{row.reason}</p>
+      <strong>{row.cancelledAt?"Đã hủy":`−${formatScore(row.points)} điểm`} · {dateLabel(row.date)}</strong><p>{row.reason}</p>
       {row.cancelledAt ? <p className="hint">Lý do hủy: {row.cancelReason}</p> : cancelId===row.id ? <form onSubmit={async e=>{const f=formData(e);if(await onAction("cancelPointDeduction",{id:row.id,reason:f.reason},"Đã hủy khoản trừ, điểm được tính lại",false))setCancelId(null);}}>
         <Field label="Lý do hủy khoản trừ"><textarea name="reason" minLength={3} maxLength={500} required /></Field>
         <FormFooter label="Xác nhận hủy khoản trừ" onCancel={()=>setCancelId(null)} busy={busy}/>

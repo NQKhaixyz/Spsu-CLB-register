@@ -1,6 +1,7 @@
 "use client";
 
 import { eventQuantityPoints, eventRoundQuantityLimit, isEventRoundQuantity } from "../lib/activity";
+import { formatScore } from "../lib/score-format";
 import { Field } from "./ui";
 
 export function EventRoundField({ value, onChange, min = 0, pointsPerRound }: {
@@ -16,6 +17,6 @@ export function EventRoundField({ value, onChange, min = 0, pointsPerRound }: {
         step={1} required value={value} onChange={event => onChange(event.target.value)} />
     </Field>
     {pointsPerRound !== undefined && value !== "" && isEventRoundQuantity(count) && count >= min &&
-      <p className="hint">Điểm sự kiện dự kiến <strong>{eventQuantityPoints(pointsPerRound, count).toLocaleString("vi-VN")} điểm</strong></p>}
+      <p className="hint">Điểm sự kiện dự kiến <strong>{formatScore(eventQuantityPoints(pointsPerRound, count))} điểm</strong></p>}
   </>;
 }

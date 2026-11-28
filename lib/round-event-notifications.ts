@@ -1,11 +1,18 @@
 import { activityPointsFor, allowsMultipleEventRounds, type ClubEvent } from "./activity";
 import { addDays, isRosterMember, today, type Club } from "./club";
 import type { EventNoticeScore, StoredActivityNotice } from "./notification-types";
+import { formatScore } from "./score-format";
 import { roundSharingScore } from "./sharing-scores";
 
-const formatPoints = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
+const legacyScoreNumber = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
 const resultKey = (eventId: string, memberId: string) => JSON.stringify([eventId, memberId]);
 type RoundResult = { eventId: string; memberId: string; name: string; notifiedAt: number; rounds: number; points: number };
+
+function roundEventBody({ eventName, points, rounds }: EventNoticeScore, format = formatScore) {
+  return rounds
+    ? `Bạn đã nhận ${format(points)} điểm vì tham gia sự kiện ${eventName} ${format(rounds)} lần`
+    : `${eventName} · 0 lượt được duyệt`;
+}
 
 export function settleRoundEventNotices(club: Club, now = Date.now()) {
   if (club.roundEventNoticesSince === undefined) {
@@ -43,10 +50,7 @@ export function settleRoundEventNotices(club: Club, now = Date.now()) {
   let changed = false;
   function receiptFor(total: RoundResult) {
     const eventScore: EventNoticeScore = { eventName: total.name, points: roundSharingScore(total.points), rounds: total.rounds };
-    const body = total.rounds
-      ? `Bạn đã nhận ${formatPoints.format(eventScore.points)} điểm vì tham gia sự kiện ${total.name} ${formatPoints.format(total.rounds)} lần`
-      : `${total.name} · 0 lượt được duyệt`;
-    return { body, eventScore };
+    return { body: roundEventBody(eventScore), eventScore };
   }
   for (const notice of notices) {
     if (notice.kind !== "activity" || !notice.roundEventResult || notice.target.area !== "event") {
@@ -65,12 +69,14 @@ export function settleRoundEventNotices(club: Club, now = Date.now()) {
     }
     seen.add(key);
     const receipt = receiptFor(total);
-    if (receipt.body !== notice.body) {
+    const bodyChanged = receipt.body !== notice.body;
+    // Reformatting a saved result preserves its timestamp, read status, and score change.
+    if (bodyChanged && notice.body !== roundEventBody(receipt.eventScore, legacyScoreNumber.format)) {
       const change = notice.eventScore ? roundSharingScore(receipt.eventScore.points - notice.eventScore.points) : undefined;
       next.push({ ...notice, ...receipt, eventScore: { ...receipt.eventScore, change }, createdAt: now, read: undefined });
       changed = true;
-    } else if (!notice.eventScore) {
-      next.push({ ...notice, ...receipt });
+    } else if (bodyChanged || !notice.eventScore) {
+      next.push({ ...notice, body: receipt.body, eventScore: notice.eventScore ?? receipt.eventScore });
       changed = true;
     } else next.push(notice);
   }

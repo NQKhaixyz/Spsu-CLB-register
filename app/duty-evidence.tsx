@@ -5,10 +5,12 @@ import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { isEventRoundQuantity, isPointAmount } from "../lib/activity";
 import type { EvidenceAssignment } from "../lib/duty-evidence";
 import { eventEvidenceLinkLimit, type EventEvidenceView } from "../lib/event-evidence";
+import { parseScoreInput } from "../lib/score-format";
 import { preparePhoto } from "./prepare-photo";
 import { Badge, Button, Field } from "./ui";
 import { displayMessage } from "../lib/display-message";
 import { EventRoundField } from "./event-round-field";
+import { ScoreInput } from "./score-input";
 
 const statusLabels = {
   attached: { badge: "neutral", label: "Ảnh đính kèm" },
@@ -167,7 +169,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: data.evidence.id, status, note,
-        contributionPoints: status === "approved" && data.requiresContributionPoints ? Number(contribution) : undefined,
+        contributionPoints: status === "approved" && data.requiresContributionPoints ? parseScoreInput(contribution) : undefined,
         quantity: status === "approved" && data.recordedRounds !== undefined ? Number(roundQuantity) : undefined,
         previousQuantity: data.recordedRounds }),
     }, status === "approved" ? (event ? "Đã duyệt minh chứng và ghi điểm sự kiện" : "Đã duyệt minh chứng") : "Đã từ chối minh chứng");
@@ -254,8 +256,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
       {canReview && data && (
         <>
           {data.requiresContributionPoints && <Field label="Điểm đóng góp">
-            <input type="number" inputMode="decimal" min={0} max={100000} step="0.01" value={contribution}
-              onChange={event => setContribution(event.target.value)} />
+            <ScoreInput value={contribution} onChange={event => setContribution(event.currentTarget.value)} />
           </Field>}
           {data.recordedRounds !== undefined &&
             <EventRoundField value={roundQuantity} onChange={setRoundQuantity} pointsPerRound={showRoundPoints ? data.pointsPerRound : undefined} />}
@@ -263,7 +264,7 @@ export function EvidencePanel({ id, endpoint, event = false, showRoundPoints = t
             <textarea rows={2} maxLength={500} value={note} onChange={event => setNote(event.target.value)} placeholder="Nhập lý do nếu từ chối" />
           </Field>
           <div className="duty-evidence-actions">
-            <Button disabled={busy || (data.requiresContributionPoints && (!contribution || !isPointAmount(Number(contribution)))) ||
+            <Button disabled={busy || (data.requiresContributionPoints && !isPointAmount(parseScoreInput(contribution))) ||
               (data.recordedRounds !== undefined && (!roundQuantity || !isEventRoundQuantity(Number(roundQuantity))))}
               onClick={() => review("approved")}>
               {data.recordedRounds !== undefined ? `Duyệt ${evidenceType} và lưu số lượt` : event ? `Duyệt ${evidenceType} và tính điểm` : "Duyệt ảnh"}

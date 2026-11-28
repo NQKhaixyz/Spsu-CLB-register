@@ -11,6 +11,7 @@ import {
   type Schedule,
   type Rule,
 } from "../lib/club";
+import { formatScore } from "../lib/score-format";
 import { Button, PanelHead } from "./ui";
 import { MemberName } from "./member-identity";
 export default function DutyRegister({
@@ -47,7 +48,7 @@ export default function DutyRegister({
     <section className="panel duty-register">
       <PanelHead
         title="Theo dõi trực và đến muộn"
-        description={`${monthLabel(schedule.month)} · Đến muộn trừ ${rule.D ?? 0} điểm/lượt`}
+        description={`${monthLabel(schedule.month)} · Đến muộn trừ ${formatScore(rule.D ?? 0)} điểm/lượt`}
       />
       <div className="availability-toolbar">
         <input
