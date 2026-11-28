@@ -421,6 +421,11 @@
 .dialog.wide.bulletin-composer-dialog { width: min(80rem, 100%); max-width: none; }
 .bulletin-compose-layout { display: grid; gap: 16px; align-items: start; }
 .bulletin-compose-fields, .bulletin-compose-preview { min-width: 0; }
+.bulletin-compose-schedule { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bulletin-compose-schedule :is(.field, input) { min-width: 0; }
+@media (max-width: 940px) {
+  .bulletin-compose-schedule { grid-template-columns: minmax(0, 1fr); }
+}
 .bulletin-compose-preview-label { display: none; margin: 0 0 10px; color: var(--muted); font-size: .875rem; }
 .bulletin-compose-preview-body {
   margin-top: 8px;

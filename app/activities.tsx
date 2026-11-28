@@ -19,6 +19,7 @@ import { ScoreInput } from "./score-input";
 import { EventRoundField } from "./event-round-field";
 import { BulletinText } from "./bulletin-text";
 import { TextEmphasisEditor } from "./text-emphasis-editor";
+import { TitleField } from "./title-field";
 type ActivityProps = {club:Club;me:Member;isAdmin:boolean;week:string;busy:boolean;onAction:Act};
 type Act = (action: string, data: Record<string, unknown>, message: string, close?: boolean) => Promise<boolean>;
 type EventChange = "cancel" | "restore" | "delete";
@@ -288,7 +289,7 @@ export default function Activities({ club, me, isAdmin, busy, onAction, onEviden
       })}</div>:<Empty title="Chưa có người tham gia">Danh sách sẽ hiển thị khi có thành viên đăng ký hoặc được BĐH thêm vào sự kiện</Empty>}
     </section>
     {(eventDialog?.mode === "create" || editingEvent) ? (
-      <Dialog title={editingEvent ? "Sửa sự kiện" : "Tạo sự kiện"} onClose={close} busy={busy}>
+      <Dialog title={editingEvent ? "Sửa sự kiện" : "Tạo sự kiện"} onClose={close} busy={busy} wide className="event-composer-dialog">
         <EventForm event={editingEvent} busy={busy} onAction={onAction} onClose={close} />
       </Dialog>
     ) : null}
@@ -530,6 +531,9 @@ export function WeeklyActivityPoints({club,me,isAdmin,week,weeklyScores,committe
 }
 function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy: boolean; onAction: Act; onClose: () => void }) {
   const [id] = useState(uid);
+  const [name, setName] = useState(event?.name ?? "");
+  const [location, setLocation] = useState(event?.location ?? "");
+  const [draft, setDraft] = useState({ content: event?.description ?? "", contentFormat: event?.descriptionFormat });
   const [scoreSource, setScoreSource] = useState<"shared" | "individual" | "legacy">(
     event?.scoringMode === "contribution" ? "individual" : event && !event.scoringMode ? "legacy" : "shared");
   const [participation, setParticipation] = useState<"single" | "perRound">(event?.scoringMode === "perRound" ? "perRound" : "single");
@@ -538,6 +542,7 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
   const [startDate, setStartDate] = useState(event?.startDate ?? currentDay);
   const [endDate, setEndDate] = useState(event?.endDate ?? currentDay);
   const [startTime, setStartTime] = useState(event?.startTime ?? "");
+  const [endTime, setEndTime] = useState(event?.endTime ?? "");
   const minEndDate = event || startDate > currentDay ? startDate : currentDay;
   return <form onSubmit={async e => {
     const fields = formData(e);
@@ -547,43 +552,73 @@ function EventForm({ event, busy, onAction, onClose }: { event?: ClubEvent; busy
       scoringMode: scoreSource === "legacy" ? undefined : scoreSource === "individual" ? "contribution" : participation,
       points: scoreSource === "shared" ? parseScoreInput(sharedPoints) : undefined }, message, false)) onClose();
   }}>
-    <Field label="Tên sự kiện"><input name="name" defaultValue={event?.name} required minLength={2} maxLength={160} placeholder="Ví dụ: Hỗ trợ ngày hội sinh viên" autoFocus /></Field>
-    <Field label="Địa điểm (không bắt buộc)"><input name="location" defaultValue={event?.location} maxLength={eventLocationLimit} /></Field>
-    <div className="form-grid event-schedule-fields">
-      <Field label="Ngày bắt đầu"><input name="startDate" type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
-      <Field label="Giờ bắt đầu"><input name="startTime" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} /></Field>
-      <Field label="Ngày kết thúc"><input name="endDate" type="date" required min={minEndDate} value={endDate} onChange={e => setEndDate(e.target.value)} /></Field>
-      <Field label="Giờ kết thúc"><input name="endTime" type="time" min={(startDate === endDate && startTime) || undefined} defaultValue={event?.endTime} /></Field>
+    <div className="event-compose-layout">
+      <div className="event-compose-details">
+        <div className="event-compose-overview">
+          <TitleField label="Tên sự kiện" name="name" value={name} onChange={setName} minLength={2} maxLength={160}
+            placeholder="Ví dụ: Hỗ trợ ngày hội sinh viên" autoFocus busy={busy} />
+          <Field label="Địa điểm (không bắt buộc)"><input name="location" value={location} maxLength={eventLocationLimit}
+            onChange={e => setLocation(e.currentTarget.value)} /></Field>
+        </div>
+        <div className="form-grid event-schedule-fields">
+          <Field label="Ngày bắt đầu"><input name="startDate" type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
+          <Field label="Giờ bắt đầu"><input name="startTime" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} /></Field>
+          <Field label="Ngày kết thúc"><input name="endDate" type="date" required min={minEndDate} value={endDate} onChange={e => setEndDate(e.target.value)} /></Field>
+          <Field label="Giờ kết thúc"><input name="endTime" type="time" min={(startDate === endDate && startTime) || undefined}
+            value={endTime} onChange={e => setEndTime(e.currentTarget.value)} /></Field>
+        </div>
+        <p className="hint event-schedule-hint">Giờ Việt Nam · Có thể để trống</p>
+      </div>
+      <div className="event-compose-description">
+        <TextEmphasisEditor label="Mô tả sự kiện (không bắt buộc)" name="description" formatName="descriptionFormat"
+          rows={5} maxLength={eventDescriptionLimit} initialText={event?.description} initialFormat={event?.descriptionFormat} busy={busy}
+          onDraftChange={(content, contentFormat) => setDraft({ content, contentFormat })} />
+      </div>
+      <section className="event-compose-preview" aria-label="Xem trước sự kiện">
+        <h3>Xem trước sự kiện</h3>
+        <article className="event-compose-card">
+          <div className="event-card-title">
+            <strong>{name.trim() || "Tên sự kiện"}</strong>
+            <span><CalendarDays size={16} aria-hidden="true" />
+              {startDate && endDate ? eventScheduleLabel({ startDate, startTime, endDate, endTime }) : "Chưa chọn đủ ngày"}
+            </span>
+            <span><MapPin size={16} aria-hidden="true" /> {location.trim() || "Chưa cập nhật địa điểm"}</span>
+          </div>
+          <div className="event-card-details">
+            {draft.content.trim() ? <p className="event-description"><BulletinText {...draft} /></p> :
+              <p className="hint">Mô tả sẽ hiện ở đây</p>}
+          </div>
+        </article>
+      </section>
+      <div className="event-compose-settings">
+        <Field label="Cách nhập điểm">
+          <select value={scoreSource} onChange={e => setScoreSource(e.target.value as typeof scoreSource)}>
+            {event && !event.scoringMode && <option value="legacy">Giữ cách tính hiện tại</option>}
+            <option value="shared">Điểm chung cho sự kiện</option>
+            <option value="individual">Điểm riêng từng người</option>
+          </select>
+        </Field>
+        {scoreSource === "shared" && <>
+          <Field label="Mức điểm">
+            <ScoreInput value={sharedPoints} onChange={e => setSharedPoints(e.currentTarget.value)} required />
+          </Field>
+          <Field label="Cách tính theo lượt">
+            <select value={participation} onChange={e => setParticipation(e.target.value as typeof participation)}>
+              <option value="single">Tính một lần</option>
+              <option value="perRound">Tính theo số lượt</option>
+            </select>
+          </Field>
+          <p className="hint">{participation === "perRound"
+            ? "BĐH nhập tổng số lượt thực tế. Điểm bằng mức điểm nhân với số lượt"
+            : "Mỗi thành viên được duyệt nhận mức điểm đã nhập một lần"}</p>
+        </>}
+        {scoreSource === "legacy" && event && <p className="hint">{eventPointsLabel(event)}</p>}
+        {scoreSource === "individual" && <p className="hint">BĐH nhập số điểm riêng cho từng thành viên khi xác nhận tham gia</p>}
+        <label className="event-history"><input type="checkbox" name="requiresEvidence" defaultChecked={event?.requiresEvidence} /> Yêu cầu minh chứng</label>
+        <p className="hint">Thành viên có thể gửi ảnh hoặc link. Hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam</p>
+        <p className="hint">Các lượt đã duyệt được tính vào tuần kết thúc sự kiện</p>
+      </div>
     </div>
-    <p className="hint event-schedule-hint">Giờ Việt Nam · Có thể để trống</p>
-    <TextEmphasisEditor label="Mô tả sự kiện (không bắt buộc)" name="description" formatName="descriptionFormat"
-      rows={3} maxLength={eventDescriptionLimit} initialText={event?.description} initialFormat={event?.descriptionFormat} busy={busy} />
-    <Field label="Cách nhập điểm">
-      <select value={scoreSource} onChange={e => setScoreSource(e.target.value as typeof scoreSource)}>
-        {event && !event.scoringMode && <option value="legacy">Giữ cách tính hiện tại</option>}
-        <option value="shared">Điểm chung cho sự kiện</option>
-        <option value="individual">Điểm riêng từng người</option>
-      </select>
-    </Field>
-    {scoreSource === "shared" && <>
-      <Field label="Mức điểm">
-        <ScoreInput value={sharedPoints} onChange={e => setSharedPoints(e.currentTarget.value)} required />
-      </Field>
-      <Field label="Cách tính theo lượt">
-        <select value={participation} onChange={e => setParticipation(e.target.value as typeof participation)}>
-          <option value="single">Tính một lần</option>
-          <option value="perRound">Tính theo số lượt</option>
-        </select>
-      </Field>
-      <p className="hint">{participation === "perRound"
-        ? "BĐH nhập tổng số lượt thực tế. Điểm bằng mức điểm nhân với số lượt"
-        : "Mỗi thành viên được duyệt nhận mức điểm đã nhập một lần"}</p>
-    </>}
-    {scoreSource === "legacy" && event && <p className="hint">{eventPointsLabel(event)}</p>}
-    {scoreSource === "individual" && <p className="hint">BĐH nhập số điểm riêng cho từng thành viên khi xác nhận tham gia</p>}
-    <label className="event-history"><input type="checkbox" name="requiresEvidence" defaultChecked={event?.requiresEvidence} /> Yêu cầu minh chứng</label>
-    <p className="hint">Thành viên có thể gửi ảnh hoặc link. Hạn gửi và duyệt là hết 2 ngày sau ngày kết thúc, theo giờ Việt Nam</p>
-    <p className="hint">Các lượt đã duyệt được tính vào tuần kết thúc sự kiện</p>
     <FormFooter label={event ? "Lưu thay đổi" : "Tạo và mở đăng ký"} onCancel={onClose} busy={busy} />
   </form>;
 }

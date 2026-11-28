@@ -66,6 +66,7 @@
   gap: 15px;
   isolation: isolate;
   min-width: 0;
+  overflow: hidden;
   padding: clamp(16px, 3vw, 28px);
   border: 1px solid #31614f;
   border-radius: 22px;
@@ -138,7 +139,6 @@
   background: linear-gradient(145deg, #fffdf6, #f6eedf);
   color: #25332f;
   box-shadow: 0 3px 6px #071f2466;
-  animation: blackjack-card-deal 220ms ease-out both;
 }
 .blackjack-card[data-color="red"] { color: #9e322e; }
 .blackjack-card-corner {
@@ -168,7 +168,6 @@
   border: 1px dashed #e7c68766;
   color: #e7c6878c;
   box-shadow: none;
-  animation: none;
 }
 .blackjack-card-empty svg { width: 15px; height: 15px; }
 .blackjack-table-line {
@@ -278,9 +277,20 @@
 .blackjack-history li div { display: grid; min-width: 0; }
 .blackjack-history li > strong { text-align: end; font-variant-numeric: tabular-nums; }
 .blackjack-history li > strong span { color: var(--muted); font-size: .77rem; font-weight: 500; }
+.blackjack-card[data-motion="deal"] { animation: blackjack-card-deal 230ms cubic-bezier(.17, .75, .26, 1) both; }
+.blackjack-card[data-motion="flip-back"] { animation: blackjack-flip-back 180ms ease-in both; }
+.blackjack-card[data-motion="flip-face"] { animation: blackjack-flip-face 180ms ease-out both; }
 @keyframes blackjack-card-deal {
-  from { opacity: .3; transform: translateY(-6px) rotate(-2deg); }
-  to { opacity: 1; transform: translateY(0) rotate(0); }
+  from { opacity: .35; transform: translate(24px, -24px) rotate(9deg) scale(.92); }
+  to { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+}
+@keyframes blackjack-flip-back {
+  from { transform: perspective(480px) rotateY(0deg); }
+  to { transform: perspective(480px) rotateY(90deg); }
+}
+@keyframes blackjack-flip-face {
+  from { transform: perspective(480px) rotateY(-90deg); }
+  to { transform: perspective(480px) rotateY(0deg); }
 }
 @media (max-width: 880px) { .blackjack-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 520px) {
@@ -291,7 +301,7 @@
   .blackjack-card-suit { font-size: 1.75rem; }
   .blackjack-card-corner { left: 4px; }
 }
-@media (prefers-reduced-motion: reduce) { .blackjack-card { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .blackjack-card[data-motion] { animation: none; } }
 .games-card {
   display: grid;
   gap: 12px;

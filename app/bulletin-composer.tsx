@@ -12,6 +12,7 @@ import { displayMessage } from "../lib/display-message";
 import { BulletinAttachmentView } from "./bulletin-attachments";
 import { BulletinText } from "./bulletin-text";
 import { preparePhoto } from "./prepare-photo";
+import { TitleField } from "./title-field";
 import { Button, Dialog, Field, FormFooter } from "./ui";
 
 const BulletinRichEditor = lazy(() => import("./bulletin-rich-editor"));
@@ -190,8 +191,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
     <form onSubmit={save}>
       <div className="bulletin-compose-layout">
         <div className="bulletin-compose-fields">
-          <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit}
-            value={title} onChange={event => setTitle(event.target.value)} /></Field>
+          <TitleField label="Tiêu đề" name="title" value={title} onChange={setTitle} maxLength={bulletinTitleLimit} busy={waiting} />
           <Suspense fallback={<div className="bulletin-editable" role="status">Đang mở trình soạn thảo</div>}>
             <BulletinRichEditor initial={initialBody} busy={waiting} expanded={editorExpanded}
               onExpand={() => setEditorExpanded(open => !open)} onDraftChange={body => {
@@ -228,7 +228,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
               </li>)}
             </ul>}
           </div>
-          {isAdmin && <div className="form-grid">
+          {isAdmin && <div className="form-grid bulletin-compose-schedule">
             <Field label="Hẹn đăng" hint="Giờ Việt Nam · Để trống để đăng ngay">
               <input name="publishAt" type="datetime-local" defaultValue={bulletinDateInput(original?.publishAt)} />
             </Field>

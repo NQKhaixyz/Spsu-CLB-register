@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { blackjackValue, type BlackjackCard, type BlackjackCommand, type BlackjackMove } from "../lib/blackjack";
+import { blackjackFrames } from "../lib/blackjack-presentation";
 import { createClub, type Member } from "../lib/club";
 import { pendingCreditEntries } from "../lib/credit-history";
 import { adjustGameCredits, applyBlackjackCommand, applyCreditLoanCommand, creditLoanStatus, drawBlackjackDeck,
@@ -73,6 +74,47 @@ test("Natural blackjack pays exactly 3:2, two naturals push, and the dealer chec
   start(101, ["9", "A", "7", "Q"]);
   assert.equal(view().blackjack.recent[0].hands[0].outcome, "loss");
   assert.equal(view().wallet.balanceCents, 1_005_050);
+});
+
+test("Blackjack presentation deals in order and hides the house hand until the flip after standing", () => {
+  const { one, run, view, start, move } = fixture();
+  const initial = view().blackjack;
+  const command = start(100, ["10", "9", "9", "6", "3"]);
+  const waiting = view().blackjack;
+  const opening = blackjackFrames(command, initial, waiting);
+  assert.deepEqual(opening.map(frame => [frame.motion.seat, frame.motion.index, frame.hole]), [
+    [0, 0, false], ["dealer", 0, false], [0, 1, false], ["dealer", 1, true],
+  ]);
+  assert.deepEqual(opening.map(frame => frame.dealer.map(card => card.rank)), [[], ["9"], ["9"], ["9"]]);
+  assert.deepEqual(opening.map(frame => frame.hands[0].cards.length), [1, 1, 2, 2]);
+  const stand = move("stand");
+  const settled = view().blackjack;
+  const reveal = blackjackFrames(stand, waiting, settled);
+  assert.deepEqual(reveal.map(frame => [frame.motion.phase, frame.hole, frame.dealer.map(card => card.rank)]), [
+    ["flip-back", true, ["9"]], ["flip-face", false, ["9", "6"]], ["deal", false, ["9", "6", "3"]],
+  ]);
+  run(one, stand);
+  assert.deepEqual(blackjackFrames(stand, settled, view().blackjack), []);
+});
+
+test("Blackjack only flips when all split hands are done, including automatic settlement on a drawn card", () => {
+  const { view, start, move } = fixture();
+  start(100, ["8", "10", "8", "6", "3", "7", "6", "2"]);
+  const first = view().blackjack;
+  const split = move("split");
+  const splitView = view().blackjack;
+  const splitDeal = blackjackFrames(split, first, splitView);
+  assert.deepEqual(splitDeal.map(frame => [frame.motion.seat, frame.hands.map(hand => hand.cards.length)]), [
+    [0, [2, 1]], [1, [2, 2]],
+  ]);
+  const firstStand = move("stand");
+  const second = structuredClone(view().blackjack);
+  assert.deepEqual(blackjackFrames(firstStand, splitView, second), []);
+  const secondHit = move("hit");
+  const end = blackjackFrames(secondHit, second, view().blackjack);
+  assert.deepEqual(end.map(frame => [frame.motion.seat, frame.motion.phase, frame.hole]), [
+    [1, "deal", true], ["dealer", "flip-back", true], ["dealer", "flip-face", false], ["dealer", "deal", false],
+  ]);
 });
 
 test("A saved Blackjack round resumes with only the dealer upcard public and rejects conflicting or foreign moves", () => {

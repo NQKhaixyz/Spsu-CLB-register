@@ -4,16 +4,18 @@ import { Extension, type Editor, type RawCommands } from "@tiptap/core";
 import { Color, FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { closeHistory } from "@tiptap/pm/history";
 import { Slice } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
-  Bold, Eraser, IndentDecrease, IndentIncrease, Italic, List, ListOrdered, Maximize2,
+  Bold, CaseUpper, Eraser, IndentDecrease, IndentIncrease, Italic, List, ListOrdered, Maximize2,
   Minimize2, Redo2, Strikethrough, Underline, Undo2, type LucideIcon,
 } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { bulletinContentLimit, type BulletinBody } from "../lib/bulletin";
 import { pastedMarkdownEmphasis } from "../lib/bulletin-format";
 import { bulletinEditorDocument, bulletinMaxIndent, bulletinRichText, normalizeBulletinRichDocument } from "../lib/bulletin-rich";
+import { vietnameseUppercase } from "../lib/text-case";
 
 const paragraphIndent = Extension.create({
   name: "bulletinParagraphIndent",
@@ -84,6 +86,35 @@ function indent(editor: Editor, delta: 1 | -1) {
   return chain.command(indentParagraphs(delta)).run();
 }
 
+function uppercaseEditor(editor: Editor) {
+  const { state, view } = editor;
+  const { selection, doc, schema } = state;
+  const from = selection.empty ? 0 : selection.from;
+  const to = selection.empty ? doc.content.size : selection.to;
+  const transaction = closeHistory(state.tr);
+  doc.nodesBetween(from, to, (node, position) => {
+    if (node.text === undefined) return;
+    const start = Math.max(from, position);
+    const end = Math.min(to, position + node.nodeSize);
+    const original = node.text.slice(start - position, end - position);
+    const upper = vietnameseUppercase(original);
+    if (upper === original) return;
+    transaction.replaceWith(transaction.mapping.map(start), transaction.mapping.map(end), schema.text(upper, node.marks));
+  });
+  if (transaction.docChanged) {
+    if (!normalizeBulletinRichDocument(transaction.doc.toJSON())) return false;
+    if (selection instanceof TextSelection && !selection.empty) {
+      const start = transaction.mapping.map(selection.from, -1);
+      const end = transaction.mapping.map(selection.to, 1);
+      const forward = selection.anchor <= selection.head;
+      transaction.setSelection(TextSelection.create(transaction.doc, forward ? start : end, forward ? end : start));
+    }
+    view.dispatch(transaction.scrollIntoView());
+  }
+  view.focus();
+  return true;
+}
+
 function Tool({ label, icon: Icon, disabled, active, onClick }: {
   label: string; icon: LucideIcon; disabled?: boolean; active?: boolean; onClick: () => void;
 }) {
@@ -107,6 +138,7 @@ function FormatSelect({ label, value, disabled, options, onChange }: {
 function EditorTools({ editor, disabled, expanded, onExpand }: {
   editor: Editor; disabled: boolean; expanded: boolean; onExpand: () => void;
 }) {
+  const [uppercaseError, setUppercaseError] = useState(false);
   const state = useEditorState({ editor, selector: ({ editor }) => ({
     bold: editor.isActive("bold"),
     italic: editor.isActive("italic"),
@@ -125,12 +157,13 @@ function EditorTools({ editor, disabled, expanded, onExpand }: {
   const tool = (label: string, icon: LucideIcon, onClick: () => void, active?: boolean, unavailable = false): ReactNode =>
     <Tool {...{ label, icon, onClick, active }} disabled={disabled || unavailable} />;
 
-  return <div className="bulletin-rich-tools" role="group" aria-label="Định dạng nội dung">
+  return <><div className="bulletin-rich-tools" role="group" aria-label="Định dạng nội dung">
     <div className="bulletin-rich-tool-group">
       {tool("Bôi đậm", Bold, () => format(editor).toggleBold().run(), state.bold)}
       {tool("In nghiêng", Italic, () => format(editor).toggleItalic().run(), state.italic)}
       {tool("Gạch dưới", Underline, () => format(editor).toggleUnderline().run(), state.underline)}
       {tool("Gạch ngang", Strikethrough, () => format(editor).toggleStrike().run(), state.strike)}
+      {tool("Viết hoa", CaseUpper, () => setUppercaseError(!uppercaseEditor(editor)))}
     </div>
     <div className="bulletin-rich-tool-group">
       <FormatSelect label="Cỡ chữ" value={state.size ?? ""} options={textSizes} disabled={disabled}
@@ -151,7 +184,9 @@ function EditorTools({ editor, disabled, expanded, onExpand }: {
       <Tool label={expanded ? "Thu gọn soạn thảo" : "Mở rộng soạn thảo"} icon={expanded ? Minimize2 : Maximize2}
         active={expanded} disabled={disabled} onClick={onExpand} />
     </div>
-  </div>;
+  </div>
+  {uppercaseError && <p className="form-error" role="alert">Rút gọn nội dung trước khi viết hoa</p>}
+  </>;
 }
 
 export default function BulletinRichEditor({ initial, busy, expanded, onExpand, onDraftChange }: {

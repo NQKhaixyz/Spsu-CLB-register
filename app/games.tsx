@@ -2,6 +2,7 @@
 
 import { ArrowDownRight, ArrowUpRight, Coins, Dices, Gamepad2, LoaderCircle, Plus, RotateCw, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { blackjackFrames, blackjackPosition, type BlackjackFrame } from "../lib/blackjack-presentation";
 import {
   COIN_SIDES, COIN_WIN_PAYOUT_CENTS, formatCredits, GAME_RULES_VERSION,
   isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY, WHEEL_REFUND_PERCENT,
@@ -49,6 +50,9 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
   const sending = useRef(false);
   const [motion, setMotion] = useState<{ spin: WheelSpin; angle: number; moving: boolean }>();
   const [coinMotion, setCoinMotion] = useState<{ id: string; previousBalance: number }>();
+  const [blackjackMotion, setBlackjackMotion] = useState<{
+    id: string; destination: string | undefined; before: GamesView; frames: BlackjackFrame[]; index: number;
+  }>();
   const receive = useCallback((incoming: GamesView) => {
     setView(current => current && current.revision >= incoming.revision ? current : incoming);
     setLoadError("");
@@ -58,7 +62,7 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
     try {
       const response = await fetch(gamesPath, { cache: "no-store", signal });
       const data = await response.json() as GamesView & { error?: string };
-      if (signal?.aborted) return;
+      if (signal?.aborted || (signal && sending.current)) return;
       if (response.status === 401) setView(undefined);
       if (!response.ok) throw new Error(data.error || "Chưa tải được trò chơi");
       receive(data);
@@ -70,7 +74,7 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
   useEffect(() => {
     const controller = new AbortController();
     const refreshVisible = () => {
-      if (!document.hidden) void load(controller.signal);
+      if (!document.hidden && !sending.current) void load(controller.signal);
     };
     refreshVisible();
     const poll = window.setInterval(refreshVisible, tab === "xo" ? 2_500 : 15_000);
@@ -97,6 +101,18 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
     return () => clearTimeout(timer);
   }, [coinMotion]);
 
+  useEffect(() => {
+    if (!blackjackMotion) return;
+    const { frames, index } = blackjackMotion;
+    const timer = window.setTimeout(() => {
+      setBlackjackMotion(current => {
+        if (current !== blackjackMotion) return current;
+        return index + 1 < frames.length ? { ...blackjackMotion, index: index + 1 } : undefined;
+      });
+    }, frames[index].duration);
+    return () => clearTimeout(timer);
+  }, [blackjackMotion]);
+
   async function submit(command: GamesCommand) {
     if (sending.current) return;
     sending.current = true;
@@ -117,6 +133,12 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
       receive(data);
       setRetry(undefined);
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!reduceMotion && view && (command.kind === "blackjackStart" || command.kind === "blackjackMove")) {
+        const frames = blackjackFrames(command, view.blackjack, data.blackjack);
+        if (frames.length) setBlackjackMotion({
+          id: command.id, destination: blackjackPosition(data.blackjack), before: view, frames, index: 0,
+        });
+      }
       if (data.flip && data.flips[0]?.id === data.flip.id && view?.flips[0]?.id !== data.flip.id && !reduceMotion) {
         setCoinMotion({ id: data.flip.id,
           previousBalance: view?.wallet.balanceCents ?? data.flip.balanceCents - (data.flip.walletChangeCents ?? data.flip.netCents) });
@@ -141,7 +163,9 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
   }
 
   const coinMoving = tab === "coinflip" && !!coinMotion && view?.flips[0]?.id === coinMotion.id;
-  const visibleBalance = coinMoving ? coinMotion.previousBalance : view?.wallet.balanceCents;
+  const blackjackMoving = tab === "blackjack" && view && blackjackMotion &&
+    blackjackPosition(view.blackjack) === blackjackMotion.destination ? blackjackMotion : undefined;
+  const visibleBalance = coinMoving ? coinMotion.previousBalance : (blackjackMoving?.before ?? view)?.wallet.balanceCents;
   return <div className="games-page" aria-label="Trò chơi của Đội">
     <div className="games-heading">
       <div>
@@ -163,8 +187,9 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
     </div>}
     {!view && !loadError && <p className="games-loading" role="status"><LoaderCircle size={18} className="spin" aria-hidden="true" /> Đang tải trò chơi</p>}
     {view && tab === "coinflip" && <CoinFlipGame view={view} moving={coinMoving} disabled={busy || !!retry} onSubmit={submit} />}
-    {view && tab === "blackjack" && <BlackjackGame view={view.blackjack} walletVersion={view.wallet.version}
-      disabled={busy || !!retry} onSubmit={submit} />}
+    {view && tab === "blackjack" && <BlackjackGame view={blackjackMoving?.before.blackjack ?? view.blackjack}
+      animation={blackjackMoving && { id: blackjackMoving.id, frame: blackjackMoving.frames[blackjackMoving.index] }}
+      walletVersion={view.wallet.version} disabled={busy || !!retry || !!blackjackMoving} onSubmit={submit} />}
     {view && tab === "xo" && <XoGame view={view} memberId={memberId} disabled={busy || !!retry} onSubmit={submit} />}
     {view && tab === "wheel" && <WheelGame view={view} motion={motion} disabled={busy || !!retry} onSubmit={submit} />}
   </div>;

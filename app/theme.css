@@ -41,6 +41,16 @@ body { font-size:16px; font-weight:500; }
 .sidebar nav button:hover { transform:none; }
 .topbar { background:#f5f7eff0; border-bottom-color:#dce3d8; }
 .main-content { padding-bottom:32px; }
+.editor-title-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+.editor-title-field > .field { min-width: 0; margin: 0; }
+.editor-title-field .btn { min-height: 42px; padding-inline: 9px; white-space: nowrap; }
+.editor-title-field > .form-error { grid-column: 1 / -1; margin: 0; }
 .page-heading,.panel,.stat-card { background:#f7f8f2f5; border:1px solid #ffffff70; box-shadow:0 8px 24px #17241414; backdrop-filter:blur(14px); }
 .page-heading h1,.panel-head h2 { font-weight:700; }
 .stat-card strong { font-weight:700; }

@@ -9,6 +9,7 @@ import { sidebarTabLabels, sidebarTabs, teamSidebarOrder } from "../lib/workspac
 import { memberPositions, memberRoleLabel } from "../lib/member-positions";
 import { bulletinDateInput, bulletinView, parseBulletinDate, pruneBulletinState, pruneExpiredBulletinPosts } from "../lib/bulletin";
 import { bulletinInline, pastedMarkdownEmphasis, toggleBulletinEmphasis } from "../lib/bulletin-format";
+import { uppercaseSelection } from "../lib/text-case";
 import { bulletinEditorDocument, bulletinRichText, normalizeBulletinRichDocument } from "../lib/bulletin-rich";
 import { bulletinByteRange, bulletinMediaIds, bulletinMediaKey, removedBulletinKeys } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
@@ -464,4 +465,11 @@ test("Legacy organization and role wording updates for display while identifiers
   assert.equal(view.club.logs[0].actor,"Ban điều hành");
   assert.equal(view.club.weeks[0].entries[0].decision,"BĐH chấp thuận");
   assert.equal(JSON.stringify(c),before);
+});
+test("Uppercase keeps Vietnamese accents and formatting markers and adjusts the selection for Unicode expansion", () => {
+  assert.deepEqual(uppercaseSelection("**đăng ký** _sớm_", 2, 9), {
+    value: "**ĐĂNG KÝ** _sớm_", start: 2, end: 9,
+  });
+  assert.deepEqual(uppercaseSelection("aß", 1, 2), { value: "aSS", start: 1, end: 3 });
+  assert.deepEqual(uppercaseSelection("đội mình", 4, 4), { value: "ĐỘI MÌNH", start: 4, end: 4 });
 });

@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { BookOpen, Layers2, Plus, Spade, Square } from "lucide-react";
 import { blackjackValue, type BlackjackCard, type BlackjackCommand, type BlackjackMove, type BlackjackView } from "../lib/blackjack";
+import type { BlackjackFrame } from "../lib/blackjack-presentation";
 import { formatCredits } from "../lib/games";
 import { Button, Field } from "./ui";
 
@@ -16,20 +17,30 @@ const outcomeLabels = { blackjack: "Blackjack", win: "Thắng", push: "Hòa", lo
 const historyTime = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const signedCredits = (cents: number) => (cents > 0 ? "+" : "") + formatCredits(cents);
 
-function CardRow({ cards, hole = false }: { cards: BlackjackCard[]; hole?: boolean }) {
+function CardRow({ cards, hole = false, frame, seat }: {
+  cards: BlackjackCard[]; hole?: boolean; frame?: BlackjackFrame; seat?: BlackjackFrame["motion"]["seat"];
+}) {
+  const motion = frame && frame.motion.seat === seat ? frame.motion : undefined;
+  const timing = frame && { animationDuration: `${frame.duration}ms` };
+  const slots = Math.max(2, cards.length + Number(hole));
   return <ol className="blackjack-cards" aria-label="Các lá bài">
-    {cards.map(card => {
+    {Array.from({ length: slots }, (_, index) => {
+      const phase = motion?.index === index ? motion.phase : undefined;
+      const style = phase ? timing : undefined;
+      const card = cards[index];
+      if (!card) {
+        if (hole && index === cards.length) return <li key={index} className="blackjack-card blackjack-card-back"
+          aria-label="Lá úp của nhà cái" data-motion={phase} style={style}><Spade aria-hidden="true" /></li>;
+        return <li key={index} className="blackjack-card blackjack-card-empty" aria-hidden="true"><Spade /></li>;
+      }
       const face = suitFaces[card.suit];
-      return <li key={card.rank + card.suit} className="blackjack-card" data-color={"red" in face ? "red" : undefined}
+      return <li key={index} className="blackjack-card" data-color={"red" in face ? "red" : undefined}
+        data-motion={phase} style={style}
         aria-label={card.rank + " " + face.label}>
         <span className="blackjack-card-corner" aria-hidden="true">{card.rank}<span>{face.glyph}</span></span>
         <span className="blackjack-card-suit" aria-hidden="true">{face.glyph}</span>
       </li>;
     })}
-    {hole && <li className="blackjack-card blackjack-card-back" aria-label="Lá úp của nhà cái"><Spade aria-hidden="true" /></li>}
-    {!cards.length && [0, 1].map(slot => <li key={slot} className="blackjack-card blackjack-card-empty" aria-hidden="true">
-      <Spade />
-    </li>)}
   </ol>;
 }
 
@@ -40,19 +51,23 @@ function roundLabel(result: BlackjackView["recent"][number]) {
   return result.hands.every(hand => hand.outcome === "bust") ? "Quắc bài" : "Bạn thua";
 }
 
-export default function BlackjackGame({ view, walletVersion, disabled, onSubmit }: {
+export default function BlackjackGame({ view, animation, walletVersion, disabled, onSubmit }: {
   view: BlackjackView;
+  animation?: { id: string; frame: BlackjackFrame };
   walletVersion: number;
   disabled: boolean;
   onSubmit: (command: BlackjackCommand) => Promise<void>;
 }) {
   const [wager, setWager] = useState<string>();
   const { active, recent, maxStake } = view;
+  const frame = animation?.frame;
   const last = recent[0];
-  const settled = active ? undefined : last;
+  const settled = active || frame ? undefined : last;
   const resultTone = settled && (settled.netCents > 0 ? "win" : settled.netCents < 0 ? "loss" : "push");
-  const hands = active?.hands ?? settled?.hands ?? [];
-  const dealer = active ? [active.dealerUpCard] : settled?.dealer ?? [];
+  const hands = frame?.hands ?? active?.hands ?? settled?.hands ?? [];
+  const dealer = frame?.dealer ?? (active ? [active.dealerUpCard] : settled?.dealer ?? []);
+  const hole = frame ? frame.hole : !!active;
+  const activeHand = frame ? frame.activeHand : active?.handIndex;
   const amount = wager ?? String(Math.min(maxStake, last?.stake ?? 100) || "");
   const stake = Number(amount);
   const canDeal = !disabled && Number.isSafeInteger(stake) && stake >= 1 && stake <= maxStake;
@@ -70,18 +85,20 @@ export default function BlackjackGame({ view, walletVersion, disabled, onSubmit 
 
   return <div className="blackjack-layout">
     <div className="blackjack-play">
-      <section className="blackjack-table" aria-label="Bàn Blackjack" data-turn={active?.turn} data-round={active?.id ?? settled?.id}>
+      <section className="blackjack-table" aria-label="Bàn Blackjack" data-turn={active?.turn}
+        data-round={animation?.id ?? active?.id ?? settled?.id}>
         <div className="blackjack-dealer">
           <div className="blackjack-seat">
             <h2><Spade size={16} aria-hidden="true" /> Nhà cái</h2>
-            {dealer.length > 0 && <span className="blackjack-score">{blackjackValue(dealer).total}{active ? " + ?" : ""} điểm</span>}
+            {dealer.length > 0 && <span className="blackjack-score">{blackjackValue(dealer).total}{hole ? " + ?" : ""} điểm</span>}
           </div>
-          <CardRow cards={dealer} hole={!!active} />
+          <CardRow cards={dealer} hole={hole} frame={frame} seat="dealer" />
         </div>
 
         <div className="blackjack-table-line" role="status" data-outcome={resultTone}>
-          {settled ? <span><strong>{roundLabel(settled)}</strong> {signedCredits(settled.netCents)} credits</span>
-            : active ? <span>Đang cược <strong>{formatCredits(active.hands.reduce((total, item) => total + item.stake, 0) * 100)} credits</strong></span>
+          {frame ? <span>{frame.status}</span>
+            : settled ? <span><strong>{roundLabel(settled)}</strong> {signedCredits(settled.netCents)} credits</span>
+              : active ? <span>Đang cược <strong>{formatCredits(active.hands.reduce((total, item) => total + item.stake, 0) * 100)} credits</strong></span>
               : <span>Blackjack trả lãi <strong>3:2</strong></span>}
         </div>
 
@@ -94,12 +111,12 @@ export default function BlackjackGame({ view, walletVersion, disabled, onSubmit 
             <div className="blackjack-hands" data-split={hands.length === 2 ? "true" : undefined}>
               {hands.map((item, index) => {
                 const result = settled?.hands[index];
-                return <div className="blackjack-hand" key={index} aria-current={active?.handIndex === index ? "step" : undefined}>
+                return <div className="blackjack-hand" key={index} aria-current={activeHand === index ? "step" : undefined}>
                   {hands.length > 1 && <div className="blackjack-hand-meta">
                     <strong>Tay {index + 1}</strong>
                     <span>{blackjackValue(item.cards).total} điểm</span>
                   </div>}
-                  <CardRow cards={item.cards} />
+                  <CardRow cards={item.cards} frame={frame} seat={index} />
                   {hands.length > 1 && result && <div className="blackjack-hand-result" data-result={result.outcome}>
                     {outcomeLabels[result.outcome]} · {signedCredits(result.payoutCents - item.stake * 100)} credits
                   </div>}
@@ -136,7 +153,7 @@ export default function BlackjackGame({ view, walletVersion, disabled, onSubmit 
               <input type="number" inputMode="numeric" min={1} max={maxStake} step={1} value={amount}
                 onChange={event => setWager(event.target.value)} disabled={disabled || maxStake === 0} required />
             </Field>
-            <Button type="submit" disabled={!canDeal}>{settled ? "Chia ván mới" : "Chia bài"}</Button>
+            <Button type="submit" disabled={!canDeal}>{last ? "Chia ván mới" : "Chia bài"}</Button>
             {maxStake > 0 && <div className="blackjack-bet-presets" aria-label="Mức cược nhanh">
               {[100, 500, 1000].filter(preset => preset <= maxStake).map(preset => <Button key={preset} variant="secondary"
                 disabled={disabled} onClick={() => setWager(String(preset))}>{formatCredits(preset * 100)}</Button>)}

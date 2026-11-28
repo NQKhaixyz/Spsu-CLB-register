@@ -1,8 +1,9 @@
 "use client";
 
-import { Bold, Italic } from "lucide-react";
+import { Bold, CaseUpper, Italic } from "lucide-react";
 import { useId, useLayoutEffect, useRef, useState, type ClipboardEvent } from "react";
 import { escapeBulletinText, pastedMarkdownEmphasis, toggleBulletinEmphasis, type BulletinMarker } from "../lib/bulletin-format";
+import { uppercaseSelection } from "../lib/text-case";
 import { pastedHtmlEmphasis } from "./bulletin-paste";
 import { BulletinText } from "./bulletin-text";
 import { Button, Field } from "./ui";
@@ -78,12 +79,33 @@ export function TextEmphasisEditor({ label, name, formatName, initialText, initi
     });
   }
 
+  function uppercase() {
+    const input = editor.current;
+    if (!input || busy) return;
+    const next = uppercaseSelection(input.value, input.selectionStart, input.selectionEnd);
+    if (next.value.length > maxLength) {
+      setError(`Dạng viết hoa vượt giới hạn ${maxLength} ký tự`);
+      return;
+    }
+    setError("");
+    setText(next.value);
+    onDraftChange?.(next.value, format);
+    requestAnimationFrame(() => {
+      if (editor.current !== input) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(next.start, next.end);
+    });
+  }
+
   const toolbar = <div className="bulletin-format-tools" role="group" aria-label={`Định dạng ${label.toLowerCase()}`}>
     <Button variant="secondary" disabled={busy} onClick={() => emphasize("**")}>
       <Bold size={16} aria-hidden="true" /> Bôi đậm
     </Button>
     <Button variant="secondary" disabled={busy} onClick={() => emphasize("_")}>
       <Italic size={16} aria-hidden="true" /> In nghiêng
+    </Button>
+    <Button variant="secondary" disabled={busy || !text.trim()} onClick={uppercase} title="Viết hoa đoạn đã chọn hoặc toàn bộ nội dung">
+      <CaseUpper size={16} aria-hidden="true" /> Viết hoa
     </Button>
   </div>;
   return <>
@@ -107,7 +129,7 @@ export function TextEmphasisEditor({ label, name, formatName, initialText, initi
     </Field>
     {format && <input type="hidden" name={formatName} value={format} />}
     {!autoGrow && toolbar}
-    <p className="hint bulletin-format-hint" id={hint}>Chọn đoạn chữ rồi bấm Bôi đậm hoặc In nghiêng</p>
+    <p className="hint bulletin-format-hint" id={hint}>Bôi chọn đoạn chữ để định dạng. Nút Viết hoa áp dụng cho toàn bộ nếu chưa chọn đoạn nào</p>
     {error && <p role="alert" className="form-error">{error}</p>}
     {!onDraftChange && format && text.trim() && <section className="bulletin-format-preview" aria-label="Xem trước nội dung">
       {autoGrow ? <details open>

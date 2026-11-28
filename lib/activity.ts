@@ -129,7 +129,9 @@ const committeeRate = (club: Club, committee: StoredCommitteeKind, date: string)
 export const eventForActivity = (club: Club, row: { kind: ActivityKind; eventId?: string }) =>
   row.kind === "event" ? club.events?.find(event => event.id === row.eventId) : undefined;
 export const isEventOpen = (event: ClubEvent, date: string) => !event.cancelledAt && event.endDate >= date;
-export function eventScheduleLabel({ startDate, startTime, endDate, endTime }: ClubEvent) {
+export function eventScheduleLabel(
+  { startDate, startTime, endDate, endTime }: Pick<ClubEvent, "startDate" | "startTime" | "endDate" | "endTime">,
+) {
   const date = dateLabel(startDate, true);
   if (startDate !== endDate) {
     const from = startTime ? `${date} ${startTime}` : date;
