@@ -123,6 +123,10 @@ function hasJointEvent(sources: PointSource[]) {
 }
 
 export function settleSharingPeriod(club: Club, group: SharingGroup, period: SharingPeriod, cutoff: number) {
+  if (period.asset === "credits") {
+    period.endedAt = cutoff;
+    return;
+  }
   const locked = new Set(club.sharing?.locked.map(row => row.sourceKey));
   const sources = period.memberIds.length < 2 ? [] : pointSources(club, new Set(period.memberIds))
     .filter(source => !locked.has(source.key) && belongsToPeriod(period, source, cutoff));
@@ -177,14 +181,15 @@ export function sharingScoreBook(club: Club, now = Date.now()) {
     }
     const active = activeByMember.get(source.memberId);
     if (!active || !belongsToPeriod(active.period, source, now)) continue;
-    const [row] = makeShares(active.group, active.period, [source]);
-    remember(row);
-    adjust(source.memberId, source.month, source.week, row.kind, -source.points);
     if (active.group.kind === "cupid" && source.eventId) {
       const groupEvents = contributors.get(active.group.id) ?? [];
       groupEvents.push(source);
       contributors.set(active.group.id, groupEvents);
     }
+    if (active.period.asset === "credits") continue;
+    const [row] = makeShares(active.group, active.period, [source]);
+    remember(row);
+    adjust(source.memberId, source.month, source.week, row.kind, -source.points);
   }
   for (const [id, sources] of contributors) if (hasJointEvent(sources)) jointEvents.add(id);
   const adjustments = [...rows.values()].filter(row => row.amounts.cupid !== 0 || row.amounts.guild !== 0);

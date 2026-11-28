@@ -90,6 +90,7 @@
   padding: 10px 12px;
 }
 .games-inactivity-charge { margin-block: 0 14px; }
+.credit-exchange-card { max-width: 34rem; }
 .games-room-list, .games-history ul, .game-wheel-rules ul {
   list-style: none;
   margin: 0;

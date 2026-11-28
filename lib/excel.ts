@@ -30,6 +30,7 @@ export async function makeReport(club: Club, month: string, asOf = today(),
   const { hidden, members: participants } = monthlyReportRoster(club, month, asOf);
   const scores = participants.map(member => scoreFor(club, member.id, month, undefined, sharingIndex));
   const sharingColumns = sharingKinds.filter(kind => scores.some(score => score.sharingAdjustment[kind]));
+  const hasCreditUse = scores.some(score => score.redeemedPoints !== 0);
   const membersById = new Map(club.members.filter(m => !hidden.has(m.id)).map(m => [m.id, m]));
   const member = (id: string) => membersById.get(id);
   const weeks = club.weeks.filter(
@@ -129,6 +130,7 @@ export async function makeReport(club: Club, month: string, asOf = today(),
       "Lượt đi muộn trừ điểm",
       "Điểm trừ đi muộn",
       "Ban trực thuộc",
+      ...(hasCreditUse ? ["Điểm đã đổi credits"] : []),
       ...visibleActivityKinds.map(k => activityLabels[k] + (["deduction", "special", "committee"].includes(k) ? "" : " (lượt)")),
       ...sharingColumns.map(kind => sharingScoreLabels[kind]),
     ],
@@ -147,6 +149,7 @@ export async function makeReport(club: Club, month: string, asOf = today(),
         s.lateCount,
         s.lateDeduction,
         memberCommitteeNames(m),
+        ...(hasCreditUse ? [s.redeemedPoints ? -s.redeemedPoints : 0] : []),
         ...visibleActivityKinds.map(k => s.activityCounts[k]),
         ...sharingColumns.map(kind => roundSharingScore(s.sharingAdjustment[kind])),
       ];

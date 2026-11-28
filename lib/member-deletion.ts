@@ -105,6 +105,7 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   const eventPhotos = new Set<string>();
   eraseSharingMembers(club, new Set([member.id]));
   dropMemberFromGames(club, member.id, true);
+  if (club.monthlyCreditUses) club.monthlyCreditUses = club.monthlyCreditUses.filter(use => use.memberId !== member.id);
   removeFromHistory(club, member.id, eventPhotos);
   eraseFeedbackMembers(club, new Set([member.id]));
   if (club.dismissedNoticeIds) delete club.dismissedNoticeIds[member.id];

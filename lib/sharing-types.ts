@@ -5,6 +5,9 @@ export type SharingPeriod = {
   memberIds: string[];
   startedAt: number;
   endedAt?: number;
+  asset?: "credits";
+  creditRemainder?: number;
+  endingCreditBalance?: number;
 };
 
 export type CupidTag = { id: string; authorId: string; memberId: string; text: string; approved: boolean };
@@ -98,6 +101,7 @@ export type SharingGroupSummary = {
   name: string;
   startedAt: number;
   endedAt?: number;
+  balanceCents?: number;
   contributions: { memberId: string; earned: number; received: number }[];
 };
 export type SharingView = {
@@ -112,8 +116,8 @@ export type SharingView = {
   };
 };
 
-export const sharingRule = "Điểm cộng và điểm trừ được chia đều theo số người tại thời điểm hoạt động. Khi đổi thành viên, phần đã chia được chốt theo danh sách cũ";
-export const sharingConsentVersion = 1;
+export const sharingRule = "Khi ghép Cupid, hai ví credits được gộp và chia đều. Hai người luôn thấy cùng số dư";
+export const sharingConsentVersion = 2;
 
 export function sharingTagText(value: unknown) {
   return typeof value === "string" ? value.normalize("NFC").trim().replace(/^#/, "") : "";

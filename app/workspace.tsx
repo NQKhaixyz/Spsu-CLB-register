@@ -28,6 +28,7 @@ import { FeedbackPage, type EditFeedback, type FeedbackConversationActions, type
 import WorkspaceNotifications, { notificationClock, notificationCopy } from "./feedback-notifications";
 import { DirectNoticeComposer } from "./direct-notice-composer";
 import GamesPage from "./games";
+import CreditExchange from "./credit-exchange";
 import { sidebarNoticeCounts, useWorkspaceNotifications } from "./use-workspace-notifications";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { AcademicWeekSettings } from "./academic-week-settings";
@@ -143,6 +144,7 @@ type Tab =
   | "links"
   | "feedback"
   | "coinflip"
+  | "exchange"
   | "xo"
   | "wheel"
   | "members"
@@ -163,7 +165,7 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
   feedback: { icon: MessageSquare, sections: ["feedback"] },
-  games: { icon: Gamepad2, sections: ["coinflip", "xo", "wheel", "creditsRank"] },
+  games: { icon: Gamepad2, sections: ["coinflip", "xo", "wheel", "exchange", "creditsRank"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
@@ -716,6 +718,7 @@ export default function Workspace() {
     { id: "coinflip", label: "Coinflip" },
     { id: "xo", label: "XO" },
     { id: "wheel", label: "Vòng quay may mắn" },
+    ...(!isAdmin ? [{ id: "exchange" as const, label: "Đổi điểm tháng" }] : []),
     { id: "creditsRank", label: "Hạng credits" },
   ] : [];
   const count = (s: Registration) =>
@@ -2815,7 +2818,7 @@ export default function Workspace() {
           </span>
           <strong>
             <i>A</i> × trực đủ − <i>B</i> × vắng trực − <i>C</i> × vắng họp −{" "}
-            <i>D</i> × đi muộn + <i>E</i> × phiếu điểm danh đạt + điểm sáng kiến + điểm đồng đẳng viên + điểm sự kiện + điểm theo ban + điểm riêng − điểm trừ
+            <i>D</i> × đi muộn + <i>E</i> × phiếu điểm danh đạt + điểm sáng kiến + điểm đồng đẳng viên + điểm sự kiện + điểm theo ban + điểm riêng − điểm trừ − điểm đã đổi credits
           </strong>
           <span>
             A = {rule.A} · B = {rule.B} · C = {rule.C} · D = {rule.D ?? 0} · E = {rule.E}
@@ -3567,6 +3570,8 @@ export default function Workspace() {
               onBack={() => go("feedback")} />
           ) : activeTab === "coinflip" || activeTab === "xo" || activeTab === "wheel" ? (
             <GamesPage key={me.id} tab={activeTab} memberId={me.id} />
+          ) : activeTab === "exchange" ? (
+            <CreditExchange key={me.id} onExchanged={() => { void load(); }} />
           ) : activeTab === "members" ? (
             members()
           ) : activeTab === "semesterScores" ? (

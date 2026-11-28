@@ -6,13 +6,15 @@ import { queuePhotoDeletions } from "./photo-deletion";
 import { initializeCreditHistory, settleWeeklyCreditInactivity } from "./games";
 import { settleRoundEventNotices } from "./round-event-notifications";
 import { clearPendingCreditEntries, creditHistoryWrite } from "./credit-history";
+import { activateCreditSharing } from "./sharing";
 
 function updateTimedRules(club: Club) {
   const now = Date.now();
   const initializedHistory = initializeCreditHistory(club, now);
   const changedCredits = settleWeeklyCreditInactivity(club, now);
   const changedRounds = settleRoundEventNotices(club, now);
-  return initializedHistory || changedCredits || changedRounds;
+  const changedSharing = activateCreditSharing(club, now);
+  return initializedHistory || changedCredits || changedRounds || changedSharing;
 }
 
 type Row = { payload: string; revision: number };

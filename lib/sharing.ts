@@ -1,4 +1,5 @@
 import type { Club, Member } from "./club";
+import { creditWalletBalance, mergeCupidCredits, separateCupidCredits } from "./games";
 import { roundSharingScore, settleSharingPeriod, type sharingScoreBook } from "./sharing-scores";
 import { activeSharingPeriod, canJoinSharing, sharingConsentVersion, sharingTagText, type SharingGroup, type SharingGroupSummary, type SharingInvite,
   type SharingKind, type SharingNoticeKind, type SharingPeriod, type SharingState, type SharingView } from "./sharing-types";
@@ -38,8 +39,30 @@ function pruneInvites(club: Club, state: SharingState) {
 }
 
 function replaceRoster(club: Club, group: SharingGroup, period: SharingPeriod, memberIds: string[], now: number) {
+  if (period.asset === "credits") separateCupidCredits(club, period, now);
   settleSharingPeriod(club, group, period, now);
   if (memberIds.length) group.periods.push({ id: newId(), memberIds, startedAt: now });
+}
+
+export function activateCreditSharing(club: Club, now: number) {
+  if (club.creditSharingSince !== undefined) return false;
+  const state = club.sharing;
+  if (state) {
+    for (const group of state.groups) {
+      const period = activeSharingPeriod(group);
+      if (!period) continue;
+      settleSharingPeriod(club, group, period, now);
+      if (group.kind !== "cupid" || period.memberIds.length !== 2 ||
+        !period.memberIds.every(id => club.members.some(member => member.id === id && canJoinSharing(member)))) continue;
+      const credits: SharingPeriod = { id: newId(), memberIds: [...period.memberIds], startedAt: now, asset: "credits" };
+      group.periods.push(credits);
+      mergeCupidCredits(club, credits, now);
+    }
+    state.invites = [];
+    state.notices = state.notices.filter(notice => !notice.kind.startsWith("guild") && notice.kind !== "cupidInvite");
+  }
+  club.creditSharingSince = now;
+  return true;
 }
 
 function guildName(value: unknown) {
@@ -114,9 +137,11 @@ function answerInvite(club: Club, state: SharingState, me: Member, data: Record<
       const inviter = club.members.find(member => member.id === invite.fromId);
       need(inviter && canJoinSharing(inviter) && !currentGroup(state, inviter.id), "Người mời đã có vai trò hoặc đã ngừng hoạt động");
       const memberIds = [inviter.id, me.id];
-      const group: SharingGroup = { id: invite.id, kind: "cupid", name: "Cupid", hashtag: invite.cupidTag,
-        periods: [{ id: newId(), memberIds, startedAt: now }] };
+      const period: SharingPeriod = { id: newId(), memberIds, startedAt: now,
+        ...(club.creditSharingSince !== undefined ? { asset: "credits" } : {}) };
+      const group: SharingGroup = { id: invite.id, kind: "cupid", name: "Cupid", hashtag: invite.cupidTag, periods: [period] };
       state.groups.push(group);
+      if (period.asset === "credits") mergeCupidCredits(club, period, now);
       notify(state, memberIds, me.id, "cupidAccepted", group.id, now);
     } else {
       const group = state.groups.find(item => item.id === invite.groupId && item.kind === "guild");
@@ -155,7 +180,8 @@ function changeCupidTag(state: SharingState, group: SharingGroup, period: Sharin
 
 export function applySharingAction(club: Club, me: Member, action: string, data: Record<string, unknown>, now = Date.now()) {
   if (!actions.has(action)) return false;
-  need(canJoinSharing(me), "Cupid và Bang hội dành cho tài khoản thành viên đang hoạt động");
+  if (club.creditSharingSince !== undefined) need(!action.includes("Guild"), "Bang hội đã ngừng hoạt động");
+  need(canJoinSharing(me), "Cupid dành cho tài khoản thành viên đang hoạt động");
   const state = club.sharing ??= { groups: [], invites: [], locked: [], notices: [] };
   pruneInvites(club, state);
   const group = currentGroup(state, me.id);
@@ -241,6 +267,7 @@ type Book = ReturnType<typeof sharingScoreBook>;
 function periodSummary(group: SharingGroup, period: SharingPeriod, book: Book): SharingGroupSummary {
   const rows = book.contributions.get(period.id) ?? [];
   return { id: period.id, groupId: group.id, kind: group.kind, name: group.name, startedAt: period.startedAt, endedAt: period.endedAt,
+    ...(period.endingCreditBalance !== undefined ? { balanceCents: period.endingCreditBalance } : {}),
     contributions: period.memberIds.map(memberId => ({
       memberId,
       earned: roundSharingScore(rows.reduce((sum, row) => sum + (row.sourceMemberId === memberId ? row.originalPoints ?? 0 : 0), 0)),
@@ -257,8 +284,11 @@ export function sharingViewFor(club: Club, me: Member, book: Book, now = Date.no
   const pendingTag = active?.kind === "cupid" && !cupidHashtag(active) ? active.tags?.[0] : undefined;
   const eligible = canJoinSharing(me);
   const occupied = new Set(groups.flatMap(group => activeSharingPeriod(group)?.memberIds ?? []));
-  const history = groups.flatMap(group => group.periods.filter(period => period.endedAt !== undefined && period.memberIds.includes(me.id))
+  const historicGroups = club.creditSharingSince === undefined ? groups : groups.filter(group => group.kind === "cupid");
+  const history = historicGroups.flatMap(group => group.periods.filter(period => period.endedAt !== undefined && period.memberIds.includes(me.id))
     .map(period => periodSummary(group, period, book))).sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0));
+  const summary = active && current ? periodSummary(active, current, book) : undefined;
+  if (summary && current?.asset === "credits") summary.balanceCents = creditWalletBalance(club, me.id);
   return {
     groups: groups.flatMap(group => {
       const period = activeSharingPeriod(group);
@@ -285,7 +315,7 @@ export function sharingViewFor(club: Club, me: Member, book: Book, now = Date.no
           groupSize: roster?.memberIds.length, groupPeriodId: roster?.id }];
       }),
       tags: pendingTag ? [pendingTag] : [],
-      current: active && current ? periodSummary(active, current, book) : undefined,
+      current: summary,
       history,
     } : undefined,
   };

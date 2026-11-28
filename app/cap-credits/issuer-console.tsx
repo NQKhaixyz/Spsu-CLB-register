@@ -116,6 +116,7 @@ export default function CreditIssuerConsole() {
       setPending(undefined);
       setReceipt(data);
       setAmount("");
+      if (recipient?.partnerName) await load().catch(() => undefined);
     } catch {
       setPending(command);
       setError("Chưa xác nhận được giao dịch. Thử lại để kiểm tra giao dịch này");
@@ -176,6 +177,7 @@ export default function CreditIssuerConsole() {
             </select>
           </Field>
           {recipient && <p className="credit-issuer-balance">Số dư hiện tại <strong>{formatCredits(recipient.balanceCents)} credits</strong></p>}
+          {recipient?.partnerName && <p className="hint">Ví Cupid với {recipient.partnerName}. Cộng và trừ áp dụng vào ví chung, đặt số dư áp dụng cho mỗi người.</p>}
           <Field label="Thao tác">
             <select value={mode} onChange={event => {
               setMode(event.currentTarget.value as CreditAdjustmentMode);

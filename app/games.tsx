@@ -118,7 +118,7 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (data.flip && data.flips[0]?.id === data.flip.id && view?.flips[0]?.id !== data.flip.id && !reduceMotion) {
         setCoinMotion({ id: data.flip.id,
-          previousBalance: view?.wallet.balanceCents ?? data.flip.balanceCents - data.flip.netCents });
+          previousBalance: view?.wallet.balanceCents ?? data.flip.balanceCents - (data.flip.walletChangeCents ?? data.flip.netCents) });
       }
       if (data.spin && data.spins[0]?.id === data.spin.id) {
         const previous = motion?.spin.id === view?.spins[0]?.id ? motion?.angle : undefined;
@@ -153,8 +153,10 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
         <div><span>Số dư credits</span><strong data-game-balance={visibleBalance}>{formatCredits(visibleBalance)}</strong></div>
       </div>}
     </div>
+    {view?.cupidPartnerId && <p className="games-note games-inactivity-charge">Ví Cupid với <MemberName memberId={view.cupidPartnerId} /> · Số dư hiển thị cho mỗi người</p>}
     {inactivityCharge && addDays(inactivityCharge.week, 7) === weekId() && <p className="games-note games-inactivity-charge">
       Tuần {dateLabel(inactivityCharge.week, true)} không có biến động · Đã trừ {formatCredits(inactivityCharge.amountCents)} credits
+      {view?.cupidPartnerId && " từ ví Cupid"}
     </p>}
     {actionError && <div className="games-message" role="alert">
       <span>{actionError}</span>
@@ -210,6 +212,7 @@ function CoinFlipGame({ view, moving, disabled, onSubmit }: {
           <span data-result={Math.sign(result.netCents)}>
             {result.pick === result.side ? "Đoán đúng" : "Đoán sai"} · {signedCredits(result.netCents)} credits
           </span>
+          {result.walletChangeCents !== undefined && <small>Ví của bạn {signedCredits(result.walletChangeCents)} credits</small>}
         </> : "Chọn một mặt để bắt đầu"}
       </div>
     </section>
@@ -431,6 +434,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
           <strong>{factorLabel(display.factor)}</strong>
           <span data-result={Math.sign(display.netCents)}>{signedCredits(display.netCents)} credits</span>
           {!!display.refundCents && <small className="game-wheel-refund">Hoàn cược {signedCredits(display.refundCents)} credits</small>}
+          {display.walletChangeCents !== undefined && <small>Ví của bạn {signedCredits(display.walletChangeCents)} credits</small>}
         </> : <span>Đặt cược để bắt đầu</span>}
       </div>
     </div>

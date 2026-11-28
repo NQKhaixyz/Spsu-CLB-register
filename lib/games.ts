@@ -1,5 +1,7 @@
 import { addDays, today, weekId, type Club } from "./club";
 import { recordCreditEntry, type CreditMovement, type PendingCreditEntry } from "./credit-history";
+import { activeSharingPeriod, type SharingPeriod } from "./sharing-types";
+import type { CreditExchangeReceipt } from "./credit-exchange";
 
 export const WHEEL_FACTORS = [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6] as const;
 export type WheelFactor = typeof WHEEL_FACTORS[number];
@@ -54,7 +56,7 @@ export type CreditAdjustmentCommand = {
   amountCents: number;
   walletVersion: number;
 };
-export type CreditRecipient = { memberId: string; name: string; balanceCents: number; walletVersion: number; identifier?: string };
+export type CreditRecipient = { memberId: string; name: string; balanceCents: number; walletVersion: number; identifier?: string; partnerName?: string };
 export type CreditAdjustmentResult = { memberId: string; name: string; balanceCents: number; walletVersion: number; receipt: CreditAdjustmentReceipt };
 const defaultWallet: Wallet = { balanceCents: startingBalance, version: 0, spins: [] };
 
@@ -66,6 +68,7 @@ export type WheelSpin = {
   netCents: number;
   balanceCents: number;
   refundCents?: number;
+  walletChangeCents?: number;
 };
 
 export type CoinFlip = {
@@ -76,6 +79,7 @@ export type CoinFlip = {
   side: CoinSide;
   netCents: number;
   balanceCents: number;
+  walletChangeCents?: number;
 };
 export type CoinFlipCommand = { kind: "flip"; id: string; stake: number; pick: CoinSide; walletVersion: number };
 
@@ -98,6 +102,7 @@ export type GamesState = {
   rooms: XoRoom[];
   inactivityWeek?: { week: string; memberIds: string[] };
   creditHistorySince?: number;
+  exchangeReceipts?: CreditExchangeReceipt[];
 };
 export type GamesView = {
   revision: number;
@@ -107,6 +112,7 @@ export type GamesView = {
   spins: WheelSpin[];
   flips: CoinFlip[];
   inactivityCharge?: Wallet["inactivityCharge"];
+  cupidPartnerId?: string;
   wheelProgress: { spins: number; pendingRefundCents: number };
 };
 export type GamesResponse = GamesView & { spin?: WheelSpin; flip?: CoinFlip };
@@ -227,6 +233,51 @@ export function creditWalletBalance(club: Club, memberId: string) {
   return walletFor(club.games, memberId).balanceCents;
 }
 
+const two = BigInt(2);
+const maxCreditBalance = BigInt(maxBalance);
+function creditPair(club: Club, memberId: string) {
+  for (const group of club.sharing?.groups ?? []) {
+    const period = group.kind === "cupid" ? activeSharingPeriod(group) : undefined;
+    if (!period || period.asset !== "credits" || period.memberIds.length !== 2 || !period.memberIds.includes(memberId)) continue;
+    const partnerId = period.memberIds.find(id => id !== memberId);
+    if (partnerId) return { period, partnerId };
+  }
+}
+
+export function cupidCreditPartnerId(club: Club, memberId: string) {
+  return creditPair(club, memberId)?.partnerId;
+}
+
+export function mergeCupidCredits(club: Club, period: SharingPeriod, at: number) {
+  const games: GamesState = club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
+  const [one, other] = period.memberIds;
+  if (!one || !other) return;
+  const total = BigInt(walletFor(games, one).balanceCents) + BigInt(walletFor(games, other).balanceCents);
+  const equal = Number(total / two);
+  period.creditRemainder = Number(total % two) || undefined;
+  for (const memberId of [one, other]) {
+    const difference = equal - walletFor(games, memberId).balanceCents;
+    saveWalletBalance(games, memberId, equal, difference ? at : undefined);
+    recordCreditEntry(games, { memberId, at, balanceCents: equal, changeCents: difference, kind: "cupid", label: "Gộp ví Cupid" });
+  }
+}
+
+export function separateCupidCredits(club: Club, period: SharingPeriod, at: number) {
+  const games = club.games;
+  const [one] = period.memberIds;
+  if (!games || !one) return;
+  const balance = walletFor(games, one).balanceCents;
+  period.endingCreditBalance = balance;
+  const remainder = period.creditRemainder ?? 0;
+  if (remainder) {
+    saveWalletBalance(games, one, balance + remainder, at);
+    recordCreditEntry(games, { memberId: one, at, balanceCents: balance + remainder, changeCents: remainder,
+      kind: "cupid", label: "Phần lẻ khi kết thúc Cupid" });
+  }
+  for (const memberId of period.memberIds) saveWalletBalance(games, memberId, walletFor(games, memberId).balanceCents);
+  delete period.creditRemainder;
+}
+
 export function initializeCreditHistory(club: Club, now: number) {
   const games: GamesState = club.games ??= { rooms: [], wallets: Object.create(null) as GamesState["wallets"] };
   if (games.creditHistorySince !== undefined) return false;
@@ -302,8 +353,11 @@ export function creditRecipients(club: Club): CreditRecipient[] {
   }
   return members.map(member => {
     const wallet = walletFor(club.games, member.id);
+    const partnerId = cupidCreditPartnerId(club, member.id);
+    const partnerName = partnerId ? club.members.find(item => item.id === partnerId)?.name : undefined;
     return {
       memberId: member.id, name: member.name, balanceCents: wallet.balanceCents, walletVersion: wallet.version,
+      ...(partnerName ? { partnerName } : {}),
       ...((names.get(keyFor(member.name)) ?? 0) > 1 ? { identifier: member.studentId || member.loginName || member.id } : {}),
     };
   }).sort((a, b) => rankNames.compare(a.name, b.name) || a.memberId.localeCompare(b.memberId));
@@ -325,14 +379,13 @@ export function adjustGameCredits(club: Club, command: CreditAdjustmentCommand, 
   }
   if (!canReceiveCredits(club, member)) throw new GameRuleError("Tài khoản nhận credits đang tạm nghỉ hoặc chưa đăng ký", 409);
   if (wallet.version !== walletVersion) throw new GameRuleError("Số dư vừa thay đổi. Kiểm tra lại số dư hiện tại", 409);
-  const balance = mode === "set" ? amountCents : wallet.balanceCents + (mode === "add" ? amountCents : -amountCents);
-  if (balance < 0) throw new GameRuleError("Số credits muốn trừ lớn hơn số dư hiện tại");
-  const room = liveRoomFor(games, memberId);
-  const reservedPrize = room ? xoPrizeCents(room.stake) : 0;
-  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits);
-  if (!Number.isSafeInteger(balance) || balance > maxBalance - reservedPrize - reservedRefund)
+  const changeCents = mode === "set" ? amountCents - wallet.balanceCents : mode === "add" ? amountCents : -amountCents;
+  if (mode === "subtract" && amountCents > wallet.balanceCents)
+    throw new GameRuleError("Số credits muốn trừ lớn hơn số dư hiện tại");
+  const multiplier = mode === "set" && creditPair(club, memberId) ? 2 : 1;
+  if (changeCents > 0 && BigInt(changeCents) * BigInt(multiplier) > creditHeadroom(club, memberId))
     throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
-  const next = updateBalance(games, memberId, at, [{ kind: "adjustment", label: "Điều chỉnh credits", changeCents: balance - wallet.balanceCents }]);
+  const next = updateBalance(club, memberId, at, [{ kind: "adjustment", label: "Điều chỉnh credits", changeCents }], true, multiplier);
   const receipt: CreditAdjustmentReceipt = {
     operationId, mode, amountCents, beforeCents: wallet.balanceCents, afterCents: next.balanceCents, appliedAt: at, actorId,
   };
@@ -341,21 +394,51 @@ export function adjustGameCredits(club: Club, command: CreditAdjustmentCommand, 
   return { changed: true, result };
 }
 
-function updateBalance(games: GamesState, memberId: string, at: number, movements: readonly CreditMovement[], countAsActivity = true) {
+function saveWalletBalance(games: GamesState, memberId: string, balanceCents: number, activityAt?: number) {
   const old = walletFor(games, memberId);
-  let balanceCents = old.balanceCents;
-  for (const movement of movements) {
-    balanceCents += movement.changeCents;
-    if (!integerBetween(balanceCents, 0, maxBalance)) throw new GameRuleError("Số dư credits vượt giới hạn tính toán");
-    recordCreditEntry(games, { ...movement, at, memberId, balanceCents });
-  }
   const wallet = { ...old, balanceCents, version: old.version + 1 };
-  if (countAsActivity && movements.some(movement => movement.changeCents !== 0)) {
-    const week = weekId(today(new Date(at)));
+  if (activityAt !== undefined) {
+    const week = weekId(today(new Date(activityAt)));
     if (!wallet.creditActivityWeek || week > wallet.creditActivityWeek) wallet.creditActivityWeek = week;
   }
   games.wallets[memberId] = wallet;
   return wallet;
+}
+
+function updateBalance(club: Club, memberId: string, at: number, movements: readonly CreditMovement[],
+  countAsActivity = true, multiplier = 1) {
+  const games = club.games!;
+  const pair = creditPair(club, memberId);
+  const other = pair ? walletFor(games, pair.partnerId) : undefined;
+  const divisor = pair ? two : BigInt(1);
+  let balanceCents = walletFor(games, memberId).balanceCents;
+  let partnerBalance = other?.balanceCents ?? 0;
+  let total = BigInt(balanceCents) + BigInt(partnerBalance) + BigInt(pair?.period.creditRemainder ?? 0);
+  for (const movement of movements) {
+    const nextTotal = total + BigInt(movement.changeCents) * BigInt(multiplier);
+    if (nextTotal < BigInt(0) || nextTotal > maxCreditBalance * divisor)
+      throw new GameRuleError("Số dư credits vượt giới hạn tính toán");
+    const next = Number(nextTotal / divisor);
+    recordCreditEntry(games, { ...movement, at, memberId, balanceCents: next, changeCents: next - balanceCents });
+    if (pair) recordCreditEntry(games, { ...movement, label: "Cupid · " + movement.label,
+      at, memberId: pair.partnerId, balanceCents: next, changeCents: next - partnerBalance });
+    balanceCents = next;
+    partnerBalance = next;
+    total = nextTotal;
+  }
+  const activityAt = countAsActivity && movements.some(movement => movement.changeCents !== 0) ? at : undefined;
+  if (pair) {
+    pair.period.creditRemainder = Number(total % two) || undefined;
+    saveWalletBalance(games, pair.partnerId, partnerBalance, activityAt);
+  }
+  return saveWalletBalance(games, memberId, balanceCents, activityAt);
+}
+
+export function awardGameCredits(club: Club, memberId: string, amountCents: number, label: string, at: number) {
+  club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
+  if (!integerBetween(amountCents, 1, maxBalance) || BigInt(amountCents) > creditHeadroom(club, memberId))
+    throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
+  return updateBalance(club, memberId, at, [{ kind: "exchange", label, changeCents: amountCents }]);
 }
 
 export function settleWeeklyCreditInactivity(club: Club, now = Date.now()) {
@@ -370,17 +453,19 @@ export function settleWeeklyCreditInactivity(club: Club, now = Date.now()) {
   if (tracking.week >= currentWeek) return false;
   const eligible = new Map(club.members.filter(member => canReceiveCredits(club, member)).map(member => [member.id, member]));
   while (tracking.week < currentWeek) {
-    for (const memberId of tracking.memberIds) {
-      if (!eligible.has(memberId)) continue;
+    const closedWeek = tracking.week;
+    const charges = tracking.memberIds.flatMap(memberId => {
+      if (!eligible.has(memberId)) return [];
       const wallet = walletFor(games, memberId);
-      if (wallet.creditActivityWeek === tracking.week) continue;
+      if (wallet.creditActivityWeek === closedWeek) return [];
       const amountCents = Math.min(wallet.balanceCents, WEEKLY_INACTIVE_CREDIT_CHARGE);
-      if (amountCents) {
-        const closedAt = Date.parse(addDays(tracking.week, 7) + "T00:00:00+07:00");
-        const charged = updateBalance(games, memberId, closedAt,
-          [{ kind: "inactivity", label: "Tuần không có biến động", changeCents: -amountCents }], false);
-        charged.inactivityCharge = { week: tracking.week, amountCents };
-      }
+      return amountCents ? [{ memberId, amountCents }] : [];
+    });
+    const closedAt = Date.parse(addDays(closedWeek, 7) + "T00:00:00+07:00");
+    for (const { memberId, amountCents } of charges) {
+      const charged = updateBalance(club, memberId, closedAt,
+        [{ kind: "inactivity", label: "Tuần không có biến động", changeCents: -amountCents }], false);
+      charged.inactivityCharge = { week: closedWeek, amountCents };
     }
     const nextWeek = addDays(tracking.week, 7);
     tracking = { week: nextWeek, memberIds: [...eligible.values()].filter(member => member.joined <= nextWeek).map(member => member.id) };
@@ -397,26 +482,37 @@ function wheelRefundCents(netCredits = 0) {
   return Math.max(0, -netCredits) * (creditCents * WHEEL_REFUND_PERCENT / 100);
 }
 
-function maxWheelStake(games: GamesState | undefined, memberId: string) {
-  const wallet = walletFor(games, memberId);
-  const { balanceCents, wheelProgress } = wallet;
+function reservedCredits(games: GamesState | undefined, memberId: string) {
   const room = liveRoomFor(games, memberId);
-  const reservedPrize = room ? room.stake * winnerCentsPerCredit : 0;
-  const reservedRefund = wheelRefundCents(wheelProgress?.netCredits);
-  return Math.min(
-    Math.floor(balanceCents / (5 * creditCents)),
-    Math.floor((maxBalance - balanceCents - reservedPrize - reservedRefund) / (5 * creditCents)),
-  );
+  const prize = room ? xoPrizeCents(room.stake) : 0;
+  return BigInt(prize) + BigInt(wheelRefundCents(walletFor(games, memberId).wheelProgress?.netCredits));
 }
 
-function maxCoinflipStake(games: GamesState | undefined, memberId: string) {
-  const wallet = walletFor(games, memberId);
-  const room = liveRoomFor(games, memberId);
-  const reservedPrize = room ? xoPrizeCents(room.stake) : 0;
-  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits);
+function creditHeadroom(club: Club, memberId: string) {
+  const games = club.games;
+  const reserve = reservedCredits(games, memberId);
+  const pair = creditPair(club, memberId);
+  const balance = BigInt(walletFor(games, memberId).balanceCents);
+  if (!pair) return maxCreditBalance - balance - reserve;
+  const partnerReserve = reservedCredits(games, pair.partnerId);
+  const total = balance + BigInt(walletFor(games, pair.partnerId).balanceCents) + BigInt(pair.period.creditRemainder ?? 0);
+  // Each wallet must still be able to settle its own open wagers after a split.
+  return two * (maxCreditBalance - (reserve > partnerReserve ? reserve : partnerReserve)) - total;
+}
+
+function maxWheelStake(club: Club, memberId: string) {
+  const balanceCents = walletFor(club.games, memberId).balanceCents;
+  return Math.max(0, Math.min(
+    Math.floor(balanceCents / (5 * creditCents)),
+    Number(creditHeadroom(club, memberId) / BigInt(5 * creditCents)),
+  ));
+}
+
+function maxCoinflipStake(club: Club, memberId: string) {
+  const wallet = walletFor(club.games, memberId);
   return Math.max(0, Math.min(
     Math.floor(wallet.balanceCents / creditCents),
-    Math.floor((maxBalance - wallet.balanceCents - reservedPrize - reservedRefund) / coinWinCentsPerCredit),
+    Number(creditHeadroom(club, memberId) / BigInt(coinWinCentsPerCredit)),
     Math.floor(maxBalance / (5 * creditCents)),
   ));
 }
@@ -438,12 +534,13 @@ export function applyCoinFlip(club: Club, memberId: string, command: CoinFlipCom
   }
   if (wallet.version !== command.walletVersion)
     throw new GameRuleError("Số dư đã thay đổi, kiểm tra lại mức cược", 409);
-  if (!integerBetween(command.stake, 1, maxCoinflipStake(games, memberId)))
+  if (!integerBetween(command.stake, 1, maxCoinflipStake(club, memberId)))
     throw new GameRuleError("Mức cược vượt số credits có thể dùng");
   const netCents = command.stake * (command.pick === side ? coinWinCentsPerCredit : -creditCents);
-  const next = updateBalance(games, memberId, at, [{ kind: "coinflip",
+  const next = updateBalance(club, memberId, at, [{ kind: "coinflip",
     label: command.pick === side ? "Coinflip · Đoán đúng" : "Coinflip · Đoán sai", changeCents: netCents }]);
-  const flip = { id: command.id, at, stake: command.stake, pick: command.pick, side, netCents, balanceCents: next.balanceCents };
+  const flip = { id: command.id, at, stake: command.stake, pick: command.pick, side, netCents, balanceCents: next.balanceCents,
+    ...(creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}) };
   next.flips = [flip, ...(wallet.flips ?? [])].slice(0, gameResultHistoryLimit);
   return flip;
 }
@@ -488,31 +585,32 @@ function trimFinishedRooms(games: GamesState) {
   });
 }
 
-function finishRoom(games: GamesState, room: XoRoom, at: number,
+function finishRoom(club: Club, room: XoRoom, at: number,
   status: "won" | "draw" | "cancelled", winnerId?: string, reason?: XoRoom["finishReason"]) {
-  if (status === "won" && winnerId) updateBalance(games, winnerId, at,
+  if (status === "won" && winnerId) updateBalance(club, winnerId, at,
     [{ kind: "xo", label: "XO · Nhận thưởng thắng ván", changeCents: xoPrizeCents(room.stake) }]);
   else if (status !== "won") {
     const returned = [{ kind: "xo" as const, label: "XO · Hoàn tiền cược", changeCents: room.stake * creditCents }];
-    updateBalance(games, room.hostId, at, returned);
-    if (room.guestId) updateBalance(games, room.guestId, at, returned);
+    updateBalance(club, room.hostId, at, returned);
+    if (room.guestId) updateBalance(club, room.guestId, at, returned);
   }
   room.status = status;
   room.winnerId = winnerId;
   room.finishReason = reason;
   room.updatedAt = at;
-  trimFinishedRooms(games);
+  trimFinishedRooms(club.games!);
 }
 
 export function dropMemberFromGames(club: Club, memberId: string, erase = false, at = Date.now()) {
   const games = club.games;
   if (!games) return;
   const room = liveRoomFor(games, memberId);
-  if (room) finishRoom(games, room, at, "cancelled", undefined, "unavailable");
+  if (room) finishRoom(club, room, at, "cancelled", undefined, "unavailable");
   if (erase) {
     delete games.wallets[memberId];
     games.rooms = games.rooms.filter(room => !isPlayer(room, memberId));
     if (games.inactivityWeek) games.inactivityWeek.memberIds = games.inactivityWeek.memberIds.filter(id => id !== memberId);
+    if (games.exchangeReceipts) games.exchangeReceipts = games.exchangeReceipts.filter(row => row.memberId !== memberId);
   }
 }
 
@@ -524,8 +622,8 @@ export function gamesView(club: Club, memberId: string, revision: number, legacy
   const rooms = legacyOnly ? (games?.rooms ?? []).filter(room => xoSize(room) === 3) : games?.rooms ?? [];
   return {
     revision,
-    wallet: { balanceCents, version, maxWheelStake: maxWheelStake(games, memberId),
-      maxCoinflipStake: maxCoinflipStake(games, memberId) },
+    wallet: { balanceCents, version, maxWheelStake: maxWheelStake(club, memberId),
+      maxCoinflipStake: maxCoinflipStake(club, memberId) },
     openRooms: rooms.filter(room => room.status === "waiting" && activeMembers.has(room.hostId))
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map(room => ({ id: room.id, hostId: room.hostId, stake: room.stake, size: xoSize(room) })),
@@ -535,19 +633,21 @@ export function gamesView(club: Club, memberId: string, revision: number, legacy
     spins,
     flips: wallet.flips ?? [],
     inactivityCharge: wallet.inactivityCharge,
+    cupidPartnerId: cupidCreditPartnerId(club, memberId),
     wheelProgress: { spins: wheelProgress?.spins ?? 0, pendingRefundCents: wheelRefundCents(wheelProgress?.netCredits) },
   };
 }
 
-function reserveXoStake(games: GamesState, memberId: string, stake: number, walletVersion: number, at: number) {
+function reserveXoStake(club: Club, memberId: string, stake: number, walletVersion: number, at: number) {
+  const games = club.games!;
   const wallet = walletFor(games, memberId);
   if (walletVersion !== wallet.version) throw new GameRuleError("Số dư đã thay đổi, kiểm tra lại mức cược", 409);
   if (liveRoomFor(games, memberId)) throw new GameRuleError("Bạn đang có phòng XO", 409);
   if (wallet.balanceCents < stake * creditCents) throw new GameRuleError("Bạn không đủ credits để đặt cược");
-  const reservedRefund = wheelRefundCents(wallet.wheelProgress?.netCredits);
-  if (wallet.balanceCents > maxBalance - reservedRefund - (winnerCentsPerCredit - creditCents) * stake)
+  const prizeReserve = BigInt(xoPrizeCents(stake)) * (creditPair(club, memberId) ? two : BigInt(1));
+  if (creditHeadroom(club, memberId) < prizeReserve - BigInt(stake * creditCents))
     throw new GameRuleError("Mức cược vượt giới hạn tính toán");
-  updateBalance(games, memberId, at, [{ kind: "xo", label: "XO · Đặt cược", changeCents: -stake * creditCents }]);
+  updateBalance(club, memberId, at, [{ kind: "xo", label: "XO · Đặt cược", changeCents: -stake * creditCents }]);
 }
 
 export function applyGameCommand(club: Club, memberId: string, command: GameCommand, at: number,
@@ -564,7 +664,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     }
     if (wallet.version !== command.walletVersion)
       throw new GameRuleError("Số dư đã thay đổi, kiểm tra lại mức cược", 409);
-    if (command.stake > maxWheelStake(games, memberId))
+    if (command.stake > maxWheelStake(club, memberId))
       throw new GameRuleError("Bạn không đủ credits cho mức cược này");
     if (wheelFactor === undefined) throw new Error("Máy chủ chưa chọn hệ số");
     const netCents = wheelNetCents(command.stake, wheelFactor);
@@ -573,7 +673,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     const netCredits = progress.netCredits + netCents / creditCents;
     const settleRefund = spins >= WHEEL_REFUND_EVERY;
     const refundCents = settleRefund ? wheelRefundCents(netCredits) : 0;
-    const next = updateBalance(games, memberId, at, [
+    const next = updateBalance(club, memberId, at, [
       { kind: "wheel", label: `Vòng quay ×${wheelFactor}`, changeCents: netCents },
       { kind: "refund", label: "Hoàn cược vòng quay", changeCents: refundCents },
     ]);
@@ -581,6 +681,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     const spin: WheelSpin = {
       id: command.id, at, stake: command.stake, factor: wheelFactor, netCents, balanceCents: next.balanceCents,
       ...(refundCents ? { refundCents } : {}),
+      ...(creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}),
     };
     next.spins = [spin, ...next.spins].slice(0, gameResultHistoryLimit);
     return spin;
@@ -591,7 +692,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
       if (room.hostId === memberId && room.stake === command.stake) return;
       throw new GameRuleError("Phòng đã được tạo", 409);
     }
-    reserveXoStake(games, memberId, command.stake, command.walletVersion, at);
+    reserveXoStake(club, memberId, command.stake, command.walletVersion, at);
     games.rooms.unshift({
       id: command.id, size: XO_BOARD_SIZE, hostId: memberId, stake: command.stake,
       moves: [], status: "waiting", updatedAt: at,
@@ -604,7 +705,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
       throw new GameRuleError("Phòng đã có người hoặc đã đóng", 409);
     if (room.hostId === memberId) throw new GameRuleError("Bạn là người tạo phòng");
     if (room.stake !== command.stake) throw new GameRuleError("Mức cược của phòng đã thay đổi", 409);
-    reserveXoStake(games, memberId, room.stake, command.walletVersion, at);
+    reserveXoStake(club, memberId, room.stake, command.walletVersion, at);
     room.guestId = memberId;
     room.status = "playing";
     room.updatedAt = at;
@@ -615,7 +716,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     if (room.status === "cancelled") return;
     if (room.status !== "waiting" || room.hostId !== memberId)
       throw new GameRuleError("Chỉ có thể hủy phòng khi đang chờ người chơi", 409);
-    finishRoom(games, room, at, "cancelled");
+    finishRoom(club, room, at, "cancelled");
     return;
   }
   const mark = room.hostId === memberId ? "X" : "O";
@@ -623,7 +724,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     const opponent = mark === "X" ? room.guestId : room.hostId;
     if (room.finishReason === "surrender" && room.winnerId === opponent) return;
     if (room.status !== "playing" || !opponent) throw new GameRuleError("Ván XO đã kết thúc", 409);
-    finishRoom(games, room, at, "won", opponent, "surrender");
+    finishRoom(club, room, at, "won", opponent, "surrender");
     return;
   }
   if (command.kind !== "move") throw new GameRuleError("Không tìm thấy phòng XO", 404);
@@ -635,6 +736,6 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
   if (room.moves.includes(command.cell)) throw new GameRuleError("Ô này đã được đánh", 409);
   room.moves.push(command.cell);
   room.updatedAt = at;
-  if (xoWinningLine(xoBoard(room.moves, size), size, command.cell)) finishRoom(games, room, at, "won", memberId);
-  else if (room.moves.length === size * size) finishRoom(games, room, at, "draw");
+  if (xoWinningLine(xoBoard(room.moves, size), size, command.cell)) finishRoom(club, room, at, "won", memberId);
+  else if (room.moves.length === size * size) finishRoom(club, room, at, "draw");
 }

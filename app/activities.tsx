@@ -601,19 +601,15 @@ type ManualFormProps = { club: Club; member: Member; committeeFilter: CommitteeF
 
 function ManualForm(props: ManualFormProps) {
   const [kind,setKind]=useState<ManualActivityKind>(manualKinds[0]);
-  const [individual, setIndividual] = useState(false);
   return <><Field label="Mục điểm"><select value={kind} onChange={e=>setKind(e.target.value as ManualActivityKind)}>{manualKinds.map(k=><option key={k} value={k}>{activityLabels[k]}</option>)}</select></Field>
-    <label className="event-history"><input type="checkbox" checked={individual} onChange={event => setIndividual(event.target.checked)} disabled={props.busy} />
-      Khoản điều chỉnh cá nhân
-    </label>
-    <ManualEntryForm key={kind + ":" + individual} {...props} kind={kind} individual={individual} />
+    <ManualEntryForm key={kind} {...props} kind={kind} />
   </>;
 }
-function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,onClose,lockedManualKeys,individual}:ManualFormProps & {
-  kind: ManualActivityKind; individual: boolean;
+function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,onClose,lockedManualKeys}:ManualFormProps & {
+  kind: ManualActivityKind;
 }) {
   const [entryId] = useState(uid);
-  const old = individual ? undefined : club.manualActivities?.find(r => r.memberId === member.id && r.week === week && r.kind === kind &&
+  const old = club.manualActivities?.find(r => r.memberId === member.id && r.week === week && r.kind === kind &&
     !r.individual && !lockedManualKeys?.includes(sharingSourceKey("manual", r.id)));
   const [date,setDate]=useState(old?.date??(week===weekId()?today():addDays(week,6)));
   const direct=kind==="special", byCommittee=kind==="committee";
@@ -635,7 +631,7 @@ function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,on
       : { quantity: Number(f.quantity) };
     if (byCommittee && !committee) return;
     if (byCommittee) f.committee = committee === "none" ? "" : committee;
-    if (await onAction("saveManualActivity", { ...f, ...value, kind, memberId: member.id, week, individual, entryId,
+    if (await onAction("saveManualActivity", { ...f, ...value, kind, memberId: member.id, week, entryId,
       previousEntryId: old?.id ?? null }, "Đã lưu điểm trong tuần", false)) onClose();
   }}>
     {byCommittee ? (
@@ -656,8 +652,7 @@ function ManualEntryForm({club,member,committeeFilter,week,kind,busy,onAction,on
     <Field label="Ngày ghi nhận hoạt động"><input name="date" type="date" min={week>member.joined?week:member.joined} max={addDays(week,6)} value={date} onChange={e=>setDate(e.target.value)} required /></Field>
     <Field label="Giờ thực tế"><input name="time" type="time" defaultValue={old?.time} /></Field>
     <Field label="Ghi chú"><textarea name="note" defaultValue={old?.note??""} maxLength={500}/></Field>
-    <p className="hint">{individual ? "Ghi một khoản mới cho riêng thành viên để điều chỉnh điểm đã chốt"
-      : direct ? "Nhập trực tiếp số điểm riêng của tuần này, lưu lại thay thế số cũ; nhập 0 để bỏ điểm, không nhân số lượt hay hệ số"
+    <p className="hint">{direct ? "Nhập trực tiếp số điểm riêng của tuần này. Giá trị mới thay thế số cũ, nhập 0 để bỏ điểm"
       : byCommittee ? "Chọn ban và nhập số điểm của thành viên trong tuần này, để bỏ điểm đã ghi, chọn Không ghi điểm theo ban"
       : "Lưu số lượt mới thay thế số cũ của mục này trong tuần, nhập 0 để bỏ điểm, điểm = số lượt × điểm/lượt trong cài đặt"}</p>
     <FormFooter onCancel={onClose} busy={busy}/>
@@ -669,11 +664,10 @@ function DeductionForm({club,member,week,busy,onAction,onClose}:{club:Club;membe
   const [cancelId,setCancelId] = useState<string|null>(null);
   const rows = (club.pointDeductions ?? []).filter(r=>r.memberId===member.id && r.week===week);
   return <>
-    <form onSubmit={async e=>{const f=formData(e);const form=e.currentTarget;if(await onAction("deductPoints",{...f,id,memberId:member.id,week,points:Number(f.points),individual:f.individual==="on"},"Đã ghi nhận điểm trừ và lý do",false)){setId(uid());form.reset();}}}>
+    <form onSubmit={async e=>{const f=formData(e);const form=e.currentTarget;if(await onAction("deductPoints",{...f,id,memberId:member.id,week,points:Number(f.points)},"Đã ghi nhận điểm trừ và lý do",false)){setId(uid());form.reset();}}}>
       <Field label="Số điểm trừ"><input name="points" type="number" min="0.01" max={100000} step="0.01" required placeholder="Nhập số điểm cần trừ" /></Field>
       <Field label="Ngày ghi nhận khoản trừ"><input name="date" type="date" min={week>member.joined?week:member.joined} max={addDays(week,6)} defaultValue={week===weekId()?today():addDays(week,6)} required /></Field>
       <Field label="Giờ thực tế"><input type="time" name="time" /></Field>
-      <label className="event-history"><input type="checkbox" name="individual" />Khoản điều chỉnh cá nhân</label>
       <Field label="Lý do trừ điểm (bắt buộc)"><textarea name="reason" minLength={3} maxLength={500} required placeholder="Ghi rõ lý do trừ điểm" /></Field>
       <p className="hint">Trừ trực tiếp số điểm đã nhập, không nhân hệ số, mỗi lần lưu tạo một khoản trừ riêng trong tuần đang chọn</p>
       <FormFooter label="Trừ điểm" onCancel={onClose} busy={busy}/>
