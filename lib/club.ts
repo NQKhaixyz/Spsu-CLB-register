@@ -154,6 +154,7 @@ export type Club = {
   links?: SharedLink[];
   bulletinPosts?: BulletinPost[];
   activityNotices?: StoredActivityNotice[];
+  roundEventNoticesSince?: number;
   directNotices?: StoredDirectNotice[];
   memberFeedback?: StoredFeedback[];
   sharing?: SharingState;

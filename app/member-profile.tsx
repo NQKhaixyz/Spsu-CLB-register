@@ -12,6 +12,7 @@ import { Avatar, Button } from "./ui";
 import { ProfileFeedback, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
 import { SharingProfileCard } from "./sharing-panel";
 import { formatScore } from "./scoreboard";
+import { ProfileCreditHistory } from "./profile-credit-history";
 
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 
@@ -90,7 +91,7 @@ export function MemberProfileDialog({ member, details, scheduleOnly, feedback, b
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
-  const [section, setSection] = useState<"info" | "feedback">("info");
+  const [section, setSection] = useState<"info" | "feedback" | "credits">("info");
   const identity = useMemberIdentity();
   const rank = identity?.monthlyRanks.get(member.id) ?? 0;
   const profileTier = rank <= 5 ? monthlyScoreTier(rank) : undefined;
@@ -138,10 +139,12 @@ export function MemberProfileDialog({ member, details, scheduleOnly, feedback, b
           <button type="button" aria-pressed={section === "feedback"} onClick={() => setSection("feedback")}>
             Feedback {feedback.length > 0 && <span>{feedback.length}</span>}
           </button>
+          <button type="button" aria-pressed={section === "credits"} onClick={() => setSection("credits")}>Credits</button>
         </div>
       </>}
       {(scheduleOnly || section === "info") && <ProfileDetails member={member} details={details} scheduleOnly={scheduleOnly} />}
       {!scheduleOnly && section === "info" && <SharingProfileCard memberId={member.id} />}
+      {!scheduleOnly && section === "credits" && <ProfileCreditHistory key={member.id} memberId={member.id} />}
       {!scheduleOnly && <div hidden={section !== "feedback"}>
         <ProfileFeedback recipientId={member.id} entries={feedback} busy={busy}
           onSubmit={onSubmitFeedback} onEdit={onEditFeedback} onRecall={onRecallFeedback} conversationActions={conversationActions} />

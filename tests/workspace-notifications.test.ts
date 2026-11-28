@@ -7,6 +7,7 @@ import { addDays, createClub, syncWeeks, today, weekId, type Member } from "../l
 import { memberNotificationsFor, markMemberNotificationRead, markMemberNotificationsRead, visibleMemberNotifications } from "../lib/feedback-notifications";
 import { workspaceNotificationsFor, markWorkspaceNotificationRead } from "../lib/workspace-notifications";
 import { workspaceView } from "../lib/workspace-view";
+import { settleRoundEventNotices } from "../lib/round-event-notifications";
 
 function fixture() {
   const [admin, minh, other] = ["admin", "minh", "other"].map((id, index): Member => ({
@@ -56,6 +57,8 @@ test("Entering, repeating, and correcting points sends only real weekly changes 
   const received = memberNotificationsFor(club, minh.id);
   assert.equal(received.length, 1);
   assert.equal(received[0].kind === "score" && received[0].change, 0.25);
+  assert.deepEqual(received[0].kind === "score" && received[0].changes?.map(({ operation, category, change }) =>
+    [operation, category, change]), [["add", "Điểm riêng", 0.25]]);
   assert.equal(received[0].kind === "score" && received[0].week, points.week);
   assert.equal(markMemberNotificationRead(club, other.id, received[0].id), false);
   assert.equal(markMemberNotificationRead(club, minh.id, received[0].id), true);
@@ -64,10 +67,33 @@ test("Entering, repeating, and correcting points sends only real weekly changes 
   assert.equal("activityNotices" in workspaceView(club, identity(other), 1).club, false);
   const id = "notice-deduction-test";
   run(admin, "deductPoints", { ...points, id, reason: "Lý do riêng", points: 0.5 });
-  assert.ok(memberNotificationsFor(club, minh.id).some(item => item.kind === "score" && item.change === -0.5));
   run(admin, "cancelPointDeduction", { id, reason: "Sửa khoản trừ" });
-  assert.ok(memberNotificationsFor(club, minh.id).some(item => item.kind === "score" && item.change === 0.5));
+  run(admin, "saveManualActivity", { ...points, kind: "initiative", quantity: 1 });
+  assert.equal(memberNotificationsFor(club, minh.id).filter(item => item.kind === "score").length, 1);
+  run(admin, "saveManualActivity", { ...points, points: 0 });
+  const revoked = memberNotificationsFor(club, minh.id).find(item => item.kind === "score" && item.change < 0);
+  assert.ok(revoked?.kind === "score");
+  assert.deepEqual(revoked.changes?.map(({ operation, category, change }) => [operation, category, change]),
+    [["revoke", "Điểm riêng", -0.25]]);
   assert.ok(!JSON.stringify(memberNotificationsFor(club, minh.id)).includes("Lý do riêng"));
+});
+
+test("Duty scores update without an additional score notice", () => {
+  const { club, admin, minh, other, run } = fixture();
+  const date = today();
+  const month = date.slice(0, 7);
+  const shiftId = "notice-duty-zero";
+  club.rules.push({ month, A: 0.5, B: 1, C: 0.5, D: 0.5, E: 0.25 });
+  club.schedules = [{ month, published: true, shifts: [{
+    id: shiftId, date, period: "am", startTime: "09:00", endTime: "11:00",
+    assignments: [{ memberId: minh.id, result: "unverified" }],
+  }] }];
+  run(admin, "shift", { month, shiftId, position: 0, result: "completed", late: true });
+  assert.equal(memberNotificationsFor(club, minh.id).some(item => item.kind === "score"), false);
+  assert.ok(memberNotificationsFor(club, minh.id).some(item => item.kind === "activity"));
+  assert.deepEqual(memberNotificationsFor(club, other.id), []);
+  run(admin, "shift", { month, shiftId, position: 0, result: "completed", late: true });
+  assert.equal(memberNotificationsFor(club, minh.id).filter(item => item.kind === "activity").length, 1);
 });
 
 test("Duty notices start at publication and retain a separate update for cancellation and restoration", () => {
@@ -148,11 +174,11 @@ test("An individual score change notifies the account scored even when Cupid aff
   }] };
   run(admin, "saveManualActivity", { week: weekId(), date: today(), time: "00:00", memberId: minh.id, kind: "special", points: 4 });
   const [notice] = memberNotificationsFor(club, minh.id);
-  assert.equal(notice.kind === "score" && notice.change, 2);
+  assert.equal(notice.kind === "score" && notice.change, 4);
   assert.deepEqual(memberNotificationsFor(club, other.id), []);
 });
 
-test("An event decision creates one status notice and one real score change for the participant", () => {
+test("An ordinary event decision creates one status notice for the participant", () => {
   const { club, admin, minh, other, run } = fixture();
   const eventId = "status-event-test";
   run(admin, "createEvent", { id: eventId, name: "Sinh hoạt đầu tuần", points: 1.25, startDate: today(), endDate: today() });
@@ -161,12 +187,38 @@ test("An event decision creates one status notice and one real score change for 
   run(admin, "reviewActivity", { id, confirmed: true });
   run(admin, "reviewActivity", { id, confirmed: true });
   const notices = memberNotificationsFor(club, minh.id);
-  assert.equal(notices.length, 2);
+  assert.equal(notices.length, 1);
   const activity = notices.find(item => item.kind === "activity")!;
   assert.deepEqual(activity.target, { area: "event", eventId });
   assert.match(activity.body, /1 lượt được duyệt/);
-  assert.equal(notices.find(item => item.kind === "score")!.change, 1.25);
   assert.deepEqual(memberNotificationsFor(club, other.id), []);
+});
+
+test("Per-round events deliver one private notice on closure with the actual confirmed rounds and points", () => {
+  const { club, admin, minh, other, run } = fixture();
+  const day = today();
+  const close = Date.parse(addDays(day, 1) + "T00:00:00+07:00");
+  const eventId = "event-round-result-test";
+  run(admin, "createEvent", { id: eventId, name: "Tập huấn C1", scoringMode: "perRound", points: 0.25, startDate: day, endDate: day });
+  run(minh, "registerEvent", { eventId });
+  run(admin, "saveEventRounds", { eventId, memberId: minh.id, quantity: 3, previousQuantity: 0 });
+  const results = (memberId: string) => workspaceNotificationsFor(club, memberId, close + 100)
+    .filter(item => item.kind === "activity").filter(item => item.roundEventResult);
+  assert.equal(settleRoundEventNotices(club, close - 1000), true);
+  assert.equal(settleRoundEventNotices(club, close - 1), false);
+  assert.deepEqual(results(minh.id), []);
+  assert.equal(settleRoundEventNotices(club, close), true);
+  const [notice] = results(minh.id);
+  assert.equal(notice?.body, "Bạn đã nhận 0,75 điểm vì tham gia sự kiện Tập huấn C1 3 lần");
+  assert.equal(notice.createdAt, close);
+  assert.equal(markWorkspaceNotificationRead(club, minh.id, notice.id, close + 11), true);
+  assert.equal(settleRoundEventNotices(club, close + 20), false);
+  assert.deepEqual(results(other.id), []);
+  assert.equal(results(minh.id)[0]?.read, true);
+  club.activityRegistrations!.find(row => row.eventId === eventId)!.quantity = 4;
+  assert.equal(settleRoundEventNotices(club, close + 30), true);
+  assert.deepEqual(results(minh.id).map(item => item.id), [notice.id]);
+  assert.equal(results(minh.id)[0]?.body, "Bạn đã nhận 1 điểm vì tham gia sự kiện Tập huấn C1 4 lần");
 });
 
 test("Document uploads keep their sanitized filename when attached to a bulletin", () => {

@@ -1,21 +1,16 @@
 import { recordedEventQuantity } from "./activity";
 import {
   dateLabel, dutyNames, isRosterMember, isShiftPublished, rosterAssignments, adminMemberIds, statusNames, today,
-  weekId, weeklyScoreFor, type Club, type Member, type Schedule, type Shift,
+  weekId, type Club, type Member, type Schedule, type Shift,
 } from "./club";
 import type { ActivityNoticeDraft, ActivityNoticeTarget, ActivityUpdate, DutyHours } from "./notification-types";
-import { roundSharingScore, sharingScoreBook } from "./sharing-scores";
+import { captureScoreItems, scoreItemNotices } from "./score-notice-details";
 import { appendActivityNotices } from "./workspace-notifications";
 
 const meetingActions = new Set(["entry", "review", "meeting", "close", "reopen"]);
 const eventActions = new Set(["saveEventRounds", "addEventParticipant", "editEvent", "cancelEvent", "restoreEvent", "deleteEvent"]);
 const individualEventActions = new Set(["reviewActivity", "saveEventContribution", "saveEventRounds", "addEventParticipant"]);
 const dutyActions = new Set(["publish", "withdrawDutyWeek", "addDutyMember", "removeDutyMember", "cancelShift", "restoreShift", "shift"]);
-
-function dateWeek(value: unknown) {
-  const date = typeof value === "string" ? value.trim().slice(0, 10) : "";
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) ? weekId(date) : undefined;
-}
 
 function dutyHours(shift: Shift): DutyHours {
   return { date: shift.date, period: shift.period, startTime: shift.startTime, endTime: shift.endTime };
@@ -30,34 +25,6 @@ function eventContext(club: Club, action: string, data: Record<string, unknown>)
   if (!event) return;
   const memberId = individualEventActions.has(action) ? row?.memberId ?? data.memberId : undefined;
   return { event, memberId };
-}
-
-function affectedScores(club: Club, action: string, data: Record<string, unknown>, event: ReturnType<typeof eventContext>) {
-  if (event) {
-    const weeks = [dateWeek(event.event.endDate), action === "editEvent" ? dateWeek(data.endDate) : undefined];
-    return { weeks, recipients: event.memberId !== undefined ? [event.memberId] :
-      (club.activityRegistrations ?? []).filter(row => row.eventId === event.event.id).map(row => row.memberId) };
-  }
-  if (action === "saveManualActivity" || action === "deductPoints") return { weeks: [data.week], recipients: [data.memberId] };
-  if (action === "cancelPointDeduction") {
-    const row = club.pointDeductions?.find(item => item.id === data.id);
-    if (row) return { weeks: [row.week], recipients: [row.memberId] };
-  }
-  if (meetingActions.has(action)) {
-    const week = club.weeks.find(item => item.id === data.week);
-    return { weeks: [data.week], recipients: data.memberId !== undefined ? [data.memberId] : week?.entries.map(entry => entry.memberId) ?? [] };
-  }
-  if (action === "cancelShift" || action === "restoreShift" || action === "removeDutyMember" ||
-    (action === "shift" && (data.result !== undefined || data.late !== undefined || data.replacementId !== undefined))) {
-    const shift = club.schedules.find(item => item.month === data.month)?.shifts.find(item => item.id === data.shiftId);
-    if (!shift) return;
-    const position = typeof data.position === "number" || typeof data.position === "string" ? Number(data.position) : -1;
-    const assignment = data.assignmentMemberId === undefined ? shift.assignments[position] :
-      rosterAssignments(shift.assignments, adminMemberIds(club))[position];
-    const recipients = action === "removeDutyMember" ? [data.memberId] : action === "shift"
-      ? [assignment?.memberId, data.replacementId] : shift.assignments.map(item => item.memberId);
-    return { weeks: [dateWeek(shift.date)], recipients };
-  }
 }
 
 type ActivitySnapshot = { key: string; fingerprint: string; notice: ActivityUpdate & { memberId: string } };
@@ -141,20 +108,15 @@ export function captureWorkspaceNotifications(
 ) {
   if (!actor?.active || actor.role !== "admin") return;
   const event = eventContext(club, action, data);
-  const affected = affectedScores(club, action, data, event);
+  const scoreRecipient = action === "saveManualActivity" && (data.kind === "committee" || data.kind === "special") &&
+    typeof data.memberId === "string" ? data.memberId : undefined;
   const tracksDuty = dutyActions.has(action) && !(action === "shift" &&
     data.result === undefined && data.late === undefined && data.replacementId === undefined);
   const tracksStatus = (event && action !== "saveEventContribution") || meetingActions.has(action);
-  if (!affected && !tracksDuty && !tracksStatus) return;
+  if (!scoreRecipient && !tracksDuty && !tracksStatus) return;
 
   const eligible = new Set(club.members.filter(member => member.active && isRosterMember(member)).map(member => member.id));
-  const knownWeeks = new Set(club.weeks.map(week => week.id));
-  const weeks = [...new Set(affected?.weeks)].filter((week): week is string => typeof week === "string" && knownWeeks.has(week));
-  const recipients = [...new Set(affected?.recipients)].filter((id): id is string => typeof id === "string" && eligible.has(id));
-  const index = weeks.length && recipients.length ? sharingScoreBook(club, now).index : undefined;
-  const scores = index ? weeks.flatMap(week => recipients.map(memberId => ({
-    week, memberId, points: weeklyScoreFor(club, memberId, week, index).points,
-  }))) : [];
+  const before = scoreRecipient && eligible.has(scoreRecipient) ? captureScoreItems(club, scoreRecipient) : undefined;
 
   const matchesDuty = dutyScope(action, data, now);
   const oldDuty = tracksDuty ? dutySnapshot(club, eligible, matchesDuty) : undefined;
@@ -164,13 +126,7 @@ export function captureWorkspaceNotifications(
 
   return () => {
     const notices: ActivityNoticeDraft[] = [];
-    if (scores.length) {
-      const { index } = sharingScoreBook(club, now);
-      for (const { week, memberId, points } of scores) {
-        const change = roundSharingScore(weeklyScoreFor(club, memberId, week, index).points - points);
-        if (change) notices.push({ kind: "score", week, memberId, change });
-      }
-    }
+    if (before && scoreRecipient) notices.push(...scoreItemNotices(before, captureScoreItems(club, scoreRecipient)));
     if (tracksStatus) {
       for (const item of getActivity()) {
         if (oldActivity.get(item.key)?.fingerprint !== item.fingerprint) notices.push(item.notice);

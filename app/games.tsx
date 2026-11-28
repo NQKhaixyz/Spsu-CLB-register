@@ -11,12 +11,13 @@ import {
 import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button, Dialog, Field } from "./ui";
 import XoBoard from "./xo-board";
+import { addDays, dateLabel, weekId } from "../lib/club";
 
 const gamesPath = "/api/games?rules=" + GAME_RULES_VERSION;
 const creditNumber = new Intl.NumberFormat("vi-VN");
 const spinTime = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
 const wheelDuration = 2_350;
-const coinDuration = 900;
+const coinDuration = 5_000;
 const gameLabels = { coinflip: "Coinflip", xo: "XO", wheel: "Vòng quay may mắn" } as const;
 const coinFaces = {
   one: { label: "Mặt 1", src: "/games/coinflip/mat-1.webp" },
@@ -140,6 +141,7 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
 
   const coinMoving = tab === "coinflip" && !!coinMotion && view?.flips[0]?.id === coinMotion.id;
   const visibleBalance = coinMoving ? coinMotion.previousBalance : view?.wallet.balanceCents;
+  const inactivityCharge = view?.inactivityCharge;
   return <div className="games-page" aria-label="Trò chơi của Đội">
     <div className="games-heading">
       <div>
@@ -151,6 +153,9 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
         <div><span>Số dư credits</span><strong data-game-balance={visibleBalance}>{formatCredits(visibleBalance)}</strong></div>
       </div>}
     </div>
+    {inactivityCharge && addDays(inactivityCharge.week, 7) === weekId() && <p className="games-note games-inactivity-charge">
+      Tuần {dateLabel(inactivityCharge.week, true)} không có biến động · Đã trừ {formatCredits(inactivityCharge.amountCents)} credits
+    </p>}
     {actionError && <div className="games-message" role="alert">
       <span>{actionError}</span>
       {retry && <Button variant="secondary" disabled={busy} onClick={() => void submit(retry)}>Thử lại thao tác</Button>}
@@ -395,7 +400,7 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
 }) {
   const [wager, setWager] = useState("1");
   const { maxWheelStake, version } = view.wallet;
-  const { spins, pendingRefundCents, legacyRefund } = view.wheelProgress;
+  const { spins, pendingRefundCents } = view.wheelProgress;
   const stake = checkedStake(wager, maxWheelStake);
   const latest = view.spins[0];
   const activeMotion = motion && (motion.moving || motion.spin.id === latest?.id) ? motion : undefined;
@@ -447,10 +452,9 @@ function WheelGame({ view, motion, disabled, onSubmit }: {
           </small>
         </form>
         <div className="game-wheel-progress">
-          <strong>Hoàn cược {legacyRefund?.percent ?? WHEEL_REFUND_PERCENT}%</strong>
-          <span>{spins}/{legacyRefund?.rounds ?? WHEEL_REFUND_EVERY} lượt</span>
+          <strong>Hoàn cược {WHEEL_REFUND_PERCENT}%</strong>
+          <span>{spins}/{WHEEL_REFUND_EVERY} lượt</span>
           {pendingRefundCents > 0 && <small>Dự kiến hoàn {formatCredits(pendingRefundCents)} credits</small>}
-          {legacyRefund && <small>Nhóm đang dở theo mức cũ · Nhóm sau áp dụng {WHEEL_REFUND_PERCENT}% sau {WHEEL_REFUND_EVERY} lượt</small>}
         </div>
         <details className="game-wheel-rules">
           <summary>Cách tính kết quả</summary>

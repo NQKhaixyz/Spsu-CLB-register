@@ -344,3 +344,16 @@
   .profile-scores, .feedback-profile { padding-inline: 15px; }
   .profile-sections { margin-inline: 15px; }
 }
+.notification-score-changes {
+  display: grid;
+  gap: 5px;
+  margin-block: 3px;
+  font-size: .82rem;
+}
+.notification-score-changes > span {
+  display: grid;
+  gap: 2px;
+  padding-inline-start: 8px;
+  border-inline-start: 2px solid var(--line);
+  overflow-wrap: anywhere;
+}

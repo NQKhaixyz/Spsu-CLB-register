@@ -3,6 +3,17 @@ import { createClub, syncWeeks, type Club } from "./club";
 import { pruneBulletinState } from "./bulletin";
 import { bulletinMediaIds, removedBulletinKeys } from "./bulletin-media";
 import { queuePhotoDeletions } from "./photo-deletion";
+import { initializeCreditHistory, settleWeeklyCreditInactivity } from "./games";
+import { settleRoundEventNotices } from "./round-event-notifications";
+import { clearPendingCreditEntries, creditHistoryWrite } from "./credit-history";
+
+function updateTimedRules(club: Club) {
+  const now = Date.now();
+  const initializedHistory = initializeCreditHistory(club, now);
+  const changedCredits = settleWeeklyCreditInactivity(club, now);
+  const changedRounds = settleRoundEventNotices(club, now);
+  return initializedHistory || changedCredits || changedRounds;
+}
 
 type Row = { payload: string; revision: number };
 export class ClubNotReadyError extends Error {
@@ -15,35 +26,31 @@ export class ClubNotReadyError extends Error {
 export async function readState(ownerId: string, canInitialize: boolean) {
   const db = env.DB;
   if (!db) throw new Error("Cơ sở dữ liệu chưa được kết nối.");
-  const existing = await db
-    .prepare("SELECT payload,revision FROM club_state WHERE id='main'")
-    .first<Row>();
-  if (existing)
-    return {
-      club: JSON.parse(existing.payload) as Club,
-      revision: existing.revision,
-    };
-  if (!canInitialize) throw new ClubNotReadyError();
-  await db
-    .prepare(
-      "INSERT OR IGNORE INTO club_state (id,payload,revision) VALUES ('main',?,0)",
-    )
-    .bind(JSON.stringify(createClub(ownerId)))
-    .run();
-  const row = await db
-    .prepare("SELECT payload,revision FROM club_state WHERE id='main'")
-    .first<Row>();
-  if (!row) throw new Error("Không đọc được dữ liệu Đội.");
-  return { club: JSON.parse(row.payload) as Club, revision: row.revision };
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const row = await db.prepare("SELECT payload,revision FROM club_state WHERE id='main'").first<Row>();
+    if (!row) {
+      if (!canInitialize) throw new ClubNotReadyError();
+      await db.prepare("INSERT OR IGNORE INTO club_state (id,payload,revision) VALUES ('main',?,0)")
+        .bind(JSON.stringify(createClub(ownerId))).run();
+      continue;
+    }
+    const club = JSON.parse(row.payload) as Club;
+    if (!updateTimedRules(club)) return { club, revision: row.revision };
+    if (await writeState(club, row.revision)) return { club, revision: row.revision + 1 };
+  }
+  throw new Error("Dữ liệu Đội vừa thay đổi, vui lòng thử lại.");
 }
 export async function writeState(club: Club, revision: number, removedObjects: string[] = []) {
   const db = env.DB!;
   const payload = JSON.stringify(club);
   const update = db.prepare("UPDATE club_state SET payload=?,revision=revision+1 WHERE id='main' AND revision=?")
     .bind(payload, revision);
-  const r = removedObjects.length
-    ? (await db.batch([update, queuePhotoDeletions(db, removedObjects, revision + 1, payload)]))[0]
-    : await update.run();
+  const statements = [update];
+  const history = await creditHistoryWrite(db, club.games, revision + 1, payload);
+  if (history) statements.push(history);
+  if (removedObjects.length) statements.push(queuePhotoDeletions(db, removedObjects, revision + 1, payload));
+  const r = statements.length > 1 ? (await db.batch(statements))[0] : await update.run();
+  if (r.meta.changes) clearPendingCreditEntries(club.games);
   return r.meta.changes > 0;
 }
 export async function mutate<T>(
@@ -71,6 +78,7 @@ export async function synchronize() {
   const club = JSON.parse(row.payload) as Club;
   const mediaBefore = bulletinMediaIds(club);
   const expired = pruneBulletinState(club);
-  if (syncWeeks(club) || expired) return writeState(club, row.revision, removedBulletinKeys(mediaBefore, club));
+  const settled = updateTimedRules(club);
+  if (syncWeeks(club) || expired || settled) return writeState(club, row.revision, removedBulletinKeys(mediaBefore, club));
   return false;
 }

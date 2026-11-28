@@ -5,6 +5,7 @@ import { bulletinAuthorId } from "./bulletin";
 import { eraseFeedbackMembers } from "./feedback";
 import { eraseSharingMembers } from "./sharing";
 import { dropMemberFromGames } from "./games";
+import type { LockedShare } from "./sharing-types";
 
 export function canDeleteMember(club: Club, admin: Member, target: Member) {
   return admin.active && admin.role === "admin" && target.id !== admin.id &&
@@ -68,12 +69,16 @@ function removeFromHistory(history: MemberHistory, id: string, eventPhotos: Set<
   }
 }
 
-type WeekArchive = MemberHistory & { active?: MemberHistory | null; demoArchive?: MemberHistory | null };
+type WeekArchive = MemberHistory & { active?: MemberHistory | null; demoArchive?: MemberHistory | null; lockedShares?: LockedShare[] };
 
 export function scrubWeekArchive(archive: WeekArchive, memberId: string, eventPhotos: Set<string>) {
   removeFromHistory(archive, memberId, eventPhotos);
   if (archive.active) removeFromHistory(archive.active, memberId, eventPhotos);
   if (archive.demoArchive) removeFromHistory(archive.demoArchive, memberId, eventPhotos);
+  if (archive.lockedShares) archive.lockedShares = archive.lockedShares
+    .filter(row => row.sourceMemberId !== memberId)
+    .map(row => ({ ...row, memberIds: row.memberIds.filter(id => id !== memberId) }))
+    .filter(row => row.memberIds.length);
 }
 
 function removeAvailability(dataset: AvailabilityDataset, member: Member, uniqueName: boolean) {

@@ -18,6 +18,12 @@ const feedbackCopy = {
   reply: { title: "Phản hồi feedback mới", body: "Cuộc trao đổi có tin nhắn mới", icon: MessageSquare },
   consent: { title: "Đã đồng ý công khai feedback", body: "Quyền hiển thị cuộc trao đổi đã cập nhật", icon: CheckCheck },
 };
+const scoreNoticeOperations = {
+  add: "Cộng điểm",
+  deduct: "Trừ điểm",
+  revoke: "Thu hồi điểm",
+} as const;
+const scoreDeltaText = (change: number) => (change > 0 ? "+" : "") + formatScore(change) + " điểm";
 
 export function notificationCopy(notice: InboxNotification) {
   if ("sharingId" in notice) return {
@@ -32,7 +38,7 @@ export function notificationCopy(notice: InboxNotification) {
     case "bulletin": return { title: "Bài đăng mới", body: notice.postTitle, icon: Newspaper };
     case "score": return {
       title: "Đã cập nhật điểm của bạn",
-      body: "Tuần " + dateLabel(notice.week, true) + " · " + (notice.change > 0 ? "+" : "") + formatScore(notice.change) + " điểm",
+      body: "Tuần " + dateLabel(notice.week, true) + " · " + scoreDeltaText(notice.change),
       icon: ClipboardList,
     };
     case "duty": {
@@ -128,6 +134,12 @@ export default function WorkspaceNotifications({ state, pending, onOpenPending, 
               <span className="notification-item-copy">
                 <strong>{title}</strong>
                 <span className="notification-item-detail">{body}</span>
+                {notice.kind === "score" && notice.changes?.length ? <span className="notification-score-changes" role="list">
+                  {notice.changes.map(({ operation, category, detail, change }, index) => <span key={index} role="listitem">
+                    <b>{scoreNoticeOperations[operation]} {scoreDeltaText(change)}</b>
+                    <span>{category}{detail ? " · " + detail : ""}</span>
+                  </span>)}
+                </span> : null}
                 <span className="notification-item-meta">
                   {notice.actorId ? <MemberName memberId={notice.actorId} /> : <span>{"feedbackId" in notice ? "Ẩn danh" : "Nhịp Đội"}</span>}
                   <time dateTime={new Date(notice.createdAt).toISOString()}>{notificationClock.format(notice.createdAt)}</time>

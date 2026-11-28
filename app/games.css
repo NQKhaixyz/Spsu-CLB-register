@@ -89,6 +89,7 @@
   border-radius: 10px;
   padding: 10px 12px;
 }
+.games-inactivity-charge { margin-block: 0 14px; }
 .games-room-list, .games-history ul, .game-wheel-rules ul {
   list-style: none;
   margin: 0;
@@ -362,6 +363,7 @@
 .coinflip-stage {
   justify-items: center;
   background: radial-gradient(ellipse at 50% 28%, #eef2e5, var(--surface-warm) 72%);
+  padding-block-start: clamp(26px, 3.6vw, 42px);
 }
 .coinflip-scene {
   width: clamp(120px, 25vw, 220px);
@@ -374,7 +376,7 @@
   width: 100%;
   height: 100%;
   --coin-angle: 0deg;
-  transform: rotateY(var(--coin-angle));
+  transform: rotateX(var(--coin-angle));
   transform-style: preserve-3d;
 }
 .coinflip-coin[data-side="two"] { --coin-angle: 180deg; }
@@ -382,9 +384,12 @@
   animation: coinflip-toss var(--coin-duration) cubic-bezier(.16, .44, .28, 1);
 }
 @keyframes coinflip-toss {
-  from { transform: rotateY(calc(var(--coin-angle) - 1080deg)); }
-  45% { transform: translateY(-12px) rotateY(calc(var(--coin-angle) - 540deg)); }
-  to { transform: rotateY(var(--coin-angle)); }
+  from { transform: translateY(-31px) rotateX(calc(var(--coin-angle) - 2160deg)); }
+  30% { transform: translateY(-25px) rotateX(calc(var(--coin-angle) - 1440deg)); }
+  64% { transform: translateY(-13px) rotateX(calc(var(--coin-angle) - 720deg)); }
+  87% { transform: translateY(3px) rotateX(calc(var(--coin-angle) - 77deg)); }
+  95% { transform: translateY(-2px) rotateX(calc(var(--coin-angle) + 5deg)); }
+  to { transform: rotateX(var(--coin-angle)); }
 }
 .coinflip-face {
   position: absolute;
@@ -398,7 +403,7 @@
 }
 .coinflip-face[data-side="one"] { transform: translateZ(1px); }
 .coinflip-face[data-side="two"] {
-  transform: rotateY(180deg) translateZ(1px);
+  transform: rotateX(180deg) translateZ(1px);
   border-color: #9dada0;
   box-shadow: 0 0 0 1px #f1f6ef, 0 0 0 3px #8a9f91, 0 10px 30px #4b4c3338;
 }
@@ -483,3 +488,14 @@
 @media (prefers-reduced-motion: reduce) {
   .game-wheel-disc[data-moving="true"], .game-wheel-disc[data-moving="true"] > span { transition: none; }
 }
+.profile-credit-history { display: grid; gap: 10px; min-width: 0; padding: 12px 18px 20px; }
+.credit-history-balance { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; }
+.credit-history-balance strong { color: var(--green-dark); overflow-wrap: anywhere; }
+.credit-history-chart { margin: 0; min-width: 0; font-size: .75rem; }
+.credit-history-entries { list-style: none; margin: 0; padding: 0; }
+.credit-history-entries li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: 8px; padding-block: 9px; border-top: 1px solid var(--line); }
+.credit-history-entries li > div { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.credit-history-entries li > div:last-child { text-align: end; }
+.credit-history-entries time, .credit-history-entries small { color: var(--muted); font-size: .75rem; }
+.credit-history-entries [data-change="1"] { color: var(--green-dark); }
+.credit-history-entries [data-change="-1"] { color: #904831; }
