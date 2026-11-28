@@ -8,7 +8,7 @@ import { resolveFont, interfaceFonts } from "../lib/interface-fonts";
 import { sidebarTabLabels, sidebarTabs, teamSidebarOrder } from "../lib/workspace-navigation";
 import { memberPositions, memberRoleLabel } from "../lib/member-positions";
 import { bulletinDateInput, bulletinView, parseBulletinDate, pruneBulletinState, pruneExpiredBulletinPosts } from "../lib/bulletin";
-import { bulletinInline, toggleBulletinEmphasis } from "../lib/bulletin-format";
+import { bulletinInline, pastedMarkdownEmphasis, toggleBulletinEmphasis } from "../lib/bulletin-format";
 import { bulletinByteRange, bulletinMediaIds, bulletinMediaKey, removedBulletinKeys } from "../lib/bulletin-media";
 import { displayMessage } from "../lib/display-message";
 
@@ -65,8 +65,10 @@ test("One BĐH sidebar order applies to both roles, and member positions cannot 
   const admin = c.members.find(m => m.userId === owner.userId)!;
   pending.sidebarOrder = ["members", "personal"];
   admin.sidebarOrder = ["overview", "scoreboard"];
-  assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Feedback", "Trò chơi", "Góc của tôi", "Thành viên"]);
+  assert.deepEqual(sidebarTabs.map(tab => sidebarTabLabels[tab]), ["Bảng tin", "Hoạt động", "Bảng điểm", "Feedback", "Góc của tôi", "Thành viên"]);
   assert.deepEqual(teamSidebarOrder(c.sidebarOrder), sidebarTabs);
+  const legacy = ["members", "games", "activity"] as unknown as typeof sidebarTabs;
+  assert.deepEqual(teamSidebarOrder(legacy), ["members", "activity", "bulletin", "scoreboard", "feedback", "personal"]);
   const order = [...sidebarTabs].reverse();
   assert.throws(() => applyAction(c, member, "setTeamSidebarOrder", { order }), /Chỉ BĐH/);
   assert.throws(() => applyAction(c, owner, "setTeamSidebarOrder", { order: order.map(() => "feedback") }), /Thứ tự tab/);
@@ -267,6 +269,16 @@ test("Bulletin formatting supports nested emphasis and preserves literal text in
   assert.deepEqual(bulletinInline("**<img src=x onerror=bad>**\n_đang viết"), [
     { marker: "**", children: ["<img src=x onerror=bad>"] }, "\n", "_", "đang viết",
   ]);
+});
+test("Copied Markdown emphasis normalizes combinations and keeps literal punctuation", () => {
+  const pasted = pastedMarkdownEmphasis("***Đậm và nghiêng***, **đậm**, *nghiêng* và tên_tệp_gốc");
+  assert.equal(pasted, "**_Đậm và nghiêng_**, **đậm**, _nghiêng_ và tên\\_tệp\\_gốc");
+  assert.deepEqual(bulletinInline(pasted!).slice(0, 5), [
+    { marker: "**", children: [{ marker: "_", children: ["Đậm và nghiêng"] }] }, ", ",
+    { marker: "**", children: ["đậm"] }, ", ", { marker: "_", children: ["nghiêng"] },
+  ]);
+  assert.equal(pastedMarkdownEmphasis("**Đậm *lẫn nghiêng***"), "**Đậm _lẫn nghiêng_**");
+  assert.equal(pastedMarkdownEmphasis("***\n1 * 5 và tên_tệp_gốc"), undefined);
 });
 test("Members can post and manage their own attachments, with one-time draft ownership and cleanup", () => {
   const { c, pending } = fixture();

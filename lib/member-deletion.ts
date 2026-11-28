@@ -106,9 +106,13 @@ export function eraseMemberData(club: Club, admin: Member, member: Member) {
   eraseSharingMembers(club, new Set([member.id]));
   dropMemberFromGames(club, member.id, true);
   if (club.monthlyCreditUses) club.monthlyCreditUses = club.monthlyCreditUses.filter(use => use.memberId !== member.id);
+  if (club.monthlyCreditAwards) club.monthlyCreditAwards = club.monthlyCreditAwards.filter(award => award.memberId !== member.id);
   removeFromHistory(club, member.id, eventPhotos);
   eraseFeedbackMembers(club, new Set([member.id]));
   if (club.dismissedNoticeIds) delete club.dismissedNoticeIds[member.id];
+  for (const notice of club.eventAnnouncements ?? []) {
+    if (notice.readBy) notice.readBy = notice.readBy.filter(id => id !== member.id);
+  }
   if (club.activityNotices) {
     club.activityNotices = club.activityNotices.filter(item => item.memberId !== member.id).map(item =>
       item.actorId === member.id ? { ...item, actorId: undefined } : item);

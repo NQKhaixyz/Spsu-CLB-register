@@ -1,4 +1,4 @@
-import { addDays, isMemberOnDate, rulesFor, today, uid, weekId, type Club, type Member } from "./club";
+import { addDays, dateLabel, isMemberOnDate, rulesFor, today, uid, weekId, type Club, type Member } from "./club";
 import { committeeLabels, isCommitteeKind, type CommitteeKind } from "./committees";
 import { sharingSourceKey } from "./sharing-types";
 
@@ -129,6 +129,18 @@ const committeeRate = (club: Club, committee: StoredCommitteeKind, date: string)
 export const eventForActivity = (club: Club, row: { kind: ActivityKind; eventId?: string }) =>
   row.kind === "event" ? club.events?.find(event => event.id === row.eventId) : undefined;
 export const isEventOpen = (event: ClubEvent, date: string) => !event.cancelledAt && event.endDate >= date;
+export function eventScheduleLabel({ startDate, startTime, endDate, endTime }: ClubEvent) {
+  const date = dateLabel(startDate, true);
+  if (startDate !== endDate) {
+    const from = startTime ? `${date} ${startTime}` : date;
+    const until = dateLabel(endDate, true) + (endTime ? ` ${endTime}` : "");
+    return `${from} – ${until}`;
+  }
+  if (startTime && endTime) return `${date} · ${startTime} – ${endTime}`;
+  if (startTime) return `${date} · Bắt đầu ${startTime}`;
+  if (endTime) return `${date} · Kết thúc ${endTime}`;
+  return date;
+}
 export const canAttendEvent = (member: Member, event: ClubEvent) =>
   (member.active || !!member.left) && isMemberOnDate(member, event.endDate);
 export const allowsMultipleEventRounds = (event?: Pick<ClubEvent, "scoringMode" | "participationMultiplier">) =>
@@ -242,12 +254,21 @@ export function creditedActivities(club: Club) {
 export function activityScoreFor(club: Club, memberId: string, period: string, weekly = false, weekFilter?: string) {
   const counts = Object.fromEntries(activityKinds.map((kind) => [kind, 0])) as Record<ActivityKind, number>;
   const points = { ...counts };
-  const rows = club.members.some(member => member.id === memberId && member.role === "admin") ? [] : creditedActivities(club);
+  const admin = club.members.some(member => member.id === memberId && member.role === "admin");
+  const rows = admin ? [] : creditedActivities(club);
   for (const row of rows) {
     if ((weekFilter && row.week !== weekFilter) || row.memberId !== memberId || (weekly ? row.week !== period : row.date.slice(0, 7) !== period)) continue;
     const value = activityPointsFor(club, row);
     counts[row.kind] = Number((counts[row.kind] + (["special", "committee"].includes(row.kind) ? value : row.quantity)).toFixed(10));
     points[row.kind] = Number((points[row.kind] + value).toFixed(10));
+  }
+  if (!admin && !weekly && !weekFilter) {
+    const used = (club.monthlyCreditUses ?? []).filter(use => use.memberId === memberId && use.month === period)
+      .reduce((sum, use) => sum + use.units, 0) / 20;
+    const earned = (club.monthlyCreditAwards?.find(award => award.memberId === memberId && award.month === period)?.pointCents ?? 0) / 100;
+    counts.special = points.special = Number((points.special + earned).toFixed(10));
+    counts.deduction = Number((counts.deduction + used).toFixed(10));
+    points.deduction = Number((points.deduction - used).toFixed(10));
   }
   return { activityCounts: counts, activityPoints: points, activityTotal: Number(Object.values(points).reduce((sum, n) => sum + n, 0).toFixed(10)) };
 }
@@ -476,8 +497,10 @@ export function applyActivityAction(club: Club, me: Member, action: string, data
       return true;
     }
     requireValue(endDate >= today(), "Ngày kết thúc sự kiện không được trước hôm nay.");
+    const createdAt = Date.now();
     (club.events ??= []).push({ id, name, description, descriptionFormat, location, ...schedule, ...scoring,
-      requiresEvidence, createdAt: new Date().toISOString(), createdBy: me.id });
+      requiresEvidence, createdAt: new Date(createdAt).toISOString(), createdBy: me.id });
+    (club.eventAnnouncements ??= []).push({ id: crypto.randomUUID(), eventId: id, createdAt });
     log(`Tạo sự kiện ${name}: ${startDate} – ${endDate}, ${scoringLabel}`);
     return true;
   }

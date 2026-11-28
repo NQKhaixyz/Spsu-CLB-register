@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Bell, CalendarDays, Check, CheckCheck, ClipboardList, Feather, Mail, MessageSquare, MessageSquarePlus, Newspaper, Plus, Shield, Trash2, X } from "lucide-react";
+import { activityLabels } from "../lib/activity";
 import { dateLabel } from "../lib/club";
 import type { InboxNotification } from "../lib/feedback-notifications";
 import { sharingNoticeTitles } from "../lib/sharing-types";
@@ -34,13 +35,21 @@ export function notificationCopy(notice: InboxNotification) {
   if ("feedbackId" in notice) return feedbackCopy[notice.kind];
   switch (notice.kind) {
     case "direct": return { title: notice.title, body: notice.body, icon: Mail };
-    case "activity": return { title: notice.title, body: notice.body, icon: CalendarDays };
+    case "activity": {
+      const score = notice.eventScore;
+      const title = score ? notice.title + " · " + scoreDeltaText(score.change ?? score.points) +
+        (score.current ? " hiện tại" : "") : notice.title;
+      return { title, body: notice.body, icon: CalendarDays };
+    }
     case "bulletin": return { title: "Bài đăng mới", body: notice.postTitle, icon: Newspaper };
-    case "score": return {
-      title: "Đã cập nhật điểm của bạn",
-      body: "Tuần " + dateLabel(notice.week, true) + " · " + scoreDeltaText(notice.change),
-      icon: ClipboardList,
-    };
+    case "score": {
+      const action = notice.changes?.length === 1 ? scoreNoticeOperations[notice.changes[0].operation] : "Cập nhật điểm";
+      return {
+        title: notice.change ? action + " · " + scoreDeltaText(notice.change) : action,
+        body: "Tuần " + dateLabel(notice.week, true),
+        icon: ClipboardList,
+      };
+    }
     case "duty": {
       const title = notice.dutyChange === "cancelled" ? "Ca trực C1 đã hủy"
         : notice.dutyChange === "removed" ? "Bạn đã được gỡ khỏi ca trực C1"
@@ -50,6 +59,27 @@ export function notificationCopy(notice: InboxNotification) {
       return { title, body: [notice.period === "am" ? "Ca sáng" : "Ca chiều", dateLabel(notice.date, true), hours].filter(Boolean).join(" · "), icon: CalendarDays };
     }
   }
+}
+
+export function NotificationDetail({ notice }: { notice: InboxNotification }) {
+  if (notice.kind === "activity" && notice.eventScore) {
+    const { eventName, rounds, change, points } = notice.eventScore;
+    return <dl className="notification-event-details">
+      <div><dt>Hạng mục</dt><dd>{activityLabels.event}</dd></div>
+      <div><dt>Tên sự kiện</dt><dd>{eventName}</dd></div>
+      {rounds !== undefined && <div><dt>Số lượt đã duyệt</dt><dd>{formatScore(rounds)} lượt</dd></div>}
+      {change !== undefined && <div><dt>Điểm sự kiện sau cập nhật</dt><dd>{formatScore(points)} điểm</dd></div>}
+    </dl>;
+  }
+  return <>
+    <p className="notification-detail-body">{notificationCopy(notice).body}</p>
+    {notice.kind === "score" && !!notice.changes?.length && <ul className="notification-score-changes">
+      {notice.changes.map(({ operation, category, detail, change }, index) => <li key={index}>
+        <b>{scoreNoticeOperations[operation]} {scoreDeltaText(change)}</b>
+        <span>{category}{detail ? " · " + detail : ""}</span>
+      </li>)}
+    </ul>}
+  </>;
 }
 
 export default function WorkspaceNotifications({ state, pending, onOpenPending, onOpenNotice, onCompose }: {
@@ -124,27 +154,25 @@ export default function WorkspaceNotifications({ state, pending, onOpenPending, 
       {notifications.length ? <ul className="notification-items">
         {notifications.map(notice => {
           const { title, body, icon: Icon } = notificationCopy(notice);
+          const detailOnly = notice.kind === "score" || (notice.kind === "activity" && notice.target.area === "event");
+          const opensDialog = detailOnly || notice.kind === "direct";
           return <li key={notice.id} className="notification-entry" data-unread={!notice.read}>
-            <button type="button" className="notification-item" data-unread={!notice.read} onClick={() => {
-              setOpen(false);
-              if (!notice.read) void read([notice.id]);
-              onOpenNotice(notice);
-            }}>
+            <button type="button" className="notification-item" data-unread={!notice.read}
+              aria-haspopup={opensDialog ? "dialog" : undefined} aria-description={notice.read ? "Đã đọc" : "Chưa đọc"}
+              onClick={() => {
+                if (opensDialog) trigger.current?.focus();
+                setOpen(false);
+                if (!notice.read) void read([notice.id]);
+                onOpenNotice(notice);
+              }}>
               <span className="notification-item-icon"><Icon size={17} aria-hidden="true" /></span>
               <span className="notification-item-copy">
                 <strong>{title}</strong>
-                <span className="notification-item-detail">{body}</span>
-                {notice.kind === "score" && notice.changes?.length ? <span className="notification-score-changes" role="list">
-                  {notice.changes.map(({ operation, category, detail, change }, index) => <span key={index} role="listitem">
-                    <b>{scoreNoticeOperations[operation]} {scoreDeltaText(change)}</b>
-                    <span>{category}{detail ? " · " + detail : ""}</span>
-                  </span>)}
-                </span> : null}
+                {!detailOnly && <span className="notification-item-detail">{body}</span>}
                 <span className="notification-item-meta">
                   {notice.actorId ? <MemberName memberId={notice.actorId} /> : <span>{"feedbackId" in notice ? "Ẩn danh" : "Nhịp Đội"}</span>}
                   <time dateTime={new Date(notice.createdAt).toISOString()}>{notificationClock.format(notice.createdAt)}</time>
                 </span>
-                <span className="sr-only">{notice.read ? "Đã đọc" : "Chưa đọc"}</span>
               </span>
             </button>
             <div className="notification-entry-actions">

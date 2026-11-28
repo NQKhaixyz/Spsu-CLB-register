@@ -2,30 +2,35 @@
 
 import { Coins } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CREDIT_EXCHANGE_CENTS_PER_UNIT, CREDIT_EXCHANGE_POINT_CENTS,
-  type creditExchangeView, type CreditExchangeReceipt } from "../lib/credit-exchange";
+import { CREDITS_PER_POINT_UNIT_CENTS, CREDITS_TO_POINTS, CREDIT_EXCHANGE_AWARD_CENTS, CREDIT_EXCHANGE_BASE_POINT_CENTS,
+  CREDIT_EXCHANGE_COST_CENTS, CREDIT_EXCHANGE_FEE_PERCENT, CREDIT_EXCHANGE_MONTHLY_LIMIT, CREDIT_EXCHANGE_RATE,
+  POINT_EXCHANGE_UNIT_CENTS, POINTS_TO_CREDITS,
+  type creditExchangeView, type CreditExchangeCommand, type CreditExchangeReceipt } from "../lib/credit-exchange";
 import { monthLabel } from "../lib/club";
 import { formatCredits, parseCreditAmount } from "../lib/games";
 import { formatScore } from "./scoreboard";
 import { Button, Field } from "./ui";
 
 type ExchangeView = ReturnType<typeof creditExchangeView>;
-type Command = { month: string; units: number; operationId: string };
-const path = "/api/games/exchange";
+const path = "/api/games/exchange?rate=" + CREDIT_EXCHANGE_RATE;
+const price = formatCredits(CREDIT_EXCHANGE_COST_CENTS);
+const award = formatScore(CREDIT_EXCHANGE_AWARD_CENTS / 100);
+const pointUnit = formatScore(POINT_EXCHANGE_UNIT_CENTS / 100);
 
 export default function CreditExchange({ onExchanged }: { onExchanged: () => void }) {
   const [view, setView] = useState<ExchangeView>();
   const [month, setMonth] = useState("");
-  const [amount, setAmount] = useState("0,05");
+  const [amount, setAmount] = useState(pointUnit);
   const [receipt, setReceipt] = useState<CreditExchangeReceipt>();
-  const [retry, setRetry] = useState<Command>();
+  const [retry, setRetry] = useState<CreditExchangeCommand>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
   const selected = view?.months.find(row => row.month === month) ?? view?.months[0];
   const cents = parseCreditAmount(amount);
-  const units = cents && cents % CREDIT_EXCHANGE_POINT_CENTS === 0 ? cents / CREDIT_EXCHANGE_POINT_CENTS : 0;
-  const valid = selected && units > 0 && units <= selected.units;
+  const units = cents && cents % POINT_EXCHANGE_UNIT_CENTS === 0 ? cents / POINT_EXCHANGE_UNIT_CENTS : 0;
+  const canBuyCredits = !!selected && units > 0 && units <= selected.units;
+  const canBuyPoints = !!view && view.remaining > 0 && view.balanceCents >= CREDIT_EXCHANGE_COST_CENTS;
 
   useEffect(() => {
     const control = new AbortController();
@@ -39,11 +44,12 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
     return () => control.abort();
   }, []);
 
-  async function exchange(command: Command) {
+  async function exchange(command: CreditExchangeCommand) {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
     setError("");
+    setReceipt(undefined);
     try {
       const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(command), signal: AbortSignal.timeout(20_000) });
@@ -66,38 +72,57 @@ export default function CreditExchange({ onExchanged }: { onExchanged: () => voi
       setBusy(false);
     }
   }
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submitPoints(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (valid && !retry) void exchange({ month: selected.month, units, operationId: crypto.randomUUID() });
+    if (view && canBuyPoints && !retry)
+      void exchange({ month: view.month, direction: CREDITS_TO_POINTS, rate: CREDIT_EXCHANGE_RATE, operationId: crypto.randomUUID() });
+  }
+  function submitCredits(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selected && canBuyCredits && !retry)
+      void exchange({ month: selected.month, units, direction: POINTS_TO_CREDITS, rate: CREDIT_EXCHANGE_RATE, operationId: crypto.randomUUID() });
   }
 
-  return <section className="games-page" aria-label="Đổi điểm tháng sang credits">
+  return <section className="games-page" aria-label="Đổi điểm và credits">
     <div className="games-heading">
-      <div><h1>Đổi điểm tháng</h1><p>0,05 điểm tháng = 2.000 credits</p></div>
+      <div>
+        <h1>Đổi điểm tháng</h1>
+        <p>{price} credits = {formatScore(CREDIT_EXCHANGE_BASE_POINT_CENTS / 100)} điểm · Phí {CREDIT_EXCHANGE_FEE_PERCENT}% trên phần nhận</p>
+      </div>
       {view && <div className="games-wallet"><Coins size={20} aria-hidden="true" />
         <div><span>Số dư credits</span><strong>{formatCredits(view.balanceCents)}</strong></div></div>}
     </div>
-    <div className="games-card credit-exchange-card">
-      {error && <p role="alert">{error}</p>}
-      {!view && !error && <p role="status">Đang tải điểm tháng</p>}
-      {selected && <form onSubmit={submit}>
+    {error && <p className="games-message" role="alert">{error}</p>}
+    {!view && !error && <p role="status">Đang tải điểm tháng</p>}
+    {retry && <Button variant="secondary" disabled={busy} onClick={() => void exchange(retry)}>Thử lại lượt đổi</Button>}
+    {receipt && <p className="games-note credit-exchange-receipt" role="status">{"spentCents" in receipt
+      ? `Đã cộng ${formatScore(receipt.pointCents / 100)} Điểm riêng · Số dư giảm ${formatCredits(-receipt.balanceChangeCents)} credits`
+      : `Đã ghi ${formatScore(receipt.units * POINT_EXCHANGE_UNIT_CENTS / 100)} Điểm trừ · Số dư tăng ${formatCredits(receipt.balanceChangeCents)} credits`}</p>}
+    {view && <div className="credit-exchange-grid">
+      {selected && <form className="games-card" onSubmit={submitCredits} aria-label="Điểm tháng sang credits">
+        <h2>Điểm tháng sang credits</h2>
+        <p className="games-caption">Điểm dùng để đổi được ghi vào Điểm trừ</p>
         <Field label="Tháng dùng để đổi">
-          <select value={selected.month} onChange={event => { setMonth(event.target.value); setReceipt(undefined); }} disabled={busy || !!retry}>
-            {view?.months.map(row => <option key={row.month} value={row.month}>{monthLabel(row.month)}</option>)}
+          <select value={selected.month} onChange={event => setMonth(event.target.value)} disabled={busy || !!retry}>
+            {view.months.map(row => <option key={row.month} value={row.month}>{monthLabel(row.month)}</option>)}
           </select>
         </Field>
-        <p className="hint">Điểm tháng hiện tại <strong>{formatScore(selected.points)}</strong> · Có thể đổi {formatScore(selected.units / 20)} điểm</p>
+        <p className="games-caption">Có thể đổi {formatScore(selected.units * POINT_EXCHANGE_UNIT_CENTS / 100)} điểm</p>
         <Field label="Số điểm muốn đổi">
-          <input value={amount} onChange={event => setAmount(event.target.value)} inputMode="decimal" required disabled={busy || !!retry}
-            placeholder="0,05" />
+          <input value={amount} onChange={event => setAmount(event.target.value)} inputMode="decimal" required disabled={busy || !!retry} />
         </Field>
-        {valid && <p><strong>Nhận {formatCredits(units * CREDIT_EXCHANGE_CENTS_PER_UNIT)} credits</strong>
-          {view?.cupid && <span> · Cộng vào ví Cupid</span>}</p>}
-        <p className="hint">Điểm đã đổi được trừ khỏi điểm tháng, học kỳ và Excel.</p>
-        <Button type="submit" disabled={!valid || busy || !!retry}>Đổi điểm</Button>
+        {canBuyCredits && <p className="games-caption">Nhận {formatCredits(units * CREDITS_PER_POINT_UNIT_CENTS)} credits sau phí</p>}
+        <Button type="submit" disabled={!canBuyCredits || busy || !!retry}>Đổi điểm lấy credits</Button>
       </form>}
-      {retry && <Button variant="secondary" disabled={busy} onClick={() => void exchange(retry)}>Thử lại lượt đổi</Button>}
-      {receipt && <p className="games-note" role="status">Đã đổi {formatScore(receipt.units / 20)} điểm · Số dư của bạn tăng {formatCredits(receipt.balanceChangeCents)} credits</p>}
-    </div>
+      <form className="games-card" onSubmit={submitPoints} aria-label="Credits sang điểm tháng">
+        <h2>Credits sang điểm tháng</h2>
+        <p className="games-caption">Đổi {price} credits · Cộng {award} vào Điểm riêng sau phí</p>
+        <p className="games-caption">{monthLabel(view.month)} · Điểm hiện tại <strong>{formatScore(view.points)}</strong></p>
+        <p className="games-caption">Còn <strong>{view.remaining}/{CREDIT_EXCHANGE_MONTHLY_LIMIT} lượt đổi</strong> trong tháng</p>
+        {view.cupid && <p className="games-caption">Credits sẽ trừ từ ví Cupid</p>}
+        {view.remaining > 0 && view.balanceCents < CREDIT_EXCHANGE_COST_CENTS && <p className="games-caption">Cần {price} credits để đổi</p>}
+        <Button type="submit" disabled={!canBuyPoints || busy || !!retry}>Đổi {price} credits lấy điểm</Button>
+      </form>
+    </div>}
   </section>;
 }

@@ -1,15 +1,16 @@
 "use client";
 
 import { Bold, Italic } from "lucide-react";
-import { useId, useLayoutEffect, useRef, useState } from "react";
-import { toggleBulletinEmphasis, type BulletinMarker } from "../lib/bulletin-format";
+import { useId, useLayoutEffect, useRef, useState, type ClipboardEvent } from "react";
+import { escapeBulletinText, pastedMarkdownEmphasis, toggleBulletinEmphasis, type BulletinMarker } from "../lib/bulletin-format";
+import { pastedHtmlEmphasis } from "./bulletin-paste";
 import { BulletinText } from "./bulletin-text";
 import { Button, Field } from "./ui";
 
-export function TextEmphasisEditor({ label, name, formatName, initialText, initialFormat, rows, maxLength, required, busy, autoGrow, onDraftChange }: {
+export function TextEmphasisEditor({ label, name, formatName, initialText, initialFormat, rows, maxLength, required, busy, autoGrow, autoFormatPaste, onDraftChange }: {
   label: string; name: string; formatName: string; initialText?: string; initialFormat?: "emphasis";
   rows: number; maxLength: number; required?: boolean; busy: boolean;
-  autoGrow?: boolean;
+  autoGrow?: boolean; autoFormatPaste?: boolean;
   onDraftChange?: (content: string, format?: "emphasis") => void;
 }) {
   const [text, setText] = useState(initialText ?? "");
@@ -50,6 +51,33 @@ export function TextEmphasisEditor({ label, name, formatName, initialText, initi
     });
   }
 
+  function paste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const input = event.currentTarget;
+    const { clipboardData } = event;
+    const plain = clipboardData.getData("text/plain");
+    if (plain.length > maxLength) return;
+    const html = clipboardData.getData("text/html");
+    const imported = pastedMarkdownEmphasis(plain) ?? (html.length <= maxLength * 100 ? pastedHtmlEmphasis(html, plain) : undefined);
+    if (!imported) return;
+    event.preventDefault();
+    const before = input.value.slice(0, input.selectionStart);
+    const after = input.value.slice(input.selectionEnd);
+    const prefix = format ? before : escapeBulletinText(before);
+    const next = prefix + imported + (format ? after : escapeBulletinText(after));
+    if (next.length > maxLength) {
+      setError("Nội dung dán vượt giới hạn ký tự");
+      return;
+    }
+    setError("");
+    setText(next);
+    setFormat("emphasis");
+    onDraftChange?.(next, "emphasis");
+    const cursor = prefix.length + imported.length;
+    requestAnimationFrame(() => {
+      if (editor.current === input) input.setSelectionRange(cursor, cursor);
+    });
+  }
+
   const toolbar = <div className="bulletin-format-tools" role="group" aria-label={`Định dạng ${label.toLowerCase()}`}>
     <Button variant="secondary" disabled={busy} onClick={() => emphasize("**")}>
       <Bold size={16} aria-hidden="true" /> Bôi đậm
@@ -63,6 +91,7 @@ export function TextEmphasisEditor({ label, name, formatName, initialText, initi
     <Field label={label}>
       <textarea ref={editor} name={name} rows={rows} required={required} maxLength={maxLength}
         className={autoGrow ? "bulletin-grow-editor" : undefined}
+        onPaste={autoFormatPaste ? paste : undefined}
         value={text} onChange={event => {
           const value = event.target.value;
           setText(value);

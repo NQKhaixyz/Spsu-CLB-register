@@ -114,7 +114,6 @@ function MobileScoreList({ rows, memberId, period }: {
           <dl className="mobile-score-details">
             {metrics.map(key => <ScoreMetric key={key} {...attendanceMetrics[key]}
               count={row[key]} points={key !== "attended" ? row.attendancePoints?.[key] : undefined} />)}
-            {!!row.redeemedPoints && <ScoreMetric label="Điểm đã đổi credits" points={-row.redeemedPoints} />}
             {visibleActivityKinds.map(kind => <ScoreMetric key={kind} label={activityLabels[kind]}
               count={kind === "initiative" || kind === "ddv" || kind === "event" ? row.activityCounts[kind] : undefined}
               unit="lượt" points={row.activityPoints?.[kind]} />)}
@@ -141,7 +140,6 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
   });
   const visible = onlyMine ? ranked.filter(row => row.memberId === memberId) : ranked;
   const sharingColumns = sharingKinds.filter(kind => visible.some(row => row.sharingAdjustment?.[kind]));
-  const hasCreditUse = !weekly && visible.some(row => row.redeemedPoints);
   const columns = weekly ? weeklyColumns : monthlyColumns.filter(column => adminReport || column.key !== "lateDeduction");
   return (
     <section className={`panel score-panel${adminReport ? "" : " score-panel-standard"}`}>
@@ -178,7 +176,6 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
               {adminReport && <th scope="col">MSSV</th>}
               {columns.map(column => <th scope="col" key={column.key}
                 className={`score-numeric${"start" in column ? " score-column-group-start" : ""}`}>{column.label}</th>)}
-              {hasCreditUse && <th scope="col" className="score-numeric">Điểm đã đổi credits</th>}
               {visibleActivityKinds.map(kind => <th scope="col" key={kind}
                 className={`score-numeric${!weekly && (kind === "initiative" || kind === "committee") ? " score-column-group-start" : ""}`}>
                 {activityLabels[kind]}
@@ -202,7 +199,6 @@ export function Scoreboard({ title, period, reportMonth, rows, memberId, scope, 
                 {columns.map(column => <td key={column.key} className={`score-numeric${"start" in column ? " score-column-group-start" : ""}`}>
                   {column.key === "lateDeduction" ? signedScore(-(row.lateDeduction ?? 0) || 0) : row[column.key]}
                 </td>)}
-                {hasCreditUse && <td className="score-numeric">{signedScore(-(row.redeemedPoints ?? 0) || 0)}</td>}
                 {visibleActivityKinds.map(kind => <td key={kind}
                   className={`score-numeric${!weekly && (kind === "initiative" || kind === "committee") ? " score-column-group-start" : ""}`}>
                   {row.activityCounts[kind]}

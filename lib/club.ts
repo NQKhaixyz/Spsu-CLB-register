@@ -1,7 +1,7 @@
 import { activityKinds, activityScoreFor, type ActivityRates, type ActivityRegistration, type ManualActivity, type ClubEvent, type PointDeduction, type CommitteeRates } from "./activity";
-import type { StoredActivityNotice, StoredDirectNotice } from "./notification-types";
+import type { StoredActivityNotice, StoredDirectNotice, StoredEventAnnouncement } from "./notification-types";
 import type { GamesState } from "./games";
-import type { MonthlyCreditUse } from "./credit-exchange";
+import type { MonthlyCreditAward, MonthlyCreditUse } from "./credit-exchange";
 import type { SharedLink } from "./shared-links";
 import type { BulletinPost, BulletinPostView } from "./bulletin";
 import type { BulletinUpload } from "./bulletin-media";
@@ -155,6 +155,7 @@ export type Club = {
   links?: SharedLink[];
   bulletinPosts?: BulletinPost[];
   activityNotices?: StoredActivityNotice[];
+  eventAnnouncements?: StoredEventAnnouncement[];
   dismissedNoticeIds?: Record<string, string[]>;
   roundEventNoticesSince?: number;
   directNotices?: StoredDirectNotice[];
@@ -162,6 +163,7 @@ export type Club = {
   sharing?: SharingState;
   creditSharingSince?: number;
   monthlyCreditUses?: MonthlyCreditUse[];
+  monthlyCreditAwards?: MonthlyCreditAward[];
   games?: GamesState;
   feedbackResetReceipt?: FeedbackResetReceipt;
   bulletinUploads?: BulletinUpload[];
@@ -535,8 +537,6 @@ export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?:
   };
   const pointsBeforeSharing = Object.values(attendancePoints).reduce((sum, value) => sum + value, 0) + activities.activityTotal;
   const sharingAdjustment = sharingAdjustmentFor(sharingIndex ?? sharingScoreBook(club).index, memberId, month, onlyWeek);
-  const redeemedPoints = onlyWeek || member?.role === "admin" ? 0 : (club.monthlyCreditUses ?? [])
-    .filter(use => use.memberId === memberId && use.month === month).reduce((sum, use) => sum + use.units, 0) / 20;
   return {
     ...activities,
     attendancePoints,
@@ -549,8 +549,7 @@ export function scoreFor(club: Club, memberId: string, month: string, onlyWeek?:
     lateDeduction,
     pointsBeforeSharing,
     sharingAdjustment,
-    redeemedPoints,
-    points: roundSharingScore(pointsBeforeSharing + sharingAdjustment.cupid + sharingAdjustment.guild - redeemedPoints),
+    points: roundSharingScore(pointsBeforeSharing + sharingAdjustment.cupid + sharingAdjustment.guild),
   };
 }
 export function createDutyShiftSlots(club: Club, month: string, peoplePerShift: number): Shift[] {
@@ -829,7 +828,6 @@ export type WeeklyScore = ReturnType<typeof activityScoreFor> & {
 export type ScoreboardRow = Omit<WeeklyScore, "week" | "activityTotal"> & {
   name: string;
   committeeNames?: string;
-  redeemedPoints?: number;
 };
 
 export function weeklyScoreFor(club: Club, memberId: string, week: string, sharingIndex = sharingScoreBook(club).index): WeeklyScore {

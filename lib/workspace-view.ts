@@ -37,13 +37,12 @@ export function monthlyScoreboard(club: Club, month: string, asOf = today(),
   return reportMembers(club, month, asOf).map(member => {
     const {
       points, completed, dutyMissed, meetingMissed, attended, passed, lateCount,
-      activityCounts, activityPoints, attendancePoints, sharingAdjustment, redeemedPoints,
+      activityCounts, activityPoints, attendancePoints, sharingAdjustment,
     } = scoreFor(club, member.id, month, undefined, sharingIndex);
     return {
       memberId: member.id, name: displayText(member.name), committeeNames: memberCommitteeNames(member),
       points, completed, dutyMissed, meetingMissed, attended, passed, lateCount,
       activityCounts, activityPoints, attendancePoints,
-      ...(redeemedPoints ? { redeemedPoints } : {}),
       ...(sharingAdjustment.cupid || sharingAdjustment.guild ? { sharingAdjustment } : {}),
     };
   });
@@ -130,9 +129,11 @@ export function workspaceView(
     delete club.dutyWithdrawal;
     delete club.semesterScoreDraft;
     delete club.monthlyCreditUses;
+    delete club.monthlyCreditAwards;
   }
   const { memberFeedback: _privateFeedback, feedbackResetReceipt: _feedbackResetReceipt, sharing: _sharing,
-    activityNotices: _activityNotices, directNotices: _directNotices, games: _games, roundEventNoticesSince: _roundNoticesSince,
+    activityNotices: _activityNotices, directNotices: _directNotices, eventAnnouncements: _eventAnnouncements,
+    games: _games, roundEventNoticesSince: _roundNoticesSince,
     dismissedNoticeIds: _dismissedNoticeIds, creditSharingSince: _creditSharingSince, ...visibleClub } = club;
   const view = currentTerminology({ club: visibleClub, me, isAdmin: !!isAdmin, setup: !me,
     identity: { name: user.displayName, email: user.email }, revision, weeklyScores, monthlyAvatarRanks, currentMonthScores,

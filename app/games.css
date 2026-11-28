@@ -90,7 +90,11 @@
   padding: 10px 12px;
 }
 .games-inactivity-charge { margin-block: 0 14px; }
-.credit-exchange-card { max-width: 34rem; }
+.credit-exchange-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.credit-exchange-grid .field { margin-block: 0; }
+.credit-exchange-grid .btn { justify-self: start; }
+.credit-exchange-receipt { margin-block: 0 14px; }
+@media (max-width: 720px) { .credit-exchange-grid { grid-template-columns: minmax(0, 1fr); } }
 .games-room-list, .games-history ul, .game-wheel-rules ul {
   list-style: none;
   margin: 0;

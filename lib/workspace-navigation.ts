@@ -3,7 +3,6 @@ export const sidebarTabLabels = {
   activity: "Hoạt động",
   scoreboard: "Bảng điểm",
   feedback: "Feedback",
-  games: "Trò chơi",
   personal: "Góc của tôi",
   members: "Thành viên",
 } as const;

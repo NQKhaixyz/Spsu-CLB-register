@@ -1,5 +1,7 @@
+import { eventScheduleLabel } from "./activity";
 import { bulletinAuthorId, isBulletinPublished, type BulletinPost } from "./bulletin";
 import { isRosterMember, isShiftPublished, today, weekId, type Club, type Member } from "./club";
+import { legacyEventNoticeScore } from "./event-notice-score";
 import {
   canReceiveDirectNotice, isNoticeId, noticeBodyLimit, noticeTitleLimit,
   type ActivityNoticeDraft, type WorkspaceNotification,
@@ -23,12 +25,29 @@ export function workspaceNotificationsFor(club: Club, viewerId: string, now = Da
     if (!recipients.includes(viewerId)) continue;
     notifications.push({ ...notice, kind: "direct", read: readBy?.includes(viewerId) ? true : undefined });
   }
+  const events = new Map(club.events?.map(event => [event.id, event]));
+  for (const { id, eventId, createdAt, readBy } of club.eventAnnouncements ?? []) {
+    const event = events.get(eventId);
+    if (!event || createdAt > now || viewer.joined > today(new Date(createdAt))) continue;
+    notifications.push({ id, createdAt, actorId: event.createdBy, read: readBy?.includes(viewerId) ? true : undefined,
+      kind: "activity", title: "Sự kiện mới · " + event.name, body: [eventScheduleLabel(event), event.location].filter(Boolean).join("\n"),
+      target: { area: "event", eventId } });
+  }
   if (!isRosterMember(viewer)) return notifications;
-  const knownEvents = new Set(club.events?.map(event => event.id));
   for (const { memberId, ...notice } of club.activityNotices ?? []) {
     if (memberId !== viewerId) continue;
     if (notice.kind !== "duty") {
-      if (notice.kind === "activity" && notice.target.area === "event" && !knownEvents.has(notice.target.eventId)) continue;
+      if (notice.kind === "activity" && notice.target.area === "event") {
+        const event = events.get(notice.target.eventId);
+        if (!event) continue;
+        if (!notice.eventScore && notice.title === "Kết quả sự kiện đã cập nhật") {
+          const eventScore = legacyEventNoticeScore(club, event, memberId, notice.body);
+          if (eventScore) {
+            notifications.push({ ...notice, title: "Sự kiện đã duyệt", eventScore });
+            continue;
+          }
+        }
+      }
       notifications.push(notice);
       continue;
     }
@@ -47,6 +66,11 @@ export function workspaceNotificationsFor(club: Club, viewerId: string, now = Da
 
 export function removeEventNotices(club: Club, eventId: string) {
   const removed = new Set<string>();
+  if (club.eventAnnouncements) club.eventAnnouncements = club.eventAnnouncements.filter(notice => {
+    if (notice.eventId !== eventId) return true;
+    removed.add(notice.id);
+    return false;
+  });
   if (club.activityNotices) club.activityNotices = club.activityNotices.filter(notice => {
     const matches = notice.kind === "activity" && notice.target.area === "event" && notice.target.eventId === eventId;
     if (matches) removed.add(notice.id);
@@ -71,6 +95,9 @@ export function confirmBulletinNotice(post: BulletinPost, memberId: string) {
 export function readWorkspaceNotifications(club: Club, viewerId: string, ids: ReadonlySet<string>) {
   for (const { notice } of club.bulletinPosts ?? []) {
     if (notice && ids.has(notice.id)) notice.readBy = withReader(notice.readBy, viewerId);
+  }
+  for (const notice of club.eventAnnouncements ?? []) {
+    if (ids.has(notice.id)) notice.readBy = withReader(notice.readBy, viewerId);
   }
   for (const notice of club.directNotices ?? []) {
     if (ids.has(notice.id) && notice.recipients.includes(viewerId)) notice.readBy = withReader(notice.readBy, viewerId);

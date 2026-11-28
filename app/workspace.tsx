@@ -25,7 +25,7 @@ import DutyWeekActions from "./duty-week-actions";
 import SharedLinks from "./shared-links";
 import BulletinBoard from "./bulletin-board";
 import { FeedbackPage, type EditFeedback, type FeedbackConversationActions, type RecallFeedback, type SubmitFeedback } from "./feedback";
-import WorkspaceNotifications, { notificationClock, notificationCopy } from "./feedback-notifications";
+import WorkspaceNotifications, { NotificationDetail, notificationClock, notificationCopy } from "./feedback-notifications";
 import { DirectNoticeComposer } from "./direct-notice-composer";
 import GamesPage from "./games";
 import CreditExchange from "./credit-exchange";
@@ -165,10 +165,10 @@ const sidebarGroups: Record<SidebarTab, { icon: LucideIcon; sections: readonly [
   activity: { icon: CalendarDays, sections: ["meetings", "duties", "requests"] },
   bulletin: { icon: Newspaper, sections: ["bulletin", "links"] },
   feedback: { icon: MessageSquare, sections: ["feedback"] },
-  games: { icon: Gamepad2, sections: ["coinflip", "xo", "wheel", "exchange", "creditsRank"] },
   members: { icon: Users, sections: ["members"] },
   personal: { icon: UserRound, sections: ["personal"] },
 };
+const gameTabs: readonly Tab[] = ["coinflip", "xo", "wheel", "exchange", "creditsRank"];
 const getForm = (e: FormEvent<HTMLFormElement>) => {
   e.preventDefault();
   return Object.fromEntries(new FormData(e.currentTarget));
@@ -566,20 +566,35 @@ export default function Workspace() {
     setDutyWeek(week);
     setDutyFocus({ id: shiftId });
   }
+  function showNoticeDetail(notice: InboxNotification, destination?: { label: string; open: () => void }) {
+    closeProfile();
+    setModal({
+      title: notificationCopy(notice).title,
+      description: <time dateTime={new Date(notice.createdAt).toISOString()}>{notificationClock.format(notice.createdAt)}</time>,
+      content: <>
+        <NotificationDetail notice={notice} />
+        {destination && <div className="form-footer">
+          <Button onClick={() => { closeModal(); destination.open(); }}>{destination.label}</Button>
+        </div>}
+      </>,
+    });
+  }
   function openWorkspaceNotification(notice: InboxNotification) {
     if ("sharingId" in notice) return openSharingFromNotification(notice.sharingId);
     if ("feedbackId" in notice) return openFeedbackFromNotification(notice.feedbackId);
     if (notice.kind === "bulletin") return openBulletinFromNotification(notice.postId);
-    if (notice.kind === "score") return openScoreFromNotification(notice.week);
+    if (notice.kind === "score") return showNoticeDetail(notice, {
+      label: "Xem điểm tuần", open: () => openScoreFromNotification(notice.week),
+    });
     if (notice.kind === "duty") return openDutyFromNotification(notice.week, notice.shiftId);
     if (notice.kind === "activity") {
       const { target } = notice;
       if (target.area === "duty") return openDutyFromNotification(target.week, target.shiftId);
       if (target.area === "event" && !target.deleted) {
-        closeProfile();
-        go("requests");
-        setEventFocus({ id: target.eventId });
-        return;
+        return showNoticeDetail(notice, { label: "Xem sự kiện", open: () => {
+          go("requests");
+          setEventFocus({ id: target.eventId });
+        } });
       }
       if (target.area === "meeting") {
         closeProfile();
@@ -588,13 +603,7 @@ export default function Workspace() {
         return;
       }
     }
-    closeProfile();
-    const { title, body } = notificationCopy(notice);
-    setModal({
-      title,
-      description: <time dateTime={new Date(notice.createdAt).toISOString()}>{notificationClock.format(notice.createdAt)}</time>,
-      content: <p className="notification-detail-body">{body}</p>,
-    });
+    showNoticeDetail(notice);
   }
   if (loading) return <Loading />;
   if (auth) return <Login onSuccess={load} />;
@@ -678,8 +687,10 @@ export default function Workspace() {
   const activeTab = !isAdmin && (tab === "overview" || tab === "settings") ? "personal" : tab;
   const activeSidebarTab = sidebarTabs.find(id => sidebarGroups[id].sections.includes(activeTab));
   const navigationOrder = teamSidebarOrder(club.sidebarOrder);
+  const inGames = gameTabs.includes(activeTab);
   const headerTitle = activeSidebarTab ? sidebarTabLabels[activeSidebarTab]
-    : activeTab === "overview" ? "Tổng quan" : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
+    : inGames ? "Trò chơi" : activeTab === "overview" ? "Tổng quan" : activeTab === "settings" ? "Cài đặt Đội" : "Cài đặt cá nhân";
+  const accountRole = memberRoleLabel(me);
   const week =
     club.weeks.find((w) => w.id === selectedWeek) ?? club.weeks.at(-1)!;
   const weeklyScores = (view.weeklyScores ?? []).filter(score => score.week === week.id);
@@ -714,7 +725,7 @@ export default function Workspace() {
     { id: "meetings", label: isAdmin ? "Họp hằng tuần" : "Đăng ký họp", pending: pending.length },
     { id: "duties", label: "Lịch trực C1" },
     { id: "requests", label: isAdmin ? "Tạo sự kiện" : "Sự kiện", pending: activityPending },
-  ] : activeSidebarTab === "games" ? [
+  ] : inGames ? [
     { id: "coinflip", label: "Coinflip" },
     { id: "xo", label: "XO" },
     { id: "wheel", label: "Vòng quay may mắn" },
@@ -3439,7 +3450,7 @@ export default function Workspace() {
             <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} />
             <div>
               <MemberName as="strong" memberId={me.id} />
-              <span>{isAdmin ? "Ban điều hành" : "Thành viên"}</span>
+              <span>{accountRole}</span>
             </div>
             <button
               title="Đăng xuất"
@@ -3475,6 +3486,10 @@ export default function Workspace() {
           <div className="topbar-right">
             <span className="today-label">{dateLabel(today(), true)}</span>
             <MusicPlayer obscured={Boolean(modal || profileMember) || avatarEditing} />
+            <button type="button" className="icon-button header-games-button" aria-label="Trò chơi" title="Trò chơi"
+              aria-current={inGames ? "page" : undefined} onClick={() => go(inGames ? activeTab : "coinflip")}>
+              <Gamepad2 size={19} aria-hidden="true" />
+            </button>
             <button
               className="icon-button"
               aria-label="Cập nhật dữ liệu"
@@ -3492,7 +3507,7 @@ export default function Workspace() {
             <span className="topbar-divider" />
             <Avatar memberId={me.id} name={me.name} photoId={me.avatarId} size="small" />
             <span className="topbar-role">
-              {isAdmin ? "Ban điều hành" : "Thành viên"}
+              {accountRole}
               <ChevronDown size={13} />
             </span>
           </div>

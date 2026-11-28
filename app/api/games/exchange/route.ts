@@ -1,4 +1,4 @@
-import { creditExchangeView, exchangeMonthlyCredits, parseCreditExchange } from "../../../../lib/credit-exchange";
+import { CREDIT_EXCHANGE_RATE, creditExchangeView, exchangeMonthlyCredits, parseCreditExchange } from "../../../../lib/credit-exchange";
 import { GameRuleError } from "../../../../lib/games";
 import { getNativeUserWithClub } from "../../../../lib/native-auth";
 import { AuthError } from "../../../../lib/password";
@@ -15,6 +15,8 @@ export async function GET(request: Request) {
     const user = await getNativeUserWithClub(request);
     if (!user) return json({ error: "Vui lòng đăng nhập để đổi điểm" }, 401);
     if (user.member.role !== "member") return json({ error: "Đổi điểm dành cho tài khoản thành viên" }, 403);
+    if (new URL(request.url).searchParams.get("rate") !== CREDIT_EXCHANGE_RATE)
+      return json({ error: "Tỷ lệ đổi đã thay đổi. Tải lại trang để tiếp tục" }, 409);
     return json(creditExchangeView(user.club, user.member));
   } catch {
     return json({ error: "Chưa tải được điểm tháng" }, 503);

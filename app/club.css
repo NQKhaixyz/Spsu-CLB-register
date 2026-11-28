@@ -478,6 +478,8 @@ input[type="checkbox"]:disabled {
   background: #f0f3ea;
   color: var(--green);
 }
+.header-games-button { flex: none; }
+.header-games-button[aria-current="page"] { background: #e3ece0; color: var(--green-dark); }
 .main-content {
   max-width: 1580px;
   margin: auto;

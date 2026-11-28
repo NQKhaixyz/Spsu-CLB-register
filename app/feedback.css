@@ -132,6 +132,9 @@
 .notification-item-meta { display: flex; gap: 0 9px; flex-wrap: wrap; color: var(--muted); font-size: .8125rem; }
 .notification-item-meta time { white-space: nowrap; }
 .notification-detail-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.notification-event-details { display: grid; gap: 10px; margin: 0; overflow-wrap: anywhere; }
+.notification-event-details dt { font-weight: 700; font-size: .875rem; color: var(--muted); }
+.notification-event-details dd { margin: 0; }
 .direct-notice-picker fieldset {
   display: grid;
   gap: 6px;
@@ -348,11 +351,12 @@
 }
 .notification-score-changes {
   display: grid;
-  gap: 5px;
-  margin-block: 3px;
-  font-size: .82rem;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
 }
-.notification-score-changes > span {
+.notification-score-changes > li {
   display: grid;
   gap: 2px;
   padding-inline-start: 8px;

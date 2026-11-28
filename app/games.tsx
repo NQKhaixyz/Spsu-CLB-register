@@ -3,7 +3,8 @@
 import { ArrowDownRight, ArrowUpRight, Coins, Dices, Gamepad2, LoaderCircle, Plus, RotateCw, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
-  COIN_SIDES, COIN_WIN_PAYOUT_CENTS, formatCredits, GAME_RULES_VERSION, isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY, WHEEL_REFUND_PERCENT,
+  COIN_SIDES, COIN_WIN_PAYOUT_CENTS, formatCredits, GAME_INACTIVITY_DAYS, GAME_INACTIVITY_MS, GAME_RULES_VERSION,
+  INACTIVE_GAME_CHARGE_CENTS, isLiveRoom, markOnTurn, WHEEL_FACTORS, WHEEL_REFUND_EVERY, WHEEL_REFUND_PERCENT,
   xoPrizeCents, xoSize, xoWinLength, XO_BOARD_SIZE,
   type CoinFlipCommand, type CoinSide, type GameCommand, type GamesResponse, type GamesView, type OpenXoRoom,
   type WheelFactor, type WheelSpin, type XoRoom,
@@ -11,7 +12,6 @@ import {
 import { MemberName, useMemberIdentity } from "./member-identity";
 import { Avatar, Button, Dialog, Field } from "./ui";
 import XoBoard from "./xo-board";
-import { addDays, dateLabel, weekId } from "../lib/club";
 
 const gamesPath = "/api/games?rules=" + GAME_RULES_VERSION;
 const creditNumber = new Intl.NumberFormat("vi-VN");
@@ -141,12 +141,13 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
 
   const coinMoving = tab === "coinflip" && !!coinMotion && view?.flips[0]?.id === coinMotion.id;
   const visibleBalance = coinMoving ? coinMotion.previousBalance : view?.wallet.balanceCents;
-  const inactivityCharge = view?.inactivityCharge;
+  const inactivityCharge = view?.gameInactivityCharge;
   return <div className="games-page" aria-label="Trò chơi của Đội">
     <div className="games-heading">
       <div>
         <h1>{gameLabels[tab]}</h1>
         {tab === "xo" && <p>Lập phòng và chơi cùng thành viên trong Đội</p>}
+        <p>Mỗi {GAME_INACTIVITY_DAYS} ngày không chơi trừ {formatCredits(INACTIVE_GAME_CHARGE_CENTS)} credits</p>
       </div>
       {visibleBalance !== undefined && <div className="games-wallet">
         <Coins size={21} aria-hidden="true" />
@@ -154,9 +155,9 @@ export default function GamesPage({ tab, memberId }: { tab: keyof typeof gameLab
       </div>}
     </div>
     {view?.cupidPartnerId && <p className="games-note games-inactivity-charge">Ví Cupid với <MemberName memberId={view.cupidPartnerId} /> · Số dư hiển thị cho mỗi người</p>}
-    {inactivityCharge && addDays(inactivityCharge.week, 7) === weekId() && <p className="games-note games-inactivity-charge">
-      Tuần {dateLabel(inactivityCharge.week, true)} không có biến động · Đã trừ {formatCredits(inactivityCharge.amountCents)} credits
-      {view?.cupidPartnerId && " từ ví Cupid"}
+    {inactivityCharge && Date.now() - inactivityCharge.at < GAME_INACTIVITY_MS && <p className="games-note games-inactivity-charge">
+      {spinTime.format(inactivityCharge.at)} · Đã trừ {formatCredits(inactivityCharge.amountCents)} credits
+      {inactivityCharge.shared && " từ ví Cupid"} vì {GAME_INACTIVITY_DAYS} ngày không chơi
     </p>}
     {actionError && <div className="games-message" role="alert">
       <span>{actionError}</span>

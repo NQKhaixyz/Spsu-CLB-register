@@ -2,7 +2,7 @@
 import { CalendarDays, ChevronDown, MapPin, Paperclip, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { addDays, dateLabel, today, uid, weekId, type Club, type Member, type WeeklyScore } from "../lib/club";
-import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, defaultEventPoints, eventQuantityPoints, eventRoundRegistration, recordedEventQuantity, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
+import { activityLabels, activityName, activityPointsFor, allowsMultipleEventRounds, canAttendEvent, defaultEventPoints, eventQuantityPoints, eventRoundRegistration, recordedEventQuantity, registrationStatusLabel, eventDescriptionLimit, eventLocationLimit, eventForActivity, eventScheduleLabel, isEventOpen, manualKinds, visibleActivityKinds, type ActivityRegistration, type ClubEvent, type ManualActivityKind } from "../lib/activity";
 import { committeeKinds, committeeLabels, isCommitteeKind, memberCommittees, memberCommitteeNames, matchesCommittee, type CommitteeFilter, type CommitteeKind } from "../lib/committees";
 import { eventEvidenceView } from "../lib/event-evidence";
 import { sharingKinds, sharingScoreLabels, sharingSourceKey } from "../lib/sharing-types";
@@ -42,19 +42,6 @@ function eventRegistrationGroups(event: ClubEvent, rows: ActivityRegistration[])
     else groups.set(row.memberId, [row]);
   }
   return [...groups.values()];
-}
-
-function eventScheduleLabel({ startDate, startTime, endDate, endTime }: ClubEvent) {
-  const date = dateLabel(startDate, true);
-  if (startDate !== endDate) {
-    const from = startTime ? `${date} ${startTime}` : date;
-    const until = dateLabel(endDate, true) + (endTime ? ` ${endTime}` : "");
-    return `${from} – ${until}`;
-  }
-  if (startTime && endTime) return `${date} · ${startTime} – ${endTime}`;
-  if (startTime) return `${date} · Bắt đầu ${startTime}`;
-  if (endTime) return `${date} · Kết thúc ${endTime}`;
-  return date;
 }
 
 export default function Activities({ club, me, isAdmin, busy, onAction, onEvidenceSaved, focusEvent, onViewEvent }: Omit<ActivityProps, "week"> & {

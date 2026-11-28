@@ -1,6 +1,7 @@
 import type { Member, Shift } from "./club";
 
 type Notice = { id: string; createdAt: number; actorId?: string; read?: true };
+export type StoredEventAnnouncement = { id: string; createdAt: number; eventId: string; readBy?: string[] };
 export type ScoreNoticeChange = {
   operation: "add" | "deduct" | "revoke";
   category: string;
@@ -14,7 +15,10 @@ export type ActivityNoticeTarget =
   | { area: "event"; eventId: string; deleted?: true }
   | { area: "meeting"; week: string }
   | { area: "duty"; week: string; shiftId: string };
-export type ActivityUpdate = { kind: "activity"; title: string; body: string; target: ActivityNoticeTarget; roundEventResult?: true };
+export type EventNoticeScore = { eventName: string; points: number; rounds?: number; change?: number; current?: true };
+export type ActivityUpdate = {
+  kind: "activity"; title: string; body: string; target: ActivityNoticeTarget; roundEventResult?: true; eventScore?: EventNoticeScore;
+};
 type StoredDutyNotice = { kind: "duty"; month: string; shiftId: string; hours?: DutyHours; dutyChange?: DutyChange };
 export type StoredActivityNotice = Notice & { memberId: string } & (ScoreUpdate | StoredDutyNotice | ActivityUpdate);
 export type ActivityNoticeDraft = (ScoreUpdate | StoredDutyNotice | ActivityUpdate) & { memberId: string };

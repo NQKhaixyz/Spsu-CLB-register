@@ -1,6 +1,6 @@
 import { activityPointsFor, type ClubEvent } from "./activity";
 import { addDays, isRosterMember, today, type Club } from "./club";
-import type { StoredActivityNotice } from "./notification-types";
+import type { EventNoticeScore, StoredActivityNotice } from "./notification-types";
 import { roundSharingScore } from "./sharing-scores";
 
 const formatPoints = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 10 });
@@ -40,9 +40,10 @@ export function settleRoundEventNotices(club: Club, now = Date.now()) {
   const seen = new Set<string>();
   const next: StoredActivityNotice[] = [];
   let changed = false;
-  function bodyFor(total: RoundResult) {
-    const points = formatPoints.format(roundSharingScore(total.points));
-    return `Bạn đã nhận ${points} điểm vì tham gia sự kiện ${total.name} ${formatPoints.format(total.rounds)} lần`;
+  function receiptFor(total: RoundResult) {
+    const eventScore: EventNoticeScore = { eventName: total.name, points: roundSharingScore(total.points), rounds: total.rounds };
+    const body = `Bạn đã nhận ${formatPoints.format(eventScore.points)} điểm vì tham gia sự kiện ${total.name} ${formatPoints.format(total.rounds)} lần`;
+    return { body, eventScore };
   }
   for (const notice of notices) {
     if (notice.kind !== "activity" || !notice.roundEventResult || notice.target.area !== "event") {
@@ -56,16 +57,19 @@ export function settleRoundEventNotices(club: Club, now = Date.now()) {
       continue;
     }
     seen.add(key);
-    const body = bodyFor(total);
-    if (body !== notice.body) {
-      next.push({ ...notice, body, createdAt: now, read: undefined });
+    const receipt = receiptFor(total);
+    if (receipt.body !== notice.body) {
+      next.push({ ...notice, ...receipt, createdAt: now, read: undefined });
+      changed = true;
+    } else if (!notice.eventScore) {
+      next.push({ ...notice, ...receipt });
       changed = true;
     } else next.push(notice);
   }
   for (const [key, total] of totals) {
     if (seen.has(key)) continue;
     next.push({ id: crypto.randomUUID(), memberId: total.memberId, createdAt: total.notifiedAt,
-      kind: "activity", roundEventResult: true, title: "Đã nhận điểm sự kiện", body: bodyFor(total),
+      kind: "activity", roundEventResult: true, title: "Đã nhận điểm sự kiện", ...receiptFor(total),
       target: { area: "event", eventId: total.eventId } });
     changed = true;
   }

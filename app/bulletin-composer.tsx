@@ -185,7 +185,7 @@ export function BulletinComposer({ postId, original, initialSelection, isAdmin, 
         <div className="bulletin-compose-fields">
           <Field label="Tiêu đề"><input name="title" required maxLength={bulletinTitleLimit}
             value={title} onChange={event => setTitle(event.target.value)} /></Field>
-          <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={9} maxLength={bulletinContentLimit} autoGrow
+          <TextEmphasisEditor label="Nội dung" name="content" formatName="contentFormat" rows={9} maxLength={bulletinContentLimit} autoGrow autoFormatPaste
             initialText={original?.content} initialFormat={original?.contentFormat} required={!files.length} busy={waiting}
             onDraftChange={(content, contentFormat) => setDraft({ content, contentFormat })} />
           <div className="bulletin-picker">

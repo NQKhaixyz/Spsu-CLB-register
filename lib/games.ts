@@ -1,4 +1,4 @@
-import { addDays, today, weekId, type Club } from "./club";
+import type { Club } from "./club";
 import { recordCreditEntry, type CreditMovement, type PendingCreditEntry } from "./credit-history";
 import { activeSharingPeriod, type SharingPeriod } from "./sharing-types";
 import type { CreditExchangeReceipt } from "./credit-exchange";
@@ -11,10 +11,12 @@ export const COIN_WIN_PAYOUT_CENTS = 190;
 export type Mark = "X" | "O";
 export type XoSize = 3 | 20;
 export const XO_BOARD_SIZE = 20;
-export const GAME_RULES_VERSION = "6";
+export const GAME_RULES_VERSION = "7";
 export const WHEEL_REFUND_EVERY = 10;
-export const WHEEL_REFUND_PERCENT = 45;
-export const WEEKLY_INACTIVE_CREDIT_CHARGE = 100_000;
+export const WHEEL_REFUND_PERCENT = 19;
+export const INACTIVE_GAME_CHARGE_CENTS = 50_000;
+export const GAME_INACTIVITY_DAYS = 3;
+export const GAME_INACTIVITY_MS = GAME_INACTIVITY_DAYS * 86_400_000;
 
 const startingBalance = 1_000_000;
 const creditCents = 100;
@@ -29,6 +31,7 @@ const rankNames = new Intl.Collator("vi-VN", { numeric: true });
 
 type WheelProgress = { spins: number; netCredits: number };
 const emptyWheelProgress: WheelProgress = { spins: 0, netCredits: 0 };
+type InactivityCharge = { at: number; amountCents: number; shared?: true };
 type Wallet = {
   balanceCents: number;
   version: number;
@@ -36,8 +39,7 @@ type Wallet = {
   flips?: CoinFlip[];
   wheelProgress?: WheelProgress;
   operatorGrants?: CreditAdjustmentReceipt[];
-  creditActivityWeek?: string;
-  inactivityCharge?: { week: string; amountCents: number };
+  gameInactivityCharge?: InactivityCharge;
 };
 export type CreditAdjustmentMode = "add" | "subtract" | "set";
 export type CreditAdjustmentReceipt = {
@@ -100,6 +102,7 @@ export type OpenXoRoom = Pick<XoRoom, "id" | "hostId" | "stake"> & { size: XoSiz
 export type GamesState = {
   wallets: Record<string, Wallet>;
   rooms: XoRoom[];
+  inactivityDue?: Record<string, number>;
   inactivityWeek?: { week: string; memberIds: string[] };
   creditHistorySince?: number;
   exchangeReceipts?: CreditExchangeReceipt[];
@@ -111,7 +114,7 @@ export type GamesView = {
   ownRooms: XoRoom[];
   spins: WheelSpin[];
   flips: CoinFlip[];
-  inactivityCharge?: Wallet["inactivityCharge"];
+  gameInactivityCharge?: InactivityCharge;
   cupidPartnerId?: string;
   wheelProgress: { spins: number; pendingRefundCents: number };
 };
@@ -257,7 +260,7 @@ export function mergeCupidCredits(club: Club, period: SharingPeriod, at: number)
   period.creditRemainder = Number(total % two) || undefined;
   for (const memberId of [one, other]) {
     const difference = equal - walletFor(games, memberId).balanceCents;
-    saveWalletBalance(games, memberId, equal, difference ? at : undefined);
+    saveWalletBalance(games, memberId, equal);
     recordCreditEntry(games, { memberId, at, balanceCents: equal, changeCents: difference, kind: "cupid", label: "Gộp ví Cupid" });
   }
 }
@@ -270,7 +273,7 @@ export function separateCupidCredits(club: Club, period: SharingPeriod, at: numb
   period.endingCreditBalance = balance;
   const remainder = period.creditRemainder ?? 0;
   if (remainder) {
-    saveWalletBalance(games, one, balance + remainder, at);
+    saveWalletBalance(games, one, balance + remainder);
     recordCreditEntry(games, { memberId: one, at, balanceCents: balance + remainder, changeCents: remainder,
       kind: "cupid", label: "Phần lẻ khi kết thúc Cupid" });
   }
@@ -385,7 +388,7 @@ export function adjustGameCredits(club: Club, command: CreditAdjustmentCommand, 
   const multiplier = mode === "set" && creditPair(club, memberId) ? 2 : 1;
   if (changeCents > 0 && BigInt(changeCents) * BigInt(multiplier) > creditHeadroom(club, memberId))
     throw new GameRuleError("Số dư sẽ vượt giới hạn tính toán", 409);
-  const next = updateBalance(club, memberId, at, [{ kind: "adjustment", label: "Điều chỉnh credits", changeCents }], true, multiplier);
+  const next = updateBalance(club, memberId, at, [{ kind: "adjustment", label: "Điều chỉnh credits", changeCents }], multiplier);
   const receipt: CreditAdjustmentReceipt = {
     operationId, mode, amountCents, beforeCents: wallet.balanceCents, afterCents: next.balanceCents, appliedAt: at, actorId,
   };
@@ -394,19 +397,14 @@ export function adjustGameCredits(club: Club, command: CreditAdjustmentCommand, 
   return { changed: true, result };
 }
 
-function saveWalletBalance(games: GamesState, memberId: string, balanceCents: number, activityAt?: number) {
+function saveWalletBalance(games: GamesState, memberId: string, balanceCents: number) {
   const old = walletFor(games, memberId);
   const wallet = { ...old, balanceCents, version: old.version + 1 };
-  if (activityAt !== undefined) {
-    const week = weekId(today(new Date(activityAt)));
-    if (!wallet.creditActivityWeek || week > wallet.creditActivityWeek) wallet.creditActivityWeek = week;
-  }
   games.wallets[memberId] = wallet;
   return wallet;
 }
 
-function updateBalance(club: Club, memberId: string, at: number, movements: readonly CreditMovement[],
-  countAsActivity = true, multiplier = 1) {
+function updateBalance(club: Club, memberId: string, at: number, movements: readonly CreditMovement[], multiplier = 1) {
   const games = club.games!;
   const pair = creditPair(club, memberId);
   const other = pair ? walletFor(games, pair.partnerId) : undefined;
@@ -426,12 +424,18 @@ function updateBalance(club: Club, memberId: string, at: number, movements: read
     partnerBalance = next;
     total = nextTotal;
   }
-  const activityAt = countAsActivity && movements.some(movement => movement.changeCents !== 0) ? at : undefined;
   if (pair) {
     pair.period.creditRemainder = Number(total % two) || undefined;
-    saveWalletBalance(games, pair.partnerId, partnerBalance, activityAt);
+    saveWalletBalance(games, pair.partnerId, partnerBalance);
   }
-  return saveWalletBalance(games, memberId, balanceCents, activityAt);
+  return saveWalletBalance(games, memberId, balanceCents);
+}
+
+export function spendGameCredits(club: Club, memberId: string, amountCents: number, label: string, at: number) {
+  if (!integerBetween(amountCents, 1, creditWalletBalance(club, memberId)))
+    throw new GameRuleError("Bạn không đủ credits để đổi điểm", 409);
+  club.games ??= { wallets: Object.create(null) as GamesState["wallets"], rooms: [] };
+  return updateBalance(club, memberId, at, [{ kind: "exchange", label, changeCents: -amountCents }]);
 }
 
 export function awardGameCredits(club: Club, memberId: string, amountCents: number, label: string, at: number) {
@@ -441,37 +445,52 @@ export function awardGameCredits(club: Club, memberId: string, amountCents: numb
   return updateBalance(club, memberId, at, [{ kind: "exchange", label, changeCents: amountCents }]);
 }
 
-export function settleWeeklyCreditInactivity(club: Club, now = Date.now()) {
-  const currentWeek = weekId(today(new Date(now)));
+function recordGameplay(games: GamesState, memberId: string, at: number) {
+  const due = games.inactivityDue;
+  if (due && Object.hasOwn(due, memberId)) due[memberId] = Math.max(due[memberId], at + GAME_INACTIVITY_MS);
+}
+
+export function settleGameInactivity(club: Club, now = Date.now()) {
   const games = club.games ??= { rooms: [], wallets: Object.create(null) as GamesState["wallets"] };
-  let tracking = games.inactivityWeek;
-  if (!tracking) {
-    // The deployment can start midweek. Charge after the first full week.
-    games.inactivityWeek = { week: currentWeek, memberIds: [] };
-    return true;
+  let changed = games.inactivityDue === undefined;
+  if (games.inactivityWeek) {
+    delete games.inactivityWeek;
+    changed = true;
   }
-  if (tracking.week >= currentWeek) return false;
-  const eligible = new Map(club.members.filter(member => canReceiveCredits(club, member)).map(member => [member.id, member]));
-  while (tracking.week < currentWeek) {
-    const closedWeek = tracking.week;
-    const charges = tracking.memberIds.flatMap(memberId => {
-      if (!eligible.has(memberId)) return [];
-      const wallet = walletFor(games, memberId);
-      if (wallet.creditActivityWeek === closedWeek) return [];
-      const amountCents = Math.min(wallet.balanceCents, WEEKLY_INACTIVE_CREDIT_CHARGE);
-      return amountCents ? [{ memberId, amountCents }] : [];
-    });
-    const closedAt = Date.parse(addDays(closedWeek, 7) + "T00:00:00+07:00");
-    for (const { memberId, amountCents } of charges) {
-      const charged = updateBalance(club, memberId, closedAt,
-        [{ kind: "inactivity", label: "Tuần không có biến động", changeCents: -amountCents }], false);
-      charged.inactivityCharge = { week: closedWeek, amountCents };
+  const tracking = games.inactivityDue ??= Object.create(null) as Record<string, number>;
+  const eligible = new Set(club.members.filter(member => canReceiveCredits(club, member)).map(member => member.id));
+  for (const memberId of Object.keys(tracking)) {
+    if (!eligible.has(memberId)) {
+      delete tracking[memberId];
+      changed = true;
     }
-    const nextWeek = addDays(tracking.week, 7);
-    tracking = { week: nextWeek, memberIds: [...eligible.values()].filter(member => member.joined <= nextWeek).map(member => member.id) };
   }
-  games.inactivityWeek = tracking;
-  return true;
+  const charges: { memberId: string; at: number }[] = [];
+  for (const memberId of eligible) {
+    // Give each account a full period from activation or the start of the new rule.
+    if (!Object.hasOwn(tracking, memberId)) {
+      Object.defineProperty(tracking, memberId, { value: now + GAME_INACTIVITY_MS, enumerable: true, configurable: true, writable: true });
+      changed = true;
+      continue;
+    }
+    let at = tracking[memberId];
+    if (at > now) continue;
+    for (; at <= now; at += GAME_INACTIVITY_MS) charges.push({ memberId, at });
+    tracking[memberId] = at;
+    changed = true;
+  }
+  // Shared wallets can have deductions at different times for each partner.
+  for (const { memberId, at } of charges.sort((first, second) => first.at - second.at)) {
+    const balance = walletFor(games, memberId).balanceCents;
+    const pair = creditPair(club, memberId);
+    const shared = pair ? walletFor(games, pair.partnerId).balanceCents + (pair.period.creditRemainder ?? 0) : 0;
+    const amountCents = Math.min(INACTIVE_GAME_CHARGE_CENTS, balance + shared);
+    if (!amountCents) continue;
+    const wallet = updateBalance(club, memberId, at,
+      [{ kind: "inactivity", label: `${GAME_INACTIVITY_DAYS} ngày không chơi`, changeCents: -amountCents }]);
+    wallet.gameInactivityCharge = { at, amountCents, ...(pair ? { shared: true } : {}) };
+  }
+  return changed;
 }
 
 function liveRoomFor(games: GamesState | undefined, memberId: string) {
@@ -542,6 +561,7 @@ export function applyCoinFlip(club: Club, memberId: string, command: CoinFlipCom
   const flip = { id: command.id, at, stake: command.stake, pick: command.pick, side, netCents, balanceCents: next.balanceCents,
     ...(creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}) };
   next.flips = [flip, ...(wallet.flips ?? [])].slice(0, gameResultHistoryLimit);
+  recordGameplay(games, memberId, at);
   return flip;
 }
 
@@ -606,10 +626,10 @@ export function dropMemberFromGames(club: Club, memberId: string, erase = false,
   if (!games) return;
   const room = liveRoomFor(games, memberId);
   if (room) finishRoom(club, room, at, "cancelled", undefined, "unavailable");
+  if (games.inactivityDue) delete games.inactivityDue[memberId];
   if (erase) {
     delete games.wallets[memberId];
     games.rooms = games.rooms.filter(room => !isPlayer(room, memberId));
-    if (games.inactivityWeek) games.inactivityWeek.memberIds = games.inactivityWeek.memberIds.filter(id => id !== memberId);
     if (games.exchangeReceipts) games.exchangeReceipts = games.exchangeReceipts.filter(row => row.memberId !== memberId);
   }
 }
@@ -632,7 +652,7 @@ export function gamesView(club: Club, memberId: string, revision: number, legacy
       .slice(0, recentCount),
     spins,
     flips: wallet.flips ?? [],
-    inactivityCharge: wallet.inactivityCharge,
+    gameInactivityCharge: wallet.gameInactivityCharge,
     cupidPartnerId: cupidCreditPartnerId(club, memberId),
     wheelProgress: { spins: wheelProgress?.spins ?? 0, pendingRefundCents: wheelRefundCents(wheelProgress?.netCredits) },
   };
@@ -684,6 +704,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
       ...(creditPair(club, memberId) ? { walletChangeCents: next.balanceCents - wallet.balanceCents } : {}),
     };
     next.spins = [spin, ...next.spins].slice(0, gameResultHistoryLimit);
+    recordGameplay(games, memberId, at);
     return spin;
   }
   const room = games.rooms.find(room => room.id === command.id);
@@ -725,6 +746,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
     if (room.finishReason === "surrender" && room.winnerId === opponent) return;
     if (room.status !== "playing" || !opponent) throw new GameRuleError("Ván XO đã kết thúc", 409);
     finishRoom(club, room, at, "won", opponent, "surrender");
+    recordGameplay(games, memberId, at);
     return;
   }
   if (command.kind !== "move") throw new GameRuleError("Không tìm thấy phòng XO", 404);
@@ -736,6 +758,7 @@ export function applyGameCommand(club: Club, memberId: string, command: GameComm
   if (room.moves.includes(command.cell)) throw new GameRuleError("Ô này đã được đánh", 409);
   room.moves.push(command.cell);
   room.updatedAt = at;
+  recordGameplay(games, memberId, at);
   if (xoWinningLine(xoBoard(room.moves, size), size, command.cell)) finishRoom(club, room, at, "won", memberId);
   else if (room.moves.length === size * size) finishRoom(club, room, at, "draw");
 }

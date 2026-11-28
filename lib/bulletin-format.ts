@@ -1,9 +1,10 @@
 export type BulletinMarker = "**" | "_";
 export type BulletinInline = string | { marker: BulletinMarker; children: BulletinInline[] };
+type Delimiter = BulletinMarker | "*" | "***";
 
-export function bulletinInline(content: string): BulletinInline[] {
+export function bulletinInline(content: string, pastedMarkdown = false): BulletinInline[] {
   const root: BulletinInline[] = [];
-  const frames: { marker: BulletinMarker; children: BulletinInline[] }[] = [];
+  const frames: { delimiter: Delimiter; children: BulletinInline[] }[] = [];
   const append = (...nodes: BulletinInline[]) => (frames.at(-1)?.children ?? root).push(...nodes);
   let cursor = 0;
   for (const token of content.matchAll(/\\[\\*_]|\*+|_+/g)) {
@@ -11,28 +12,50 @@ export function bulletinInline(content: string): BulletinInline[] {
     const start = token.index;
     if (start > cursor) append(content.slice(cursor, start));
     cursor = start + marker.length;
-    const open = frames.at(-1);
     if (marker.startsWith("\\")) {
       append(marker.slice(1));
-    } else if (open && open.marker === marker && open.children.length && /\S/.test(content[start - 1] ?? "")) {
-      frames.pop();
-      append(open);
-    } else if ((marker === "**" || marker === "_") && /\S/.test(content[cursor] ?? "") &&
-      !frames.some(frame => frame.marker === marker)) {
-      frames.push({ marker, children: [] });
-    } else {
-      append(marker);
+      continue;
     }
+    let remaining = marker;
+    let open = frames.at(-1);
+    const hasFollowingText = /\S/.test(content[cursor] ?? "");
+    const closes = /\S/.test(content[start - 1] ?? "") &&
+      !(pastedMarkdown && marker === "_" && /[\p{L}\p{N}]/u.test(content[cursor] ?? ""));
+    while (closes && open?.children.length &&
+      (pastedMarkdown ? remaining.startsWith(open.delimiter) :
+        remaining === open.delimiter || (hasFollowingText && remaining === open.delimiter.repeat(2)))) {
+      frames.pop();
+      const { delimiter, children } = open;
+      if (delimiter === "***") append({ marker: "**", children: [{ marker: "_", children }] });
+      else append({ marker: delimiter === "*" ? "_" : delimiter, children });
+      remaining = remaining.slice(delimiter.length);
+      open = frames.at(-1);
+    }
+    if (!remaining) continue;
+    const emphasis = remaining === "**" || remaining === "_" || (pastedMarkdown && (remaining === "*" || remaining === "***"));
+    const withinWord = pastedMarkdown && remaining === "_" && /[\p{L}\p{N}]/u.test(content[start - 1] ?? "");
+    if (emphasis && !withinWord && hasFollowingText && !frames.some(frame => frame.delimiter === remaining))
+      frames.push({ delimiter: remaining as Delimiter, children: [] });
+    else append(remaining);
   }
   if (cursor < content.length) append(content.slice(cursor));
   while (frames.length) {
     const open = frames.pop()!;
-    append(open.marker, ...open.children);
+    append(open.delimiter, ...open.children);
   }
   return root;
 }
 
-const escapeText = (value: string) => value.replace(/[\\*_]/g, "\\$&");
+export const escapeBulletinText = (value: string) => value.replace(/[\\*_]/g, "\\$&");
+
+export function pastedMarkdownEmphasis(value: string) {
+  const nodes = bulletinInline(value, true);
+  if (!nodes.some(node => typeof node !== "string")) return;
+  const markup = (pieces: BulletinInline[]): string => pieces.map(node =>
+    typeof node === "string" ? escapeBulletinText(node) : node.marker + markup(node.children) + node.marker,
+  ).join("");
+  return markup(nodes);
+}
 
 export function toggleBulletinEmphasis(content: string, start: number, end: number, marker: BulletinMarker, formatted: boolean) {
   const selected = content.slice(start, end);
@@ -43,9 +66,9 @@ export function toggleBulletinEmphasis(content: string, start: number, end: numb
   let after = trailing + content.slice(end);
   let text = middle || "văn bản";
   if (!formatted) {
-    before = escapeText(before);
-    text = escapeText(text);
-    after = escapeText(after);
+    before = escapeBulletinText(before);
+    text = escapeBulletinText(text);
+    after = escapeBulletinText(after);
   }
   const other = marker === "**" ? "_" : "**";
   const nested = marker + other;

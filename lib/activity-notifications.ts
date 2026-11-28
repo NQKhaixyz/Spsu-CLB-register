@@ -3,8 +3,10 @@ import {
   dateLabel, dutyNames, isRosterMember, isShiftPublished, rosterAssignments, adminMemberIds, statusNames, today,
   weekId, type Club, type Member, type Schedule, type Shift,
 } from "./club";
-import type { ActivityNoticeDraft, ActivityNoticeTarget, ActivityUpdate, DutyHours } from "./notification-types";
+import { eventNoticeScore } from "./event-notice-score";
+import type { ActivityNoticeDraft, ActivityNoticeTarget, ActivityUpdate, DutyHours, EventNoticeScore } from "./notification-types";
 import { captureScoreItems, scoreItemNotices } from "./score-notice-details";
+import { roundSharingScore } from "./sharing-scores";
 import { appendActivityNotices } from "./workspace-notifications";
 
 const meetingActions = new Set(["entry", "review", "meeting", "close", "reopen"]);
@@ -27,14 +29,35 @@ function eventContext(club: Club, action: string, data: Record<string, unknown>)
   return { event, memberId };
 }
 
-type ActivitySnapshot = { key: string; fingerprint: string; notice: ActivityUpdate & { memberId: string } };
+type ActivitySnapshot = {
+  key: string;
+  fingerprint: string;
+  notice: ActivityUpdate & { memberId: string };
+  eventDecision?: { approved: boolean; score: EventNoticeScore };
+};
+
+function changedActivityNotice(item: ActivitySnapshot, previous?: ActivitySnapshot) {
+  const { notice, eventDecision } = item;
+  if (!eventDecision) return notice;
+  const prior = previous?.eventDecision;
+  const { approved, score } = eventDecision;
+  if (!prior?.approved) {
+    if (!approved) return notice;
+    const title = score.rounds === 0 ? notice.title : "Sự kiện đã duyệt";
+    return { ...notice, title, eventScore: score };
+  }
+  const change = roundSharingScore(score.points - prior.score.points);
+  if (!change && score.rounds === prior.score.rounds && approved === prior.approved) return notice;
+  return { ...notice, eventScore: { ...score, change } };
+}
 
 function eventSnapshot(club: Club, eventId: string, onlyMember: unknown, eligible: ReadonlySet<string>, action: string): ActivitySnapshot[] {
   const event = club.events?.find(item => item.id === eventId);
   if (!event) return [];
   const people = new Map<string, NonNullable<Club["activityRegistrations"]>>();
   for (const row of club.activityRegistrations ?? []) {
-    if (row.eventId !== eventId || !eligible.has(row.memberId) || (onlyMember !== undefined && row.memberId !== onlyMember)) continue;
+    if (row.kind !== "event" || row.eventId !== eventId || !eligible.has(row.memberId) ||
+      (onlyMember !== undefined && row.memberId !== onlyMember)) continue;
     const entries = people.get(row.memberId);
     if (entries) entries.push(row);
     else people.set(row.memberId, [row]);
@@ -52,13 +75,16 @@ function eventSnapshot(club: Club, eventId: string, onlyMember: unknown, eligibl
       : [hasDecision ? approved + " lượt được duyệt" : "", declined ? declined + " lượt không được duyệt" : "",
         waiting ? waiting + " lượt đang chờ" : ""];
     const body = [event.name, ...details].filter(Boolean).join(" · ");
+    const eventDecision = !event.cancelledAt && individualEventActions.has(action)
+      ? { approved: hasDecision, score: eventNoticeScore(club, event, rows, approved) } : undefined;
     return [{
       key: memberId, fingerprint: JSON.stringify([
         event.cancelledAt != null, event.name, event.startDate, event.endDate, event.startTime, event.endTime,
         event.location, event.description, event.requiresEvidence, event.scoringMode,
-        rows.map(row => [row.id, row.status, row.quantity, row.evidence?.review?.status]),
+        rows.map(row => [row.id, row.status, row.quantity, row.evidence?.review?.status]), eventDecision?.score.points,
       ]),
       notice: { kind: "activity", memberId, title, body, target: { area: "event", eventId } },
+      eventDecision,
     }];
   });
 }
@@ -129,7 +155,8 @@ export function captureWorkspaceNotifications(
     if (before && scoreRecipient) notices.push(...scoreItemNotices(before, captureScoreItems(club, scoreRecipient)));
     if (tracksStatus) {
       for (const item of getActivity()) {
-        if (oldActivity.get(item.key)?.fingerprint !== item.fingerprint) notices.push(item.notice);
+        const previous = oldActivity.get(item.key);
+        if (previous?.fingerprint !== item.fingerprint) notices.push(changedActivityNotice(item, previous));
       }
     }
     if (oldDuty) {

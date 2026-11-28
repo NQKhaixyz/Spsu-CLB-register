@@ -4,7 +4,7 @@ import { applyAction, type Identity } from "../lib/actions";
 import { createClub, syncWeeks, type Member } from "../lib/club";
 import {
   adjustGameCredits, applyCoinFlip, applyGameCommand, creditRecipients, creditsRanking, drawWheelFactor, formatCredits, gamesView, parseCreditAdjustment,
-  parseCreditAmount, parseGameCommand, settleWeeklyCreditInactivity,
+  GAME_INACTIVITY_MS, parseCreditAmount, parseGameCommand, settleGameInactivity,
   wheelFactorForRoll, WHEEL_FACTORS, WHEEL_REFUND_EVERY, wheelNetCents, xoBoard, xoWinningLine, XO_BOARD_SIZE,
   type CoinFlipCommand, type GameCommand, type Mark, type WheelFactor,
 } from "../lib/games";
@@ -73,29 +73,50 @@ test("Coinflip uses the game wallet, returns 1.9 times the stake on wins and set
   assert.throws(() => applyCoinFlip(club, host.id, { ...next, id: crypto.randomUUID(), walletVersion: 3, stake: 10_000 }, "two", 16), /vượt số credits/);
 });
 
-test("Credit inactivity settles each complete Vietnam week once and caps the charge at the available balance", () => {
-  const { club, host, guest, spectator, view } = fixture();
-  const local = (date: string) => Date.parse(date + "+07:00");
-  const first = local("2026-11-28T15:00:00");
-  const opening = local("2026-11-30T00:00:00");
-  const ending = local("2026-12-07T00:00:00");
-  assert.equal(settleWeeklyCreditInactivity(club, first), true);
-  assert.equal(settleWeeklyCreditInactivity(club, opening), true);
-  assert.equal(view(guest.id).wallet.balanceCents, 1_000_000);
+test("Three days without actual gameplay costs 500 credits once per interval and can never overdraw", () => {
+  const { club, owner, host, guest, spectator, view } = fixture();
+  const first = Date.parse("2026-11-28T15:00:00+07:00");
+  const due = first + GAME_INACTIVITY_MS;
+  club.games = { wallets: {}, rooms: [], inactivityWeek: { week: "2026-11-16", memberIds: [owner.id] } };
+  assert.equal(settleGameInactivity(club, first), true);
+  assert.equal(club.games.inactivityWeek, undefined);
+  assert.equal(view(owner.id).wallet.balanceCents, 1_000_000);
   adjustGameCredits(club, { operationId: crypto.randomUUID(), memberId: spectator.id, mode: "set", amountCents: 25_000, walletVersion: 0 },
     "issuer", first + 10);
-  applyCoinFlip(club, host.id, { kind: "flip", id: crypto.randomUUID(), stake: 1, pick: "one", walletVersion: 0 }, "two", ending - 1);
-  applyGameCommand(club, guest.id, { kind: "spin", id: spinId, stake: 1, walletVersion: 0 }, ending - 1, 1);
-  assert.equal(settleWeeklyCreditInactivity(club, ending - 1), false);
-  assert.equal(settleWeeklyCreditInactivity(club, ending), true);
+  applyCoinFlip(club, host.id, { kind: "flip", id: crypto.randomUUID(), stake: 1, pick: "one", walletVersion: 0 }, "two", due - 1);
+  applyGameCommand(club, guest.id, { kind: "spin", id: spinId, stake: 1, walletVersion: 0 }, due - 1, 1);
+  assert.equal(settleGameInactivity(club, due - 1), false);
+  assert.equal(settleGameInactivity(club, due), true);
   assert.equal(view(host.id).wallet.balanceCents, 999_900);
-  assert.equal(view(guest.id).wallet.balanceCents, 900_000);
-  assert.deepEqual(view(guest.id).inactivityCharge, { week: "2026-11-30", amountCents: 100_000 });
+  assert.equal(view(guest.id).wallet.balanceCents, 1_000_000);
+  assert.equal(view(owner.id).wallet.balanceCents, 950_000);
+  assert.deepEqual(view(owner.id).gameInactivityCharge, { at: due, amountCents: 50_000 });
   assert.equal(view(spectator.id).wallet.balanceCents, 0);
-  assert.deepEqual(view(spectator.id).inactivityCharge, { week: "2026-11-30", amountCents: 25_000 });
-  assert.equal(settleWeeklyCreditInactivity(structuredClone(club), ending + 10), false);
-  assert.equal(settleWeeklyCreditInactivity(club, ending + 7 * 86_400_000), true);
-  assert.equal(view(guest.id).wallet.balanceCents, 800_000);
+  assert.deepEqual(view(spectator.id).gameInactivityCharge, { at: due, amountCents: 25_000 });
+  assert.equal(settleGameInactivity(structuredClone(club), due + 10), false);
+  assert.equal(settleGameInactivity(club, due + GAME_INACTIVITY_MS), true);
+  assert.equal(view(guest.id).wallet.balanceCents, 950_000);
+  assert.equal(view(owner.id).wallet.balanceCents, 900_000);
+});
+
+test("XO gameplay resets only the player who moved and paused accounts get a new interval on return", () => {
+  const { club, host, guest, spectator, view } = fixture();
+  const at = Date.now();
+  settleGameInactivity(club, at);
+  const stake = 10;
+  applyGameCommand(club, host.id, { kind: "create", id: roomId, stake, walletVersion: 0 }, at + 10);
+  applyGameCommand(club, guest.id, { kind: "join", id: roomId, stake, walletVersion: 0 }, at + 20);
+  applyGameCommand(club, host.id, { kind: "move", id: roomId, cell: 0, turn: 0 }, at + 30);
+  spectator.active = false;
+  const due = at + GAME_INACTIVITY_MS;
+  settleGameInactivity(club, due);
+  assert.equal(view(host.id).wallet.balanceCents, 999_000);
+  assert.equal(view(guest.id).wallet.balanceCents, 949_000);
+  assert.equal(club.games?.inactivityDue?.[spectator.id], undefined);
+  spectator.active = true;
+  settleGameInactivity(club, due + 10);
+  assert.equal(club.games?.inactivityDue?.[spectator.id], due + 10 + GAME_INACTIVITY_MS);
+  assert.equal(view(spectator.id).wallet.balanceCents, 1_000_000);
 });
 
 test("Credits ranking includes active accounts, shares ranks for equal balances, and reflects game settlements", () => {
@@ -141,7 +162,7 @@ test("Issuer wallet adjustments are idempotent and preserve rewards, exact credi
   assert.equal(grant.result.receipt.beforeCents, original);
   assert.equal(grant.result.balanceCents, original + 700_000);
   assert.equal(creditsRanking(club, 1).rows[0].memberId, host.id);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 225 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 95 });
   assert.deepEqual(adjustGameCredits(club, command, "issuer", 102), { changed: false, result: grant.result });
   assert.throws(() => adjustGameCredits(club, { ...command, memberId: guest.id }, "issuer", 103), /đã được sử dụng/);
   assert.throws(() => adjustGameCredits(club, { ...command, amountCents: 100 }, "issuer", 103), /đã được sử dụng/);
@@ -157,7 +178,7 @@ test("Issuer wallet adjustments are idempotent and preserve rewards, exact credi
     ...command, operationId: crypto.randomUUID(), mode: "set", amountCents: 0, walletVersion: reduced.result.walletVersion,
   }), "issuer", 106);
   assert.equal(cleared.result.balanceCents, 0);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 225 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 95 });
   assert.equal(parseCreditAmount("25,01"), 2501);
   assert.equal(parseCreditAmount("0.95"), 95);
   assert.equal(parseCreditAmount("1.005"), undefined);
@@ -269,7 +290,7 @@ test("Wheel rejects a possible overdraft and protects old retries after recent r
     run(host.id, { kind: "spin", id: crypto.randomUUID(), stake: 1, walletVersion: view(host.id).wallet.version }, 1);
   assert.equal(view(host.id).spins.length, 10);
   assert.throws(() => run(host.id, allRemaining, 6), /Số dư đã thay đổi/);
-  assert.equal(view(host.id).wallet.balanceCents, 999_725);
+  assert.equal(view(host.id).wallet.balanceCents, 999_595);
 });
 
 test("Game commands require an integer wager, a current cursor, and a valid board position", () => {
@@ -325,7 +346,7 @@ test("Each wheel factor gets one equal roll and the biased random tail is reject
   assert.equal(random.mock.callCount(), 2);
 });
 
-test("Every ten wheel turns settle 45 percent of the net loss once and profitable groups refund zero", () => {
+test("Every ten wheel turns settle 19 percent of the net loss once and profitable groups refund zero", () => {
   const { host, guest, view, run } = fixture();
   assert.equal(WHEEL_REFUND_EVERY, 10);
   const play = (stake: number, factor: WheelFactor, id: string = crypto.randomUUID()) => {
@@ -333,32 +354,32 @@ test("Every ten wheel turns settle 45 percent of the net loss once and profitabl
     return { command, spin: run(host.id, command, factor) };
   };
   play(1, -4);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 225 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 95 });
   play(1, 6);
   assert.deepEqual(view(host.id).wheelProgress, { spins: 2, pendingRefundCents: 0 });
   play(2, -1);
   for (let turn = 3; turn < 9; turn++) assert.equal(play(1, 1).spin?.refundCents, undefined);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 9, pendingRefundCents: 180 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 9, pendingRefundCents: 76 });
   assert.equal(view(host.id).wallet.balanceCents, 999_600);
   const { command, spin } = play(1, 0, spinId);
   assert.equal(spin?.netCents, -100);
-  assert.equal(spin?.refundCents, 225);
-  assert.equal(view(host.id).wallet.balanceCents, 999_725);
+  assert.equal(spin?.refundCents, 95);
+  assert.equal(view(host.id).wallet.balanceCents, 999_595);
   assert.deepEqual(view(host.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   assert.deepEqual(run(host.id, command, -4), spin);
-  assert.equal(view(host.id).wallet.balanceCents, 999_725);
+  assert.equal(view(host.id).wallet.balanceCents, 999_595);
   play(3, 0);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 135 });
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 1, pendingRefundCents: 57 });
   assert.deepEqual(view(guest.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   play(1, 6);
   play(1, 2);
   for (let turn = 3; turn < 9; turn++) play(1, 1);
   const profitable = play(1, 1).spin;
   assert.equal(profitable?.refundCents, undefined);
-  assert.equal(view(host.id).wallet.balanceCents, 1_000_025);
+  assert.equal(view(host.id).wallet.balanceCents, 999_895);
   assert.deepEqual(view(host.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   for (const factor of [0, 2, 1, 1, 1, 1, 1, 1, 1, 1] as const) assert.equal(play(1, factor).spin?.refundCents, undefined);
-  assert.equal(view(host.id).wallet.balanceCents, 1_000_025);
+  assert.equal(view(host.id).wallet.balanceCents, 999_895);
 });
 
 test("Incomplete five-turn groups keep their accrued loss and continue to the tenth spin", () => {
@@ -367,12 +388,12 @@ test("Incomplete five-turn groups keep their accrued loss and continue to the te
     [host.id]: { balanceCents: 999_500, version: 4, spins: [], wheelProgress: { spins: 4, netCredits: -5 } },
     [guest.id]: { balanceCents: 999_500, version: 9, spins: [], wheelProgress: { spins: 9, netCredits: -5 } },
   } };
-  assert.deepEqual(view(guest.id).wheelProgress, { spins: 9, pendingRefundCents: 225 });
+  assert.deepEqual(view(guest.id).wheelProgress, { spins: 9, pendingRefundCents: 95 });
   const spin = (id: string) =>
     run(id, { kind: "spin", id: crypto.randomUUID(), stake: 1, walletVersion: view(id).wallet.version }, 1);
   assert.equal(spin(host.id)?.refundCents, undefined);
-  assert.deepEqual(view(host.id).wheelProgress, { spins: 5, pendingRefundCents: 225 });
-  assert.equal(spin(guest.id)?.refundCents, 225);
+  assert.deepEqual(view(host.id).wheelProgress, { spins: 5, pendingRefundCents: 95 });
+  assert.equal(spin(guest.id)?.refundCents, 95);
   assert.deepEqual(view(guest.id).wheelProgress, { spins: 0, pendingRefundCents: 0 });
   spin(guest.id);
   assert.equal(view(guest.id).wheelProgress.spins, 1);

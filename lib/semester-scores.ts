@@ -40,7 +40,7 @@ export function semesterScores(club: Club, from: string, through: string, asOf =
       };
       const score = scoreFor(club, member.id, month, undefined, sharingIndex);
       row.byMonth[month] = score.points;
-      row.points += score.pointsBeforeSharing - score.redeemedPoints;
+      row.points += score.pointsBeforeSharing;
       if (score.sharingAdjustment.cupid || score.sharingAdjustment.guild) {
         const adjustment = row.sharingAdjustment ??= { cupid: 0, guild: 0 };
         adjustment.cupid += score.sharingAdjustment.cupid;
